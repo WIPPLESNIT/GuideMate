@@ -1,0 +1,25 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Pass the Authorization header through to PHP. Apache drops it by default,
+    # which breaks the mobile app's Bearer-token authentication (every signed-in
+    # request would 401 and the app would log the user out).
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Serve existing files/directories directly.
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Route everything else through the front controller.
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# Expose the Authorization header on CGI/FastCGI PHP setups too.
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
+# Prevent directory listing.
+Options -Indexes

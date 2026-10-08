@@ -1,0 +1,8 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Funnel all requests into the public/ web root so links and assets resolve
+    # consistently when the project root is served (e.g. htdocs/GuideMate).
+    RewriteCond %{REQUEST_URI} !/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
