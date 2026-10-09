@@ -59,6 +59,11 @@ $pageTitle = $title ?? 'Account';
         </div>
     </div>
 </div>
+<?php
+$suspendedUser = $suspendedUser ?? $_SESSION['suspended_user'] ?? null;
+unset($_SESSION['suspended_user']);
+require BASE_DIR . '/app/Views/partials/suspension_modal.php';
+?>
 <script src="<?= e(asset('js/main.js')) ?>"></script>
 </body>
 </html>

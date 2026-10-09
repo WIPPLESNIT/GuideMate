@@ -137,6 +137,9 @@ CREATE TABLE `bookings` (
     `listing_id`   INT UNSIGNED NOT NULL,
     `user_id`      INT UNSIGNED NOT NULL,
     `booking_date` DATE NOT NULL,
+    `booking_time` TIME DEFAULT NULL,
+    `booking_end_time` TIME DEFAULT NULL,
+    `booking_dates` TEXT DEFAULT NULL,
     `guests`       INT NOT NULL DEFAULT 1,
     `total_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     `status`       ENUM('pending','confirmed','completed','cancelled','disputed','refunded') NOT NULL DEFAULT 'pending',
@@ -364,6 +367,29 @@ CREATE TABLE `favorites` (
     KEY `favorites_listing_fk` (`listing_id`),
     CONSTRAINT `favorites_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
     CONSTRAINT `favorites_listing_fk` FOREIGN KEY (`listing_id`) REFERENCES `listings` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- account_appeals: suspension appeals submitted by suspended users
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS `account_appeals`;
+CREATE TABLE `account_appeals` (
+    `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `user_id`           INT UNSIGNED DEFAULT NULL,
+    `name`              VARCHAR(120) NOT NULL DEFAULT '',
+    `email`             VARCHAR(190) NOT NULL DEFAULT '',
+    `suspension_reason` VARCHAR(255) NOT NULL DEFAULT '',
+    `appeal_message`    TEXT NOT NULL,
+    `status`            VARCHAR(20) NOT NULL DEFAULT 'pending',
+    `admin_notes`       TEXT DEFAULT NULL,
+    `reviewed_at`       TIMESTAMP NULL DEFAULT NULL,
+    `reviewed_by`       INT UNSIGNED DEFAULT NULL,
+    `created_at`        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_appeals_user` (`user_id`),
+    KEY `idx_appeals_status` (`status`),
+    KEY `idx_appeals_created` (`created_at`),
+    CONSTRAINT `fk_appeals_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -1188,6 +1188,7 @@ final class ApiController extends Controller
                 'lng' => (float) $b['longitude'],
                 'upcoming' => $date !== '' && $date >= $today,
                 'approximate' => !empty($b['approximate']),
+                'status' => (string) ($b['status'] ?? 'pending'),
             ];
         }
 
@@ -1249,7 +1250,30 @@ final class ApiController extends Controller
         $body = $this->jsonBody();
         $listingId = (int) ($body['listing_id'] ?? 0);
         $date = trim((string) ($body['booking_date'] ?? ''));
+        $rawDates = $body['booking_dates'] ?? null;
+        $dates = [];
+        if (is_array($rawDates) && $rawDates !== []) {
+            foreach ($rawDates as $d) {
+                $trimmed = trim((string) $d);
+                if ($trimmed !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $trimmed)) {
+                    $dates[] = $trimmed;
+                }
+            }
+            $dates = array_values(array_unique($dates));
+            sort($dates);
+        }
+        if ($dates === [] && $date !== '') {
+            $dates = [$date];
+        }
+        if ($dates === []) {
+            $this->json(['error' => 'At least one booking date is required.'], 422);
+            return;
+        }
+
+        $primaryDate = $dates[0];
+        $daysCount = count($dates);
         $time = substr(trim((string) ($body['booking_time'] ?? '')), 0, 5);
+        $endTime = substr(trim((string) ($body['booking_end_time'] ?? $body['end_time'] ?? '')), 0, 5);
         $guests = max(1, (int) ($body['guests'] ?? 1));
         $notes = trim((string) ($body['notes'] ?? ''));
 
@@ -1267,30 +1291,29 @@ final class ApiController extends Controller
             $this->json(['error' => 'Listing not available.'], 404);
             return;
         }
-        if ($date === '') {
-            $this->json(['error' => 'Booking date is required.'], 422);
-            return;
-        }
-        // A tourist can't hold two active bookings for the same experience.
-        if (Booking::hasActivePaidBooking($listingId, $userId)) {
-            $this->json(['error' => 'You already have a booking for this experience.'], 409);
-            return;
-        }
-        // Guide-level conflict: a guide can only run one tour at a time, so if
-        // ANY tourist already booked this guide (on any of their listings) for
-        // this date + time, no one else can take that same slot.
+
         $guideId = (int) ($listing['user_id'] ?? 0);
-        if ($time !== '' && Booking::isGuideSlotBooked($guideId, $date, $time)) {
-            $this->json(['error' => 'This guide is already booked for that date and time. Please pick another slot.'], 409);
-            return;
-        }
-        if ($time === '' && Booking::isGuideDateBooked($guideId, $date)) {
-            $this->json(['error' => 'This guide is already booked on that date. Please pick another day.'], 409);
-            return;
+        foreach ($dates as $d) {
+            if (strtotime($d) < strtotime('today')) {
+                $this->json(['error' => "Date {$d} cannot be in the past."], 422);
+                return;
+            }
+            if (Booking::hasActivePaidBooking($listingId, $userId, $d)) {
+                $this->json(['error' => "You already have an active booking on {$d} for this experience."], 409);
+                return;
+            }
+            if ($time !== '' && Booking::isGuideSlotBooked($guideId, $d, $time)) {
+                $this->json(['error' => "This guide is already booked on {$d} at {$time}. Please pick another slot."], 409);
+                return;
+            }
+            if ($time === '' && Booking::isGuideDateBooked($guideId, $d)) {
+                $this->json(['error' => "This guide is already booked on {$d}. Please pick another day."], 409);
+                return;
+            }
         }
 
         $price = Listing::effectivePrice($listing);
-        $subtotal = $price * $guests;
+        $subtotal = $price * $guests * $daysCount;
         $total = $subtotal;
         $promoId = null;
         $discount = 0.0;
@@ -1312,7 +1335,8 @@ final class ApiController extends Controller
             'instapay' => 'InstaPay QR',
             default => 'Debit/Credit Card',
         };
-        $paymentNote = 'Paid via ' . $methodLabel;
+        $datesSummary = $daysCount > 1 ? " ({$daysCount} days: " . implode(', ', $dates) . ")" : " ({$primaryDate})";
+        $paymentNote = 'Paid via ' . $methodLabel . $datesSummary;
         if ($cardLast4 !== '') {
             $paymentNote .= ' ****' . substr($cardLast4, -4);
         }
@@ -1321,7 +1345,17 @@ final class ApiController extends Controller
         }
         $fullNotes = trim($notes === '' ? $paymentNote : ($notes . "\n" . $paymentNote));
 
-        $bookingId = Booking::create($listingId, $userId, $date, $guests, $total, $fullNotes, $time !== '' ? $time : null);
+        $bookingId = Booking::create(
+            $listingId,
+            $userId,
+            $primaryDate,
+            $guests,
+            $total,
+            $fullNotes,
+            $time !== '' ? $time : null,
+            $dates,
+            $endTime !== '' ? $endTime : null
+        );
         if ($promoId !== null) {
             Booking::attachPromo($bookingId, $promoId, $discount);
             PromoCode::incrementUse($promoId);
@@ -1333,10 +1367,11 @@ final class ApiController extends Controller
         $customer = User::find($userId);
         if ($customer !== null && !empty($customer['email'])) {
             try {
+                $dateLabel = $daysCount > 1 ? "{$daysCount} days (" . implode(', ', $dates) . ")" : $primaryDate;
                 NotificationService::bookingAwaitingConfirmation(
                     (string) $customer['email'],
                     (string) ($listing['title'] ?? ''),
-                    $date
+                    $dateLabel
                 );
             } catch (\Throwable $e) {
                 // Notifications are best-effort.
@@ -2279,12 +2314,20 @@ final class ApiController extends Controller
         $status = (string) $booking['status'];
         $disputeStatus = (string) ($booking['dispute_status'] ?? '');
         $paid = (string) ($booking['payment_status'] ?? '') === 'paid';
+        $canReport = $paid && in_array($status, ['confirmed', 'completed', 'disputed'], true) && empty($booking['dispute_id']);
 
         $reviewed = $viewerId !== null && Review::userHasReviewed($listingId, $viewerId);
         // A tourist can review a finished tour once, and report a paid booking
         // that hasn't already been reported.
         $canReview = $status === 'completed' && !$reviewed;
-        $canReport = $disputeStatus === '' && $paid && in_array($status, ['confirmed', 'completed'], true);
+        $bookingDates = null;
+        if (!empty($booking['booking_dates'])) {
+            $parsed = json_decode((string) $booking['booking_dates'], true);
+            if (is_array($parsed) && $parsed !== []) {
+                $bookingDates = $parsed;
+            }
+        }
+        $daysCount = $bookingDates !== null ? count($bookingDates) : 1;
 
         return [
             'id' => (int) $booking['id'],
@@ -2293,7 +2336,10 @@ final class ApiController extends Controller
             'listing_slug' => (string) ($booking['listing_slug'] ?? ''),
             'image' => api_img_src((string) ($booking['cover_image'] ?? ''), 'listing' . $booking['listing_id']),
             'booking_date' => (string) $booking['booking_date'],
+            'booking_dates' => $bookingDates ?? [(string) $booking['booking_date']],
+            'days_count' => $daysCount,
             'booking_time' => (string) ($booking['booking_time'] ?? ''),
+            'booking_end_time' => (string) ($booking['booking_end_time'] ?? ''),
             'guests' => (int) $booking['guests'],
             'total_amount' => (float) $booking['total_amount'],
             'status' => $status,

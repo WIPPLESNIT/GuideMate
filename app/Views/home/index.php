@@ -137,7 +137,7 @@ $heroHd = (string) ($heroVideo['video_hd'] ?? $hero4k);
                 <div class="eyebrow">Handpicked for you</div>
                 <h2>Featured experiences in Cebu</h2>
             </div>
-            <a href="<?= e(url('/listings')) ?>" class="btn btn-ghost">View all</a>
+            <a href="<?= e(url('/things-to-do')) ?>" class="btn btn-ghost">View all</a>
         </div>
         <?php if ($featured === []): ?>
             <div class="empty-state"><div class="big">🗺️</div><p>No featured listings yet. Run the seeder to load Cebu sample data.</p></div>

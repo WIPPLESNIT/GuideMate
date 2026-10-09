@@ -25,7 +25,7 @@ final class ListingController extends Controller
 
     public function thingsToDo(): void
     {
-        $this->renderBrowse('things-to-do', '', 'Tours, attractions and unforgettable activities.');
+        $this->renderBrowse('things-to-do', 'Things to Do', 'Tours, attractions and unforgettable activities.');
     }
 
     public function tourGuides(): void

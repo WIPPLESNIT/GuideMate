@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Core\AdminAuth;
 use App\Core\Controller;
+use App\Models\AccountAppeal;
 use App\Models\AuditLog;
 use App\Models\Booking;
 use App\Models\Dispute;
@@ -175,9 +176,18 @@ final class AdminController extends Controller
 
     public function users(): void
     {
+        $appeals = AccountAppeal::all();
+        $pendingAppeals = [];
+        foreach ($appeals as $app) {
+            if ($app['status'] === AccountAppeal::STATUS_PENDING && !empty($app['user_id'])) {
+                $pendingAppeals[(int) $app['user_id']] = $app;
+            }
+        }
+
         $this->view('admin/users', [
             'title' => 'Manage Users',
             'users' => User::all(),
+            'pendingAppeals' => $pendingAppeals,
         ], 'admin');
     }
 
@@ -263,10 +273,13 @@ final class AdminController extends Controller
             ? GuideDocument::forUser((int) $user['id'])
             : [];
 
+        $latestAppeal = AccountAppeal::latestForUser((int) $user['id']);
+
         $this->view('admin/user-form', [
             'title' => 'Edit User — ' . $user['name'],
             'user' => $user,
             'documents' => $documents,
+            'latestAppeal' => $latestAppeal,
             'errors' => errors(),
         ], 'admin');
     }
@@ -326,6 +339,10 @@ final class AdminController extends Controller
         if ($isActive === 1) {
             $updateData['suspension_reason'] = null;
             $updateData['suspended_at'] = null;
+            $pendingAppeal = AccountAppeal::pendingForUser((int) $id);
+            if ($pendingAppeal !== null) {
+                AccountAppeal::updateStatus((int) $pendingAppeal['id'], AccountAppeal::STATUS_APPROVED, 'Approved by admin on profile update', (int) AdminAuth::id());
+            }
         }
         if (User::isProviderRole($role)) {
             $validStatuses = ['approved', 'pending', 'rejected', 'none'];
@@ -428,6 +445,11 @@ final class AdminController extends Controller
         }
 
         User::unsuspend((int) $id);
+        $pendingAppeal = AccountAppeal::pendingForUser((int) $id);
+        if ($pendingAppeal !== null) {
+            AccountAppeal::updateStatus((int) $pendingAppeal['id'], AccountAppeal::STATUS_APPROVED, 'Approved by admin on reactivation', (int) AdminAuth::id());
+        }
+
         AuditLog::recordAction('user.unsuspend', 'user', (int) $id, [
             'name' => $user['name'],
             'email' => $user['email'],

@@ -1,5 +1,6 @@
 <?php
 /** @var array<int,array<string,mixed>> $users */
+$pendingAppeals = $pendingAppeals ?? [];
 
 // Labels + pill colours for each account type so the roles read clearly and
 // are visually distinct in the table.
@@ -97,6 +98,9 @@ foreach ($users as $u) {
                             <span class="pill pill-approved">Active</span>
                         <?php else: ?>
                             <span class="pill pill-cancelled" <?= !empty($u['suspension_reason']) ? 'title="Reason: ' . e($u['suspension_reason']) . '" style="cursor:help;"' : '' ?>>Suspended</span>
+                            <?php if (isset($pendingAppeals[(int) $u['id']])): ?>
+                                <span class="pill pill-pending" style="margin-top:3px;display:inline-block;cursor:pointer;" title="Appeal: <?= e($pendingAppeals[(int) $u['id']]['appeal_message']) ?>">Appeal Pending</span>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </td>
                     <td class="col-actions">

@@ -14,8 +14,11 @@ type Theme = {
 };
 
 type Props = {
-  value: string; // YYYY-MM-DD or ''
-  onChange: (date: string) => void;
+  value?: string; // YYYY-MM-DD or ''
+  onChange?: (date: string) => void;
+  values?: string[]; // YYYY-MM-DD[] for multiSelect
+  onMultiChange?: (dates: string[]) => void;
+  multiSelect?: boolean;
   theme: Theme;
   disabledDates?: string[]; // YYYY-MM-DD dates that are fully booked
 };
@@ -34,17 +37,33 @@ function toKey(year: number, month: number, day: number): string {
   return `${year}-${pad(month + 1)}-${pad(day)}`;
 }
 
-export default function CalendarPicker({ value, onChange, theme, disabledDates = [] }: Props) {
+export default function CalendarPicker({
+  value = '',
+  onChange,
+  values = [],
+  onMultiChange,
+  multiSelect = false,
+  theme,
+  disabledDates = [],
+}: Props) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const blocked = useMemo(() => new Set(disabledDates), [disabledDates]);
 
-  const initial = value ? new Date(value) : today;
+  const initialDateStr = multiSelect ? (values[0] || value) : value;
+  const initial = initialDateStr ? new Date(initialDateStr) : today;
   const [viewYear, setViewYear] = useState(initial.getFullYear());
   const [viewMonth, setViewMonth] = useState(initial.getMonth());
 
   const todayKey = toKey(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const selectedSet = useMemo(() => {
+    if (multiSelect) {
+      return new Set(values);
+    }
+    return new Set(value ? [value] : []);
+  }, [multiSelect, values, value]);
 
   const cells = useMemo(() => {
     const firstDay = new Date(viewYear, viewMonth, 1).getDay();
@@ -70,6 +89,21 @@ export default function CalendarPicker({ value, onChange, theme, disabledDates =
       setViewYear((y) => y + 1);
     } else {
       setViewMonth((m) => m + 1);
+    }
+  };
+
+  const handlePress = (key: string) => {
+    if (multiSelect) {
+      let updated: string[];
+      if (selectedSet.has(key)) {
+        updated = values.filter((d) => d !== key);
+      } else {
+        updated = [...values, key].sort();
+      }
+      onMultiChange?.(updated);
+      onChange?.(updated[0] ?? '');
+    } else {
+      onChange?.(key);
     }
   };
 
@@ -104,7 +138,7 @@ export default function CalendarPicker({ value, onChange, theme, disabledDates =
           const isPast = key < todayKey;
           const isFull = blocked.has(key);
           const isDisabled = isPast || isFull;
-          const isSelected = key === value;
+          const isSelected = selectedSet.has(key);
           const isToday = key === todayKey;
           return (
             <TouchableOpacity
@@ -112,7 +146,7 @@ export default function CalendarPicker({ value, onChange, theme, disabledDates =
               style={styles.cell}
               disabled={isDisabled}
               activeOpacity={0.7}
-              onPress={() => onChange(key)}
+              onPress={() => handlePress(key)}
             >
               <View
                 style={[
@@ -137,6 +171,17 @@ export default function CalendarPicker({ value, onChange, theme, disabledDates =
           );
         })}
       </View>
+
+      {multiSelect && values.length > 0 ? (
+        <View style={styles.multiFooter}>
+          <Text style={[styles.multiSummary, { color: theme.textSub }]}>
+            {values.length} {values.length === 1 ? 'date' : 'dates'} selected
+          </Text>
+          <TouchableOpacity onPress={() => onMultiChange?.([])} hitSlop={8}>
+            <Text style={[styles.clearBtn, { color: theme.accent }]}>Clear all</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -152,4 +197,15 @@ const styles = StyleSheet.create({
   cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
   dayInner: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   dayText: { fontSize: 14, fontWeight: '600' },
+  multiFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#00000015',
+  },
+  multiSummary: { fontSize: 12, fontWeight: '600' },
+  clearBtn: { fontSize: 12, fontWeight: '700' },
 });

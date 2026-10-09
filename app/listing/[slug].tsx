@@ -38,11 +38,17 @@ type ReviewItem = {
   created_at: string;
 };
 
-// Selectable start times for an experience (24h values, shown in 12h format).
-const TIME_SLOTS = [
+// Selectable start and end times for an experience (24h values, shown in 12h format).
+const START_TIME_SLOTS = [
   '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
   '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
   '18:00', '19:00', '20:00',
+];
+
+const END_TIME_SLOTS = [
+  '07:00', '08:00', '09:00', '10:00', '11:00', '12:00',
+  '13:00', '14:00', '15:00', '16:00', '17:00', '18:00',
+  '19:00', '20:00', '21:00', '22:00',
 ];
 
 function formatReviewDate(value: string): string {
@@ -85,8 +91,9 @@ export default function ListingDetailScreen() {
   // Booking modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [step, setStep] = useState<BookingStep>('details');
-  const [bookingDate, setBookingDate] = useState('');
+  const [bookingDates, setBookingDates] = useState<string[]>([]);
   const [bookingTime, setBookingTime] = useState('');
+  const [bookingEndTime, setBookingEndTime] = useState('');
   const [guests, setGuests] = useState(1);
   const [booking, setBooking] = useState(false);
 
@@ -150,8 +157,9 @@ export default function ListingDetailScreen() {
       ]);
       return;
     }
-    setBookingDate('');
+    setBookingDates([]);
     setBookingTime('');
+    setBookingEndTime('');
     setGuests(1);
     setStep('details');
     setQrMethod('gcash');
@@ -166,7 +174,8 @@ export default function ListingDetailScreen() {
     setModalOpen(true);
   };
 
-  const subtotal = listing ? listing.price * guests : 0;
+  const daysCount = Math.max(1, bookingDates.length);
+  const subtotal = listing ? listing.price * guests * daysCount : 0;
   const appliedVoucher = voucherCode ? findVoucher(voucherCode) : null;
   const voucherDiscount = appliedVoucher ? getVoucherDiscount(appliedVoucher, subtotal) : 0;
   const totalAmount = Math.max(0, subtotal - voucherDiscount);
@@ -179,25 +188,56 @@ export default function ListingDetailScreen() {
     bookedSlots.forEach((s) => {
       counts[s.date] = (counts[s.date] ?? 0) + 1;
     });
-    return Object.keys(counts).filter((d) => counts[d] >= TIME_SLOTS.length);
+    return Object.keys(counts).filter((d) => counts[d] >= START_TIME_SLOTS.length);
   }, [bookedSlots]);
-  const isSlotBooked = (slot: string) => !!bookingDate && bookedSet.has(`${bookingDate}|${slot}`);
+  const isSlotBooked = (slot: string) => {
+    if (bookingDates.length === 0) return false;
+    return bookingDates.some((d) => bookedSet.has(`${d}|${slot}`));
+  };
 
-  // If the selected time becomes unavailable after picking a date, clear it.
+  const availableEndSlots = React.useMemo(
+    () => END_TIME_SLOTS.filter((s) => !bookingTime || s > bookingTime),
+    [bookingTime]
+  );
+
+  const isEndTimeInvalid = (endSlot: string) => {
+    if (!bookingTime || endSlot <= bookingTime) return true;
+    return START_TIME_SLOTS.some((s) => s >= bookingTime && s < endSlot && isSlotBooked(s));
+  };
+
+  const handleSelectStartTime = (slot: string) => {
+    setBookingTime(slot);
+    if (bookingEndTime && bookingEndTime <= slot) {
+      setBookingEndTime('');
+    }
+  };
+
+  // If the selected time becomes unavailable after picking/updating dates, clear it.
   useEffect(() => {
     if (bookingTime && isSlotBooked(bookingTime)) {
       setBookingTime('');
+      setBookingEndTime('');
+    } else if (bookingEndTime && isEndTimeInvalid(bookingEndTime)) {
+      setBookingEndTime('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingDate]);
+  }, [bookingDates]);
 
   const goToPayment = () => {
-    if (!bookingDate) {
-      Alert.alert('Pick a date', 'Please choose a date from the calendar.');
+    if (bookingDates.length === 0) {
+      Alert.alert('Pick date(s)', 'Please choose one or more dates from the calendar.');
       return;
     }
     if (!bookingTime) {
-      Alert.alert('Pick a time', 'Please choose a start time for your experience.');
+      Alert.alert('Pick a start time', 'Please choose a start time for your experience.');
+      return;
+    }
+    if (!bookingEndTime) {
+      Alert.alert('Pick an end time', 'Please choose an end time for your experience.');
+      return;
+    }
+    if (bookingEndTime <= bookingTime) {
+      Alert.alert('Invalid time', 'End time must be after the start time.');
       return;
     }
     // Free listings skip the payment step entirely.
@@ -350,8 +390,10 @@ export default function ListingDetailScreen() {
     try {
       await createBooking({
         listing_id: listing.id,
-        booking_date: bookingDate,
+        booking_date: bookingDates[0],
+        booking_dates: bookingDates,
         booking_time: bookingTime,
+        booking_end_time: bookingEndTime,
         guests,
         payment_method: method,
         payment_reference: reference,
@@ -361,9 +403,15 @@ export default function ListingDetailScreen() {
       setVoucherCode('');
       setVoucherDraft('');
       setModalOpen(false);
+      const datesSummary = bookingDates.length === 1
+        ? bookingDates[0]
+        : `${bookingDates.length} days (${bookingDates.join(', ')})`;
+      const timeSummary = bookingTime
+        ? ` from ${formatTimeLabel(bookingTime)}${bookingEndTime ? ` to ${formatTimeLabel(bookingEndTime)}` : ''}`
+        : '';
       Alert.alert(
         'Payment received',
-        `Your payment for "${listing.title}" on ${bookingDate}${bookingTime ? ` at ${formatTimeLabel(bookingTime)}` : ''} was received. The partner still needs to confirm this booking. Track it under Trips — it will show as Awaiting confirmation until they accept it.`,
+        `Your payment for "${listing.title}" on ${datesSummary}${timeSummary} was received. The partner still needs to confirm this booking. Track it under Trips — it will show as Awaiting confirmation until they accept it.`,
         [
           { text: 'View Trips', onPress: () => router.replace('/(tabs)/trips') },
           { text: 'OK' },
@@ -708,12 +756,43 @@ export default function ListingDetailScreen() {
               {/* ── STEP 1: Date + Guests ── */}
               {step === 'details' ? (
                 <>
-                  <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select a date</Text>
-                  <CalendarPicker value={bookingDate} onChange={setBookingDate} theme={theme} disabledDates={fullyBookedDates} />
+                  <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select date(s)</Text>
+                  <Text style={[styles.modalSubHint, { color: theme.textSub }]}>
+                    Tap dates to select or unselect. You can book 1 day or multiple dates.
+                  </Text>
+                  <CalendarPicker
+                    values={bookingDates}
+                    onMultiChange={setBookingDates}
+                    multiSelect
+                    theme={theme}
+                    disabledDates={fullyBookedDates}
+                  />
 
-                  <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select a start time</Text>
+                  {bookingDates.length > 0 ? (
+                    <View style={styles.selectedDatesWrap}>
+                      <Text style={[styles.selectedDatesLabel, { color: theme.textSub }]}>
+                        Selected ({bookingDates.length} {bookingDates.length === 1 ? 'date' : 'dates'}):
+                      </Text>
+                      <View style={styles.chipsContainer}>
+                        {bookingDates.map((d) => (
+                          <View key={d} style={[styles.dateChip, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+                            <Text style={[styles.dateChipText, { color: theme.textMain }]}>{d}</Text>
+                            <TouchableOpacity
+                              onPress={() => setBookingDates((cur) => cur.filter((x) => x !== d))}
+                              hitSlop={6}
+                              style={{ marginLeft: 4 }}
+                            >
+                              <Ionicons name="close-circle" size={14} color={theme.textSub} />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select start time</Text>
                   <View style={styles.timeGrid}>
-                    {TIME_SLOTS.map((slot) => {
+                    {START_TIME_SLOTS.map((slot) => {
                       const selected = bookingTime === slot;
                       const booked = isSlotBooked(slot);
                       return (
@@ -721,7 +800,7 @@ export default function ListingDetailScreen() {
                           key={slot}
                           activeOpacity={0.85}
                           disabled={booked}
-                          onPress={() => setBookingTime(slot)}
+                          onPress={() => handleSelectStartTime(slot)}
                           style={[
                             styles.timeChip,
                             { backgroundColor: theme.inputBg, borderColor: theme.border },
@@ -745,9 +824,53 @@ export default function ListingDetailScreen() {
                       );
                     })}
                   </View>
-                  {bookingDate ? (
+
+                  <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select end time</Text>
+                  {!bookingTime ? (
                     <Text style={[styles.slotHint, { color: theme.textSub }]}>
-                      Crossed-out times are already booked for this date.
+                      Pick a start time first to choose an end time.
+                    </Text>
+                  ) : (
+                    <View style={styles.timeGrid}>
+                      {availableEndSlots.map((slot) => {
+                        const selected = bookingEndTime === slot;
+                        const invalid = isEndTimeInvalid(slot);
+                        return (
+                          <TouchableOpacity
+                            key={slot}
+                            activeOpacity={0.85}
+                            disabled={invalid}
+                            onPress={() => setBookingEndTime(slot)}
+                            style={[
+                              styles.timeChip,
+                              { backgroundColor: theme.inputBg, borderColor: theme.border },
+                              selected && { backgroundColor: theme.accent, borderColor: theme.accent },
+                              invalid && { opacity: 0.35, borderColor: theme.border },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.timeChipText,
+                                { color: selected ? '#FFFFFF' : theme.textMain },
+                                invalid && { textDecorationLine: 'line-through', color: theme.textSub },
+                              ]}
+                            >
+                              {formatTimeLabel(slot)}
+                            </Text>
+                            {invalid ? (
+                              <Text style={[styles.bookedTag, { color: theme.textSub }]}>Unavailable</Text>
+                            ) : null}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {bookingDates.length > 0 ? (
+                    <Text style={[styles.slotHint, { color: theme.textSub }]}>
+                      {bookingDates.length > 1
+                        ? 'Times crossed out are booked on at least one of your selected dates.'
+                        : 'Times crossed out are already booked for this date.'}
                     </Text>
                   ) : null}
 
@@ -769,9 +892,16 @@ export default function ListingDetailScreen() {
                   </View>
 
                   {listing.price > 0 ? (
-                    <Text style={[styles.totalLine, { color: theme.textMain }]}>
-                      {`Total: ${formatPrice(totalAmount)}`}
-                    </Text>
+                    <View style={styles.priceSummaryBox}>
+                      <Text style={[styles.totalLine, { color: theme.textMain }]}>
+                        {`Total: ${formatPrice(totalAmount)}`}
+                      </Text>
+                      <Text style={[styles.priceBreakdownText, { color: theme.textSub }]}>
+                        {bookingDates.length > 1
+                          ? `${formatPrice(listing.price)} × ${guests} guest${guests > 1 ? 's' : ''} × ${bookingDates.length} days`
+                          : `${formatPrice(listing.price)} × ${guests} guest${guests > 1 ? 's' : ''} (1 day)`}
+                      </Text>
+                    </View>
                   ) : null}
 
                   <TouchableOpacity
@@ -962,7 +1092,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   hero: { width: '100%', height: 300, resizeMode: 'cover', backgroundColor: '#00000022' },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.28)' },
+  heroOverlay: { ...(StyleSheet.absoluteFill as any), backgroundColor: 'rgba(0,0,0,0.28)' },
   backButton: {
     position: 'absolute',
     top: 44,
@@ -1078,6 +1208,12 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: '800', flex: 1, marginRight: 12 },
   modalLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 12 },
+  modalSubHint: { fontSize: 12, marginBottom: 8, lineHeight: 16 },
+  selectedDatesWrap: { marginTop: 10 },
+  selectedDatesLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  dateChip: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, paddingHorizontal: 9, borderRadius: 8, borderWidth: 1 },
+  dateChipText: { fontSize: 12, fontWeight: '700' },
   input: { borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16, fontSize: 15 },
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
   timeChip: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
@@ -1087,7 +1223,9 @@ const styles = StyleSheet.create({
   guestRow: { flexDirection: 'row', alignItems: 'center' },
   stepBtn: { width: 42, height: 42, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   guestCount: { fontSize: 18, fontWeight: '800', marginHorizontal: 20 },
-  totalLine: { fontSize: 16, fontWeight: '800', marginTop: 18 },
+  priceSummaryBox: { marginTop: 16 },
+  totalLine: { fontSize: 16, fontWeight: '800' },
+  priceBreakdownText: { fontSize: 12, marginTop: 3 },
   confirmBtn: { borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
   confirmBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   payTotal: { fontSize: 16, fontWeight: '700', marginBottom: 16 },

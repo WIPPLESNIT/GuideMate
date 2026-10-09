@@ -62,7 +62,7 @@ export default function TripsScreen() {
     setLoggedIn(true);
     try {
       const data = await getBookings();
-      setBookings(data.bookings);
+      setBookings(Array.isArray(data?.bookings) ? data.bookings : []);
     } catch (e) {
       if (isUnauthorized(e)) {
         // Token expired/invalid — clear it and show the friendly sign-in prompt.
@@ -84,9 +84,8 @@ export default function TripsScreen() {
 
   const renderItem = ({ item }: { item: ApiBooking }) => {
     const statusColor = STATUS_COLOR[item.status] ?? '#9CA3AF';
-    // The trip map only surfaces paid + confirmed/completed bookings server-side,
-    // so only show the navigate action for those statuses.
-    const canNavigate = item.status === 'confirmed' || item.status === 'completed';
+    // Show navigation for bookings regardless of status (pending, confirmed, completed, disputed)
+    const canNavigate = item.status !== 'cancelled' && item.status !== 'refunded';
     return (
       <TouchableOpacity
         style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, shadow.sm]}
@@ -102,13 +101,20 @@ export default function TripsScreen() {
               <Text style={[styles.statusText, { color: statusColor }]}>{item.status_label ?? STATUS_LABEL[item.status] ?? item.status}</Text>
             </View>
           </View>
-          <View style={styles.metaRow}>
+          <View style={[styles.metaRow, { flexWrap: 'wrap' }]}>
             <Ionicons name="calendar-outline" size={13} color={colors.textSub} />
-            <Text style={[styles.metaText, { color: colors.textSub }]}>{item.booking_date}</Text>
+            <Text style={[styles.metaText, { color: colors.textSub }]}>
+              {item.booking_dates && item.booking_dates.length > 1
+                ? `${item.booking_dates.length} days: ${item.booking_dates.join(', ')}`
+                : item.booking_date}
+            </Text>
             {item.booking_time ? (
               <>
                 <Ionicons name="time-outline" size={13} color={colors.textSub} style={{ marginLeft: 12 }} />
-                <Text style={[styles.metaText, { color: colors.textSub }]}>{formatTime(item.booking_time)}</Text>
+                <Text style={[styles.metaText, { color: colors.textSub }]}>
+                  {formatTime(item.booking_time)}
+                  {item.booking_end_time ? ` – ${formatTime(item.booking_end_time)}` : ''}
+                </Text>
               </>
             ) : null}
           </View>

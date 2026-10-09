@@ -111,7 +111,10 @@ export type ApiBooking = {
   listing_slug: string;
   image: string;
   booking_date: string;
+  booking_dates?: string[];
+  days_count?: number;
   booking_time: string;
+  booking_end_time?: string;
   guests: number;
   total_amount: number;
   status: string;
@@ -306,6 +309,7 @@ export type TripPin = {
   lng: number;
   upcoming: boolean;
   approximate: boolean;
+  status?: string;
 };
 
 export const getTripMap = () =>
@@ -424,8 +428,10 @@ export const reportRental = (payload: {
 
 export const createBooking = (payload: {
   listing_id: number;
-  booking_date: string;
+  booking_date?: string;
+  booking_dates?: string[];
   booking_time?: string;
+  booking_end_time?: string;
   guests: number;
   notes?: string;
   promo_code?: string;

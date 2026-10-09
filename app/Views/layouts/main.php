@@ -145,7 +145,7 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
             <h4>Account</h4>
             <a href="<?= e(url('/login')) ?>">Log in</a>
             <a href="<?= e(url('/register')) ?>">Sign up</a>
-            <a href="<?= e(url('/register?role=guide')) ?>">Become a guide</a>
+            <a href="<?= e(url('/register?role=guide')) ?>">Sign up here</a>
             <a href="<?= e(url('/policy')) ?>">Platform policy</a>
         </div>
         <div>
@@ -159,6 +159,11 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
 </footer>
 <?php endif; ?>
 
+<?php
+$suspendedUser = $suspendedUser ?? $_SESSION['suspended_user'] ?? null;
+unset($_SESSION['suspended_user']);
+require BASE_DIR . '/app/Views/partials/suspension_modal.php';
+?>
 <script src="<?= e(asset('js/main.js')) ?>"></script>
 </body>
 </html>

@@ -79,7 +79,18 @@ final class Auth
         }
         self::$cachedUser = User::find((int) $_SESSION[self::SESSION_KEY]);
         if (self::$cachedUser !== null && (int) (self::$cachedUser['is_active'] ?? 1) === 0) {
+            $user = self::$cachedUser;
             self::logout();
+            $_SESSION['suspended_user'] = [
+                'id' => (int) $user['id'],
+                'name' => (string) ($user['name'] ?? ''),
+                'email' => (string) ($user['email'] ?? ''),
+                'reason' => !empty($user['suspension_reason'])
+                    ? (string) $user['suspension_reason']
+                    : 'Violation of Community Guidelines',
+                'suspended_at' => $user['suspended_at'] ?? null,
+                'has_pending_appeal' => false,
+            ];
             return null;
         }
         return self::$cachedUser;

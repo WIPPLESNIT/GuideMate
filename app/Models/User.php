@@ -61,7 +61,7 @@ final class User
     {
         $guideStatus = self::isProviderRole($role) ? 'pending' : 'none';
         return Database::insert(
-            'INSERT INTO users (name, email, password, role, guide_status, login_count) VALUES (?, ?, ?, ?, ?, 0)',
+            'INSERT INTO users (name, email, password, role, guide_status) VALUES (?, ?, ?, ?, ?)',
             [$name, $email, password_hash($password, PASSWORD_BCRYPT), $role, $guideStatus]
         );
     }
@@ -144,8 +144,8 @@ final class User
         $role = (string) ($data['role'] ?? 'tourist');
         $guideStatus = self::isProviderRole($role) ? (string) ($data['guide_status'] ?? 'approved') : 'none';
         return Database::insert(
-            'INSERT INTO users (name, email, password, role, is_active, phone, location, bio, guide_status, login_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+            'INSERT INTO users (name, email, password, role, is_active, phone, location, bio, guide_status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 (string) $data['name'],
                 (string) $data['email'],

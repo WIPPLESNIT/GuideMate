@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Controllers\Concerns\HandlesGuideDocuments;
 use App\Core\Auth;
 use App\Core\Controller;
+use App\Models\AccountAppeal;
 use App\Models\GuideDocument;
 use App\Models\PasswordReset;
 use App\Models\User;
@@ -19,12 +20,16 @@ final class AuthController extends Controller
 
     public function showLogin(): void
     {
+        $suspendedUser = $_SESSION['suspended_user'] ?? null;
+        unset($_SESSION['suspended_user']);
+
         $this->view('auth/login', [
             'title' => 'Log in',
             'errors' => errors(),
             // Carry a safe "return to" path so users land back where they were
             // (e.g. a listing page) after signing in.
             'redirect' => self::safeRedirect((string) $this->input('redirect', '')),
+            'suspendedUser' => $suspendedUser,
         ], 'auth');
     }
 
@@ -60,6 +65,24 @@ final class AuthController extends Controller
             flash('info', 'Administrators sign in through the admin portal.');
             redirect('/admin/login');
         }
+
+        // Suspended / inactive account check: show violation popup & appeal option
+        if ($existing !== null && (int) $existing['is_active'] === 0) {
+            $reason = !empty($existing['suspension_reason'])
+                ? (string) $existing['suspension_reason']
+                : 'Violation of Community Guidelines';
+
+            $_SESSION['suspended_user'] = [
+                'id' => (int) $existing['id'],
+                'name' => (string) ($existing['name'] ?? ''),
+                'email' => (string) ($existing['email'] ?? $email),
+                'reason' => $reason,
+                'suspended_at' => $existing['suspended_at'] ?? null,
+                'has_pending_appeal' => AccountAppeal::pendingForUser((int) $existing['id']) !== null,
+            ];
+            flash_keep_old([], ['email' => $email], '/login');
+        }
+
         // The web portal is for tour guides. Tourists use the mobile app.
         if ($existing !== null && $existing['role'] === 'tourist') {
             flash_keep_old(
@@ -67,12 +90,6 @@ final class AuthController extends Controller
                 ['email' => $email],
                 '/login'
             );
-        }
-        if ($existing !== null && (int) $existing['is_active'] === 0) {
-            $msg = !empty($existing['suspension_reason'])
-                ? 'This account has been suspended (' . $existing['suspension_reason'] . '). Please contact admin to activate it.'
-                : 'This account is inactive. Please contact admin to activate it.';
-            flash_keep_old(['email' => $msg], ['email' => $email], '/login');
         }
 
         if (!Auth::attempt($email, $password)) {
@@ -283,5 +300,78 @@ final class AuthController extends Controller
             return 'Password must include at least one special character.';
         }
         return null;
+    }
+
+    /**
+     * Handle an account suspension appeal submission.
+     */
+    public function submitAppeal(): void
+    {
+        $this->verifyCsrf();
+
+        $email = trim((string) $this->input('email', ''));
+        $message = trim((string) $this->input('appeal_message', ''));
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+            || str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json');
+
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                http_response_code(422);
+                echo json_encode(['error' => 'A valid email address is required.']);
+                exit;
+            }
+            flash_keep_old(['email' => 'A valid email address is required.'], ['email' => $email], '/login');
+        }
+
+        if (mb_strlen($message) < 5) {
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                http_response_code(422);
+                echo json_encode(['error' => 'Please provide at least 5 characters explaining your appeal.']);
+                exit;
+            }
+            flash_keep_old(['appeal' => 'Please provide at least 5 characters explaining your appeal.'], ['email' => $email], '/login');
+        }
+
+        $user = User::findByEmail($email);
+        $userId = $user !== null ? (int) $user['id'] : null;
+        $name = $user !== null ? (string) ($user['name'] ?? '') : '';
+        $suspensionReason = $user !== null ? (string) ($user['suspension_reason'] ?? 'Violation of Community Guidelines') : '';
+
+        // Prevent repeated appeals if one is already pending
+        if ($userId !== null && AccountAppeal::pendingForUser($userId) !== null) {
+            $msg = 'You already have an appeal under review by our administration team.';
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                http_response_code(429);
+                echo json_encode(['error' => $msg]);
+                exit;
+            }
+            flash('info', $msg);
+            redirect('/login');
+        }
+
+        AccountAppeal::create([
+            'user_id' => $userId,
+            'name' => $name,
+            'email' => $email,
+            'suspension_reason' => $suspensionReason,
+            'appeal_message' => $message,
+            'status' => AccountAppeal::STATUS_PENDING,
+        ]);
+
+        // Clear the suspended user session prompt
+        unset($_SESSION['suspended_user']);
+
+        $successMsg = 'Your appeal has been submitted successfully. Our administration team will review your account.';
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => true, 'message' => $successMsg]);
+            exit;
+        }
+
+        flash('success', $successMsg);
+        redirect('/login');
     }
 }

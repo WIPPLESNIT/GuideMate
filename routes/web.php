@@ -48,6 +48,7 @@ $router->get('/reset-password/{token}', [AuthController::class, 'showResetPasswo
 $router->post('/reset-password/{token}', [AuthController::class, 'resetPassword'], ['guest']);
 $router->get('/register', [AuthController::class, 'showRegister'], ['guest']);
 $router->post('/register', [AuthController::class, 'register'], ['guest']);
+$router->post('/appeal', [AuthController::class, 'submitAppeal']);
 $router->post('/logout', [AuthController::class, 'logout']);
 
 // ---- Profile & favorites --------------------------------------------------

@@ -39,7 +39,7 @@ $redirect = $redirect ?? '';
 </form>
 
 <p class="hint a-rise" style="text-align:center;margin-top:1.5rem;animation-delay:.5s;">
-    Want to host tours? <a href="<?= e(url('/register?role=guide')) ?>">Become a guide</a>
+    Want to host tours? <a href="<?= e(url('/register?role=guide')) ?>">Sign up here</a>
 </p>
 
 <script>

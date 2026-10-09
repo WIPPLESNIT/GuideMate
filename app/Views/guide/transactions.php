@@ -64,7 +64,7 @@ $payBadge = static function (string $status): array {
                                             <td>
                                                 <?= e($t['booking_date'] ? date('M j, Y', strtotime((string) $t['booking_date'])) : '—') ?>
                                                 <?php if (!empty($t['booking_time'])): ?>
-                                                    · <?= e(date('g:i a', strtotime((string) $t['booking_time']))) ?>
+                                                    · <?= e(date('g:i a', strtotime((string) $t['booking_time']))) ?><?= !empty($t['booking_end_time']) ? ' – ' . e(date('g:i a', strtotime((string) $t['booking_end_time']))) : '' ?>
                                                 <?php endif; ?>
                                                 <div class="hint" style="margin:0;"><?= (int) ($t['guests'] ?? 0) ?> guest(s)</div>
                                             </td>

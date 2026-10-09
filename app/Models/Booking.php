@@ -20,13 +20,34 @@ final class Booking
         '18:00', '19:00', '20:00',
     ];
 
-    public static function create(int $listingId, int $userId, string $date, int $guests, float $total, string $notes, ?string $time = null): int
-    {
+    public static function create(
+        int $listingId,
+        int $userId,
+        string $date,
+        int $guests,
+        float $total,
+        string $notes,
+        ?string $time = null,
+        ?array $dates = null,
+        ?string $endTime = null
+    ): int {
         $token = bin2hex(random_bytes(16));
+        $datesJson = ($dates !== null && $dates !== []) ? json_encode(array_values($dates)) : null;
         $id = Database::insert(
-            'INSERT INTO bookings (listing_id, user_id, booking_date, booking_time, guests, total_amount, notes, verify_token)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [$listingId, $userId, $date, ($time !== null && $time !== '' ? $time : null), $guests, $total, $notes, $token]
+            'INSERT INTO bookings (listing_id, user_id, booking_date, booking_time, booking_end_time, booking_dates, guests, total_amount, notes, verify_token)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                $listingId,
+                $userId,
+                $date,
+                ($time !== null && $time !== '' ? $time : null),
+                ($endTime !== null && $endTime !== '' ? $endTime : null),
+                $datesJson,
+                $guests,
+                $total,
+                $notes,
+                $token,
+            ]
         );
         return $id;
     }
@@ -103,33 +124,30 @@ final class Booking
     {
         return Database::all(
             'SELECT b.*, l.title AS listing_title, l.slug AS listing_slug, l.cover_image, l.area,
-                    p.status AS payment_status,
-                    d.id AS dispute_id, d.status AS dispute_status
+                    (SELECT status FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_status,
+                    (SELECT id FROM disputes WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS dispute_id,
+                    (SELECT status FROM disputes WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS dispute_status
              FROM bookings b
-             JOIN listings l ON l.id = b.listing_id
-             LEFT JOIN payments p ON p.booking_id = b.id
-             LEFT JOIN disputes d ON d.booking_id = b.id
+             LEFT JOIN listings l ON l.id = b.listing_id
              WHERE b.user_id = ? ORDER BY b.created_at DESC',
             [$userId]
         );
     }
 
     /**
-     * Paid bookings with map coordinates for tourist navigation.
+     * Bookings with map coordinates for tourist navigation (regardless of status).
      *
      * @return array<int, array<string, mixed>>
      */
     public static function navigableForCustomer(int $userId): array
     {
         $rows = Database::all(
-            'SELECT b.id, b.booking_date, b.status, b.guests, b.listing_id,
+            'SELECT b.id, b.booking_date, b.booking_time, b.booking_end_time, b.status, b.guests, b.listing_id,
                     l.title AS listing_title, l.slug AS listing_slug, l.area, l.address,
                     l.latitude, l.longitude
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
-             JOIN payments p ON p.booking_id = b.id AND p.status = "paid"
              WHERE b.user_id = ?
-               AND b.status IN ("confirmed", "completed")
              ORDER BY b.booking_date ASC, b.id ASC',
             [$userId]
         );
@@ -154,14 +172,12 @@ final class Booking
     public static function navigableForCustomerById(int $userId, int $bookingId): ?array
     {
         $row = Database::first(
-            'SELECT b.id, b.booking_date, b.status, b.guests, b.listing_id,
+            'SELECT b.id, b.booking_date, b.booking_time, b.booking_end_time, b.status, b.guests, b.listing_id,
                     l.title AS listing_title, l.slug AS listing_slug, l.area, l.address,
                     l.latitude, l.longitude
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
-             JOIN payments p ON p.booking_id = b.id AND p.status = "paid"
-             WHERE b.user_id = ? AND b.id = ?
-               AND b.status IN ("confirmed", "completed")',
+             WHERE b.user_id = ? AND b.id = ?',
             [$userId, $bookingId]
         );
         if ($row === null) {
@@ -209,15 +225,21 @@ final class Booking
         return $out;
     }
 
-    public static function hasActivePaidBooking(int $listingId, int $userId): bool
+    public static function hasActivePaidBooking(int $listingId, int $userId, ?string $date = null): bool
     {
-        return Database::first(
-            'SELECT b.id FROM bookings b
+        $sql = 'SELECT b.id FROM bookings b
              JOIN payments p ON p.booking_id = b.id AND p.status = "paid"
              WHERE b.listing_id = ? AND b.user_id = ?
-               AND b.status IN ("pending", "confirmed", "completed")',
-            [$listingId, $userId]
-        ) !== null;
+               AND b.status IN ("pending", "confirmed")';
+        $params = [$listingId, $userId];
+        if ($date !== null) {
+            $sql .= ' AND (b.booking_date = ? OR b.booking_dates LIKE ?)';
+            $params[] = $date;
+            $params[] = '%"' . $date . '"%';
+        } else {
+            $sql .= ' AND b.booking_date >= CURDATE()';
+        }
+        return Database::first($sql, $params) !== null;
     }
 
     /**
@@ -333,8 +355,8 @@ final class Booking
             return true;
         }
         $sql = 'SELECT id FROM bookings
-                WHERE listing_id = ? AND booking_date = ? AND status IN ("pending","confirmed","completed")';
-        $params = [$listingId, $date];
+                WHERE listing_id = ? AND (booking_date = ? OR booking_dates LIKE ?) AND status IN ("pending","confirmed","completed")';
+        $params = [$listingId, $date, '%"' . $date . '"%'];
         if ($excludeBookingId !== null) {
             $sql .= ' AND id <> ?';
             $params[] = $excludeBookingId;
@@ -350,12 +372,24 @@ final class Booking
      */
     public static function bookedDates(int $listingId): array
     {
-        $booked = array_map(static fn($r) => (string) $r['booking_date'], Database::all(
-            'SELECT booking_date FROM bookings
+        $rows = Database::all(
+            'SELECT booking_date, booking_dates FROM bookings
              WHERE listing_id = ? AND status IN ("pending","confirmed","completed") AND booking_date >= CURDATE()
              ORDER BY booking_date',
             [$listingId]
-        ));
+        );
+        $booked = [];
+        foreach ($rows as $r) {
+            $booked[] = (string) $r['booking_date'];
+            if (!empty($r['booking_dates'])) {
+                $extra = json_decode((string) $r['booking_dates'], true);
+                if (is_array($extra)) {
+                    foreach ($extra as $d) {
+                        $booked[] = (string) $d;
+                    }
+                }
+            }
+        }
         return array_values(array_unique(array_merge($booked, GuideAvailability::blockedDates($listingId))));
     }
 
@@ -370,7 +404,7 @@ final class Booking
     public static function bookedSlots(int $listingId): array
     {
         $rows = Database::all(
-            'SELECT booking_date, booking_time FROM bookings
+            'SELECT booking_date, booking_time, booking_end_time, booking_dates FROM bookings
              WHERE listing_id = ? AND status IN ("pending","confirmed","completed") AND booking_date >= CURDATE()',
             [$listingId]
         );
@@ -386,14 +420,33 @@ final class Booking
         };
 
         foreach ($rows as $row) {
-            $date = (string) $row['booking_date'];
-            $time = trim((string) ($row['booking_time'] ?? ''));
-            if ($time === '') {
-                foreach (self::TIME_SLOTS as $slot) {
-                    $add($date, $slot);
+            $dates = [(string) $row['booking_date']];
+            if (!empty($row['booking_dates'])) {
+                $extra = json_decode((string) $row['booking_dates'], true);
+                if (is_array($extra)) {
+                    $dates = array_unique(array_merge($dates, $extra));
                 }
-            } else {
-                $add($date, substr($time, 0, 5));
+            }
+            $time = trim((string) ($row['booking_time'] ?? ''));
+            $endTime = trim((string) ($row['booking_end_time'] ?? ''));
+            foreach ($dates as $date) {
+                if ($time === '') {
+                    foreach (self::TIME_SLOTS as $slot) {
+                        $add($date, $slot);
+                    }
+                } else {
+                    $startSlot = substr($time, 0, 5);
+                    $endSlot = $endTime !== '' ? substr($endTime, 0, 5) : '';
+                    if ($endSlot !== '' && $endSlot > $startSlot) {
+                        foreach (self::TIME_SLOTS as $slot) {
+                            if ($slot >= $startSlot && $slot < $endSlot) {
+                                $add($date, $slot);
+                            }
+                        }
+                    } else {
+                        $add($date, $startSlot);
+                    }
+                }
             }
         }
 
@@ -408,7 +461,7 @@ final class Booking
     }
 
     /**
-     * Is this exact date + start-time slot already taken by a paid booking? A
+     * Is this exact date + start-time slot already taken by a booking? A
      * guide-blocked date counts as fully booked.
      */
     public static function isSlotBooked(int $listingId, string $date, string $time, ?int $excludeBookingId = null): bool
@@ -417,29 +470,43 @@ final class Booking
             return true;
         }
         $time = substr(trim($time), 0, 5);
-        $sql = 'SELECT id FROM bookings
-                WHERE listing_id = ? AND booking_date = ? AND status IN ("pending","confirmed","completed")
-                  AND (booking_time = ? OR booking_time IS NULL OR booking_time = "")';
-        $params = [$listingId, $date, $time];
+        $sql = 'SELECT id, booking_time, booking_end_time FROM bookings
+                WHERE listing_id = ? AND (booking_date = ? OR booking_dates LIKE ?) AND status IN ("pending","confirmed","completed")';
+        $params = [$listingId, $date, '%"' . $date . '"%'];
         if ($excludeBookingId !== null) {
             $sql .= ' AND id <> ?';
             $params[] = $excludeBookingId;
         }
-        return Database::first($sql, $params) !== null;
+        $rows = Database::all($sql, $params);
+        foreach ($rows as $row) {
+            $bStart = trim((string) ($row['booking_time'] ?? ''));
+            $bEnd = trim((string) ($row['booking_end_time'] ?? ''));
+            if ($bStart === '') {
+                return true;
+            }
+            $bStart = substr($bStart, 0, 5);
+            $bEnd = $bEnd !== '' ? substr($bEnd, 0, 5) : '';
+            if ($bEnd !== '' && $bEnd > $bStart) {
+                if ($time >= $bStart && $time < $bEnd) {
+                    return true;
+                }
+            } elseif ($time === $bStart) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
      * Upcoming date + start-time slots where the GUIDE is unavailable — across
-     * every listing they own, plus any dates they manually blocked. A guide can
-     * only run one tour at a time, so a slot booked on one of their listings
-     * makes them unavailable on all the others (prevents double-booking).
+     * every listing they own, plus any dates they manually blocked.
      *
      * @return array<int, array{date: string, time: string}>
      */
     public static function guideBookedSlots(int $guideId): array
     {
         $rows = Database::all(
-            'SELECT b.booking_date, b.booking_time
+            'SELECT b.booking_date, b.booking_time, b.booking_end_time, b.booking_dates
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
              WHERE l.user_id = ? AND b.status IN ("pending","confirmed","completed") AND b.booking_date >= CURDATE()',
@@ -457,14 +524,33 @@ final class Booking
         };
 
         foreach ($rows as $row) {
-            $date = (string) $row['booking_date'];
-            $time = trim((string) ($row['booking_time'] ?? ''));
-            if ($time === '') {
-                foreach (self::TIME_SLOTS as $slot) {
-                    $add($date, $slot);
+            $dates = [(string) $row['booking_date']];
+            if (!empty($row['booking_dates'])) {
+                $extra = json_decode((string) $row['booking_dates'], true);
+                if (is_array($extra)) {
+                    $dates = array_unique(array_merge($dates, $extra));
                 }
-            } else {
-                $add($date, substr($time, 0, 5));
+            }
+            $time = trim((string) ($row['booking_time'] ?? ''));
+            $endTime = trim((string) ($row['booking_end_time'] ?? ''));
+            foreach ($dates as $date) {
+                if ($time === '') {
+                    foreach (self::TIME_SLOTS as $slot) {
+                        $add($date, $slot);
+                    }
+                } else {
+                    $startSlot = substr($time, 0, 5);
+                    $endSlot = $endTime !== '' ? substr($endTime, 0, 5) : '';
+                    if ($endSlot !== '' && $endSlot > $startSlot) {
+                        foreach (self::TIME_SLOTS as $slot) {
+                            if ($slot >= $startSlot && $slot < $endSlot) {
+                                $add($date, $slot);
+                            }
+                        }
+                    } else {
+                        $add($date, $startSlot);
+                    }
+                }
             }
         }
 
@@ -492,18 +578,32 @@ final class Booking
     public static function isGuideSlotBooked(int $guideId, string $date, string $time, ?int $excludeBookingId = null): bool
     {
         $time = substr(trim($time), 0, 5);
-        $sql = 'SELECT b.id FROM bookings b
+        $sql = 'SELECT b.id, b.booking_time, b.booking_end_time FROM bookings b
                 JOIN listings l ON l.id = b.listing_id
-                WHERE l.user_id = ? AND b.booking_date = ? AND b.status IN ("pending","confirmed","completed")
-                  AND (b.booking_time = ? OR b.booking_time IS NULL OR b.booking_time = "")';
-        $params = [$guideId, $date, $time];
+                WHERE l.user_id = ? AND (b.booking_date = ? OR b.booking_dates LIKE ?) AND b.status IN ("pending","confirmed","completed")';
+        $params = [$guideId, $date, '%"' . $date . '"%'];
         if ($excludeBookingId !== null) {
             $sql .= ' AND b.id <> ?';
             $params[] = $excludeBookingId;
         }
-        if (Database::first($sql, $params) !== null) {
-            return true;
+        $rows = Database::all($sql, $params);
+        foreach ($rows as $row) {
+            $bStart = trim((string) ($row['booking_time'] ?? ''));
+            $bEnd = trim((string) ($row['booking_end_time'] ?? ''));
+            if ($bStart === '') {
+                return true;
+            }
+            $bStart = substr($bStart, 0, 5);
+            $bEnd = $bEnd !== '' ? substr($bEnd, 0, 5) : '';
+            if ($bEnd !== '' && $bEnd > $bStart) {
+                if ($time >= $bStart && $time < $bEnd) {
+                    return true;
+                }
+            } elseif ($time === $bStart) {
+                return true;
+            }
         }
+
         // A manual block on any of the guide's listings locks the whole day.
         return Database::first(
             'SELECT ga.id FROM guide_availability ga
@@ -521,8 +621,8 @@ final class Booking
         if (Database::first(
             'SELECT b.id FROM bookings b
              JOIN listings l ON l.id = b.listing_id
-             WHERE l.user_id = ? AND b.booking_date = ? AND b.status IN ("pending","confirmed","completed")',
-            [$guideId, $date]
+             WHERE l.user_id = ? AND (b.booking_date = ? OR b.booking_dates LIKE ?) AND b.status IN ("pending","confirmed","completed")',
+            [$guideId, $date, '%"' . $date . '"%']
         ) !== null) {
             return true;
         }

@@ -449,8 +449,8 @@ export default function TripMapScreen() {
       ) : !hasPins ? (
         <EmptyState
           icon="map-outline"
-          title="No locations to show yet"
-          subtitle="Once you have a confirmed, paid booking, its map location and navigation will appear here."
+          title="No destinations to show yet"
+          subtitle="Book an experience to see its destination and turn-by-turn navigation here."
           actionLabel="Explore Cebu"
           onAction={() => router.replace('/things-to-do')}
         />

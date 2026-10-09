@@ -11,6 +11,7 @@ $isActive = (int) old('is_active', (string) ($user['is_active'] ?? 1));
 $guideStatus = (string) old('guide_status', $user['guide_status'] ?? 'none');
 $isProvider = \App\Models\User::isProviderRole($role);
 $documents = $documents ?? [];
+$latestAppeal = $latestAppeal ?? null;
 
 $roleOptions = [
     'tourist' => 'Tourist',
@@ -106,6 +107,20 @@ $verifyBadge = [
                         <?php if (!empty($user['suspended_at'])): ?>
                             <span style="opacity:.7;font-size:.8rem;margin-left:.5rem;">(<?= e(date('M j, Y g:i A', strtotime($user['suspended_at']))) ?>)</span>
                         <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+                <?php if ($editing && !empty($latestAppeal)): ?>
+                    <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:.75rem .9rem;margin-top:.75rem;font-size:.88rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem;">
+                            <strong style="color:#fbbf24;">User Appeal:</strong>
+                            <span class="pill <?= $latestAppeal['status'] === 'approved' ? 'pill-approved' : ($latestAppeal['status'] === 'rejected' ? 'pill-cancelled' : 'pill-pending') ?>">
+                                <?= e(ucfirst($latestAppeal['status'])) ?>
+                            </span>
+                        </div>
+                        <p style="margin:0;color:#fef3c7;white-space:pre-wrap;font-size:.86rem;line-height:1.45;"><?= e($latestAppeal['appeal_message']) ?></p>
+                        <div style="margin-top:.35rem;font-size:.78rem;color:rgba(255,255,255,.5);">
+                            Submitted: <?= e(date('M j, Y g:i A', strtotime($latestAppeal['created_at']))) ?>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
