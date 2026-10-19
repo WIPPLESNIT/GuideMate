@@ -20,6 +20,9 @@ final class ListingController extends Controller
 {
     public function index(): void
     {
+        if ($this->input('category') === 'tour-guides') {
+            redirect('/tour-guides');
+        }
         $this->renderBrowse(null, 'Explore Cebu', 'All tours, guides and stays across Cebu.');
     }
 
@@ -30,12 +33,8 @@ final class ListingController extends Controller
 
     public function tourGuides(): void
     {
-        $userId = Auth::id();
         $guides = [];
         foreach (User::guides('approved') as $u) {
-            if ($userId !== null && (int) $u['id'] === $userId) {
-                continue;
-            }
             $stats = Booking::guideRatingStats((int) $u['id']);
             $u['rating'] = (float) ($stats['avg_rating'] ?? 0);
             $u['review_count'] = (int) ($stats['review_count'] ?? 0);

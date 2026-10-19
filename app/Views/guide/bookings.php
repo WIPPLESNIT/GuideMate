@@ -1,13 +1,16 @@
 <?php
-/** @var array<int,array<string,mixed>> $bookings @var bool $isWarned @var string $warningNote */
+/** @var array<int,array<string,mixed>> $bookings @var bool $isWarned @var string $warningNote @var bool $isHotel */
 $isWarned = $isWarned ?? false;
 $warningNote = $warningNote ?? '';
+$currentUser = auth_user();
+$isHotel = $isHotel ?? (($currentUser['role'] ?? '') === 'hotel_admin');
+$heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookings received'));
 ?>
 <div class="container">
     <div class="dash-layout">
         <?= \App\Core\View::partial('partials/dash-nav') ?>
         <div>
-            <h1><?= e(__('g_bookings_received', 'Bookings received')) ?></h1>
+            <h1><?= $heading ?></h1>
 
             <?php if ($isWarned): ?>
                 <div class="status-banner banner-red" style="margin-bottom:1.2rem;">
@@ -26,10 +29,10 @@ $warningNote = $warningNote ?? '';
             <div class="panel">
                 <div class="panel-body" style="padding:0;overflow-x:auto;">
                     <?php if ($bookings === []): ?>
-                        <div class="empty-state" style="padding:3rem 1rem;"><div class="big">📅</div><p><?= e(__('d_no_bookings', 'No bookings yet.')) ?></p></div>
+                        <div class="empty-state" style="padding:3rem 1rem;"><div class="big"><?= $isHotel ? '🏨' : '📅' ?></div><p><?= $isHotel ? 'No hotel reservations yet.' : e(__('d_no_bookings', 'No bookings yet.')) ?></p></div>
                     <?php else: ?>
                         <table class="table">
-                            <thead><tr><th><?= e(__('th_customer', 'Customer')) ?></th><th><?= e(__('th_listing', 'Listing')) ?></th><th><?= e(__('th_date', 'Date')) ?></th><th><?= e(__('g_guests', 'Guests')) ?></th><th><?= e(__('th_total', 'Total')) ?></th><th><?= e(__('g_payment', 'Payment')) ?></th><th><?= e(__('th_status', 'Status')) ?></th><th><?= e(__('d_action', 'Action')) ?></th></tr></thead>
+                            <thead><tr><th><?= e(__('th_customer', 'Customer')) ?></th><th><?= $isHotel ? 'Hotel' : e(__('th_listing', 'Listing')) ?></th><th><?= $isHotel ? 'Check-in Date' : e(__('th_date', 'Date')) ?></th><th><?= e(__('g_guests', 'Guests')) ?></th><th><?= e(__('th_total', 'Total')) ?></th><th><?= e(__('g_payment', 'Payment')) ?></th><th><?= e(__('th_status', 'Status')) ?></th><th><?= e(__('d_action', 'Action')) ?></th></tr></thead>
                             <tbody>
                             <?php foreach ($bookings as $b): ?>
                                 <tr<?= $b['status'] === 'pending' ? ' style="background:#FEF3C7;"' : '' ?>>

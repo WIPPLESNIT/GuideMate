@@ -145,6 +145,7 @@ final class GuideController extends Controller
         $headings = [
             'guide' => 'Guide Verification',
             'hotel_admin' => 'Hotel Partner Verification',
+            'rental_provider' => 'Rental Partner Verification',
             'rental_admin' => 'Rental Partner Verification',
         ];
         $heading = $headings[(string) ($user['role'] ?? '')] ?? 'Account Verification';
@@ -216,21 +217,21 @@ final class GuideController extends Controller
 
     public function bookings(): void
     {
-        $this->rejectHotelPaidTools();
         Booking::reconcileOrphanRefunds();
         Auth::refreshUser();
         $user = Auth::user();
+        $isHotel = ($user['role'] ?? '') === 'hotel_admin';
         $this->view('guide/bookings', [
-            'title' => 'Bookings Received',
+            'title' => $isHotel ? 'Hotel Reservations' : 'Bookings Received',
             'bookings' => Booking::forGuide((int) Auth::id()),
             'isWarned' => User::isGuideWarned((int) Auth::id()),
             'warningNote' => (string) ($user['guide_warning_note'] ?? ''),
+            'isHotel' => $isHotel,
         ]);
     }
 
     public function updateBookingStatus(string $id): void
     {
-        $this->rejectHotelPaidTools();
         $this->verifyCsrf();
         Auth::refreshUser();
         if (User::isGuideWarned((int) Auth::id())) {

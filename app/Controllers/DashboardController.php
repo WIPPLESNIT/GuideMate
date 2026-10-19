@@ -14,6 +14,7 @@ use App\Models\RentalRequest;
 use App\Models\Review;
 use App\Models\ReviewImage;
 use App\Models\User;
+use App\Models\Vehicle;
 
 final class DashboardController extends Controller
 {
@@ -27,7 +28,7 @@ final class DashboardController extends Controller
         match ($role) {
             'guide' => $this->guide($user),
             'hotel_admin' => $this->hotelAdmin($user),
-            'rental_admin' => $this->rentalAdmin($user),
+            'rental_provider', 'rental_admin' => $this->rentalProvider($user),
             default => $this->tourist($user),
         };
     }
@@ -89,37 +90,59 @@ final class DashboardController extends Controller
 
     /**
      * Rental Partner dashboard — manages incoming vehicle rental requests
-     * (relocated here from the admin portal).
+     * and provider listings.
      *
      * @param array<string, mixed> $user
      */
-    private function rentalAdmin(array $user): void
+    private function rentalProvider(array $user): void
     {
-        $requests = RentalRequest::all();
+        $providerId = (int) $user['id'];
+        $requests = RentalRequest::forProvider($providerId);
         $countBy = static function (array $rows, string $status): int {
             return count(array_filter($rows, static fn ($r) => ($r['status'] ?? '') === $status));
         };
-        $revenue = 0.0;
-        foreach ($requests as $r) {
-            if (in_array($r['status'] ?? '', ['approved', 'contacted', 'completed'], true)) {
-                $revenue += (float) ($r['total_amount'] ?? 0);
+
+        // Account metrics: directly assigned on creation, isolated per account
+        $totalRequests = isset($user['total_requests']) ? (int) $user['total_requests'] : count($requests);
+        $revenue = isset($user['revenue']) ? (float) $user['revenue'] : 0.0;
+
+        // If revenue column was not set or fallback needed:
+        if ($revenue === 0.0 && $totalRequests === 0 && $requests !== []) {
+            $totalRequests = count($requests);
+            foreach ($requests as $r) {
+                if (in_array($r['status'] ?? '', ['approved', 'contacted', 'completed'], true)) {
+                    $revenue += (float) ($r['total_amount'] ?? 0);
+                }
             }
         }
+
         $this->view('dashboard/rental', [
             'title' => 'Rental Dashboard',
             'user' => $user,
             'isFirstLogin' => User::isFirstLogin($user),
             'requests' => array_slice($requests, 0, 6),
+            'vehicles' => array_slice(Vehicle::forOwner($providerId), 0, 5),
+            'vehicleStats' => Vehicle::countForOwner($providerId),
             'stats' => [
-                'total' => count($requests),
+                'total' => $totalRequests,
                 'pending' => $countBy($requests, 'pending'),
                 'approved' => $countBy($requests, 'approved') + $countBy($requests, 'contacted'),
                 'completed' => $countBy($requests, 'completed'),
                 'revenue' => $revenue,
             ],
-            'guideStats' => Booking::guideRatingStats((int) $user['id']),
-            'unread' => Message::unreadCount((int) $user['id']),
+            'guideStats' => Booking::guideRatingStats($providerId),
+            'unread' => Message::unreadCount($providerId),
         ]);
+    }
+
+    /**
+     * Backward-compatibility alias for legacy callers.
+     *
+     * @param array<string, mixed> $user
+     */
+    public function rentalAdmin(array $user): void
+    {
+        $this->rentalProvider($user);
     }
 
     /**

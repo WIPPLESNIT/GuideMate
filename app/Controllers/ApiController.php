@@ -974,29 +974,35 @@ final class ApiController extends Controller
             return;
         }
 
-        // Build the response the same way whether or not the email exists, so we
-        // never reveal which addresses are registered.
+        $user = User::findByEmail($email);
+        if ($user === null) {
+            $this->json(['error' => 'We could not find an account with that email address.'], 404);
+            return;
+        }
+
         $response = [
-            'message' => 'If that email is registered, we sent a password reset link. '
-                . 'Please check your inbox (and your spam folder).',
+            'message' => 'A password reset link has been sent to your email address. Please check your inbox.',
         ];
 
-        $user = User::findByEmail($email);
-        if ($user !== null && ($user['role'] ?? '') !== 'admin') {
-            $token = PasswordReset::create($email);
-            // Build the link from the host the phone actually connected to (e.g. the
-            // LAN IP), so the link is reachable from the device rather than localhost.
-            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
-            $link = rtrim($scheme . '://' . $host . App::basePath(), '/') . '/reset-password/' . $token;
-            NotificationService::passwordReset($email, $token, $link);
+        if (($user['role'] ?? '') !== 'admin') {
+            try {
+                $token = PasswordReset::create($email);
+                // Build the link from the host the phone actually connected to (e.g. the
+                // LAN IP), so the link is reachable from the device rather than localhost.
+                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
+                $link = rtrim($scheme . '://' . $host . App::basePath(), '/') . '/reset-password/' . $token;
+                NotificationService::passwordReset($email, $token, $link);
 
-            $mailConfigured = trim((string) (App::config('mail')['from'] ?? '')) !== '';
-            $debug = (bool) (App::config('app')['debug'] ?? false);
-            // Dev fallback: if no SMTP is configured yet, hand the link back so the
-            // reset flow is testable end-to-end without a mail server.
-            if ($debug && !$mailConfigured) {
-                $response['dev_reset_url'] = $link;
+                $mailConfigured = \App\Core\Mailer::isConfigured(App::config('mail') ?? []);
+                $debug = (bool) (App::config('app')['debug'] ?? false);
+                // Dev fallback: if no SMTP is configured yet, hand the link back so the
+                // reset flow is testable end-to-end without a mail server.
+                if ($debug && !$mailConfigured) {
+                    $response['dev_reset_url'] = $link;
+                }
+            } catch (\Throwable $e) {
+                error_log("[API Password Reset] Failed to send email to {$email}: " . $e->getMessage());
             }
         }
 
@@ -2281,7 +2287,7 @@ final class ApiController extends Controller
             $customerName = (string) ($customer['name'] ?? 'A tourist');
             $title = (string) ($vehicle['name'] ?? 'a vehicle');
             $recipients = Database::all(
-                "SELECT email, name FROM users WHERE role IN ('rental_admin', 'admin')"
+                "SELECT email, name FROM users WHERE role IN ('rental_provider', 'rental_admin', 'admin')"
             );
             $subject = 'Confirm this rental — ' . $title;
             $body = "{$customerName} reserved \"{$title}\" and payment was received.\n\n"

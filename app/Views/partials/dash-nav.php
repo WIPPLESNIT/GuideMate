@@ -13,10 +13,12 @@ $role = $user['role'] ?? 'tourist';
     <?php endif; ?>
     <?php if ($role === 'hotel_admin'): ?>
         <a href="<?= e(url('/dashboard/listings')) ?>" class="<?= active_when('/dashboard/listings') ?>"><?= admin_icon('listings') ?><span class="nav-label">My Hotels</span></a>
+        <a href="<?= e(url('/dashboard/bookings')) ?>" class="<?= active_when('/dashboard/bookings') ?>"><?= admin_icon('bookings') ?><span class="nav-label">Hotel Reservations</span></a>
         <a href="<?= e(url('/messages')) ?>" class="<?= active_when('/messages') ?>"><?= admin_icon('messages') ?><span class="nav-label">Inquiries</span></a>
         <a href="<?= e(url('/dashboard/reviews')) ?>" class="<?= active_when('/dashboard/reviews') ?>"><?= admin_icon('feedback') ?><span class="nav-label">Reviews</span></a>
     <?php endif; ?>
-    <?php if ($role === 'rental_admin'): ?>
+    <?php if ($role === 'rental_provider' || $role === 'rental_admin'): ?>
+        <a href="<?= e(url('/dashboard/vehicles')) ?>" class="<?= active_when('/dashboard/vehicles') ?>"><?= admin_icon('listings') ?><span class="nav-label">My Vehicles</span></a>
         <a href="<?= e(url('/dashboard/rentals')) ?>" class="<?= active_when('/dashboard/rentals') ?>"><?= admin_icon('rentals') ?><span class="nav-label">Rental Requests</span></a>
         <a href="<?= e(url('/dashboard/reviews')) ?>" class="<?= active_when('/dashboard/reviews') ?>"><?= admin_icon('feedback') ?><span class="nav-label">Reviews</span></a>
     <?php endif; ?>

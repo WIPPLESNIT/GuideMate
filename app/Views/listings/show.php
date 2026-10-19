@@ -67,7 +67,11 @@ $host = host_labels($listing['owner_role'] ?? null);
             <?php endif; ?>
 
             <div class="chips">
-                <span class="chip">Hosted by <?= e($listing['owner_name']) ?></span>
+                <?php $isHostOnline = \App\Models\User::isOnline((int) $listing['user_id']); ?>
+                <span class="chip chip-host">
+                    <span class="presence-dot <?= $isHostOnline ? 'online' : 'offline' ?>"></span>
+                    Hosted by <?= e($listing['owner_name']) ?> · <span class="presence-text"><?= $isHostOnline ? 'Online' : 'Offline' ?></span>
+                </span>
                 <?php if ($canSeeMapLocation && !empty($listing['address'])): ?><span class="chip">🗺️ <?= e($listing['address']) ?></span><?php endif; ?>
             </div>
 

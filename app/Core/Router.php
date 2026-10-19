@@ -155,8 +155,9 @@ final class Router
                         abort(403, 'Listing providers only.');
                     }
                     break;
-                case 'rental_admin':
-                    if (!Auth::hasRole('rental_admin')) {
+                case 'rental_provider':
+                case 'rental_admin': // backward-compatibility
+                    if (!Auth::hasRole('rental_provider') && !Auth::hasRole('rental_admin')) {
                         abort(403, 'Rental partners only.');
                     }
                     break;

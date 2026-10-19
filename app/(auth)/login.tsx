@@ -288,8 +288,8 @@ export default function LoginScreen() {
           {/*  Redirect Row */}
           <View style={styles.signUpRow}>
             <Text style={[styles.signUpPrompt, { color: theme.textSub }]}>{t('no_account')}</Text>
-            <TouchableOpacity onPress={handleSignUp} activeOpacity={0.7}>
-              <Text style={[styles.signUpLink, { color: theme.accent }]}>{t('sign_up')}</Text>
+            <TouchableOpacity onPress={handleSignUp} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={[styles.signUpLink, { color: theme.accent }]}>{t('sign_up') || 'Register here'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -563,7 +563,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 4,
+    marginBottom: 20,
   },
   signUpPrompt: {
     fontSize: 13,

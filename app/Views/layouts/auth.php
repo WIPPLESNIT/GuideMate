@@ -1,6 +1,7 @@
 <?php
 /** @var string $content */
 $pageTitle = $title ?? 'Account';
+$hasErrors = !empty($errors);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -13,7 +14,7 @@ $pageTitle = $title ?? 'Account';
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
 </head>
-<body>
+<body class="<?= $hasErrors ? 'auth-has-errors' : '' ?>">
 <?php foreach (['success' => 'flash-success', 'error' => 'flash-error', 'info' => 'flash-info'] as $key => $cls): ?>
     <?php if ($msg = flash($key)): ?>
         <div class="flash <?= $cls ?>"><div class="container"><?= e($msg) ?><button class="flash-close">&times;</button></div></div>

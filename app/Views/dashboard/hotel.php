@@ -20,7 +20,7 @@ $reviewStats = $reviewStats ?? ['avg_rating' => 0, 'review_count' => 0];
             <div class="section-head" style="margin-bottom:1rem;">
                 <div>
                     <h1 class="mb-0"><?= !empty($isFirstLogin) ? 'Welcome to GuideMate' : 'Welcome back' ?>, <?= e(explode(' ', (string) $user['name'])[0]) ?></h1>
-                    <p class="hint mb-0">Hotel Partner dashboard — guests inquire by message. Listings are not bookable.</p>
+                    <p class="hint mb-0">Hotel Partner dashboard — manage your hotel listings, inquiries and reservations.</p>
                 </div>
                 <?php if ($isVerified): ?>
                     <a href="<?= e(url('/dashboard/listings/create')) ?>" class="btn btn-primary">+ New hotel listing</a>

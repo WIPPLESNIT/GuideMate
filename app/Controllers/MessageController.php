@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Core\Auth;
 use App\Core\Controller;
+use App\Core\Translator;
 use App\Models\ConversationSetting;
 use App\Models\Listing;
 use App\Models\Message;
@@ -82,13 +83,143 @@ final class MessageController extends Controller
     public function poll(string $partner): void
     {
         $userId = (int) Auth::id();
+        User::touchLastSeen($userId);
         $partnerId = $this->validPartnerId($partner);
         $since = (int) $this->input('since', 0);
         $messages = Message::since($userId, $partnerId, $since);
         if ($messages !== []) {
             Message::markRead($userId, $partnerId);
         }
-        $this->json(['messages' => $messages]);
+
+        $user = Auth::user();
+        $targetLang = strtolower(trim((string) $this->input('lang', '')));
+        if ($targetLang === '') {
+            $targetLang = User::isProviderRole((string) ($user['role'] ?? ''))
+                ? 'en'
+                : (string) ($_SESSION['_locale'] ?? 'en');
+        }
+
+        $autoTranslate = (bool) $this->input('auto_translate', false);
+        $items = [];
+        foreach ($messages as $m) {
+            $item = $m;
+            $isIncoming = (int) $m['sender_id'] !== $userId;
+            $msgId = (int) $m['id'];
+
+            $cached = Message::cachedTranslation($msgId, $targetLang);
+            if ($cached !== null) {
+                $item['translated_body'] = $cached['body'];
+                $item['source_lang'] = $cached['source_lang'];
+                $item['translated'] = true;
+            } elseif ($isIncoming && $autoTranslate) {
+                $res = Translator::translate((string) $m['body'], $targetLang, $m['source_lang'] ?? null);
+                if ($res['translated']) {
+                    Message::cacheTranslation($msgId, $targetLang, $res['body'], $res['source']);
+                    if (empty($m['source_lang']) && !empty($res['source'])) {
+                        Message::setSourceLang($msgId, (string) $res['source']);
+                    }
+                    $item['translated_body'] = $res['body'];
+                    $item['source_lang'] = $res['source'];
+                    $item['translated'] = true;
+                }
+            }
+            $items[] = $item;
+        }
+
+        $partnerUser = User::find($partnerId);
+        $this->json([
+            'messages' => $items,
+            'partner_online' => User::isOnline($partnerId),
+            'partner_last_seen' => $partnerUser['last_seen_at'] ?? null,
+        ]);
+    }
+
+    public function translate(string $id): void
+    {
+        $this->verifyCsrf();
+        $userId = (int) Auth::id();
+        $message = Message::find((int) $id);
+        if ($message === null) {
+            $this->json(['error' => 'Message not found.'], 404);
+            return;
+        }
+
+        if ((int) $message['sender_id'] !== $userId && (int) $message['receiver_id'] !== $userId) {
+            $this->json(['error' => 'Forbidden.'], 403);
+            return;
+        }
+
+        $user = Auth::user();
+        $targetLang = strtolower(trim((string) $this->input('target_lang', '')));
+        if ($targetLang === '') {
+            $targetLang = User::isProviderRole((string) ($user['role'] ?? ''))
+                ? 'en'
+                : (string) ($_SESSION['_locale'] ?? 'en');
+        }
+
+        $msgId = (int) $message['id'];
+        $original = (string) $message['body'];
+        $known = !empty($message['source_lang']) ? (string) $message['source_lang'] : null;
+
+        $cached = Message::cachedTranslation($msgId, $targetLang);
+        if ($cached !== null) {
+            $this->json([
+                'id' => $msgId,
+                'translated' => true,
+                'original' => $original,
+                'body' => $cached['body'],
+                'source_lang' => $cached['source_lang'],
+                'target_lang' => $targetLang,
+                'cached' => true,
+            ]);
+            return;
+        }
+
+        $result = Translator::translate($original, $targetLang, $known);
+        if ($result['translated']) {
+            Message::cacheTranslation($msgId, $targetLang, $result['body'], $result['source']);
+            if ($known === null && !empty($result['source'])) {
+                Message::setSourceLang($msgId, (string) $result['source']);
+            }
+            $this->json([
+                'id' => $msgId,
+                'translated' => true,
+                'original' => $original,
+                'body' => $result['body'],
+                'source_lang' => $result['source'],
+                'target_lang' => $targetLang,
+                'cached' => false,
+            ]);
+            return;
+        }
+
+        $this->json([
+            'id' => $msgId,
+            'translated' => false,
+            'original' => $original,
+            'body' => $result['body'] ?? $original,
+            'source_lang' => $result['source'] ?? $known,
+            'target_lang' => $targetLang,
+            'note' => 'Already in target language or translation unavailable.',
+        ]);
+    }
+
+    public function pingPresence(): void
+    {
+        $userId = Auth::id();
+        if ($userId !== null) {
+            User::touchLastSeen((int) $userId);
+        }
+        $this->json(['ok' => true, 'timestamp' => time()]);
+    }
+
+    public function leavePresence(): void
+    {
+        $userId = Auth::id();
+        if ($userId !== null) {
+            User::markOffline((int) $userId);
+        }
+        $this->json(['ok' => true]);
     }
 
     /**
@@ -97,6 +228,12 @@ final class MessageController extends Controller
     private function renderMessages(string $folder): void
     {
         $userId = (int) Auth::id();
+        User::touchLastSeen($userId);
+        $user = Auth::user();
+        $targetLang = User::isProviderRole((string) ($user['role'] ?? ''))
+            ? 'en'
+            : (string) ($_SESSION['_locale'] ?? 'en');
+
         $this->view('messages/index', [
             'title' => $folder === 'archived' ? 'Archived messages' : 'Messages',
             'folder' => $folder,
@@ -104,6 +241,8 @@ final class MessageController extends Controller
                 ? Message::archivedConversations($userId)
                 : Message::conversations($userId),
             'partner' => null,
+            'isPartnerOnline' => false,
+            'targetLang' => $targetLang,
             'thread' => [],
             'convSettings' => null,
         ]);
@@ -115,6 +254,8 @@ final class MessageController extends Controller
     private function renderThread(string $folder, int $partnerId): void
     {
         $userId = (int) Auth::id();
+        User::touchLastSeen($userId);
+        $user = Auth::user();
         $partnerUser = User::find($partnerId);
         if ($partnerUser === null) {
             abort(404, 'Conversation not found.');
@@ -131,6 +272,34 @@ final class MessageController extends Controller
 
         Message::markRead($userId, $partnerId);
 
+        $targetLang = User::isProviderRole((string) ($user['role'] ?? ''))
+            ? 'en'
+            : (string) ($_SESSION['_locale'] ?? 'en');
+
+        $thread = Message::thread($userId, $partnerId);
+        $translateFrom = max(0, count($thread) - 40);
+        foreach ($thread as $i => &$m) {
+            $isIncoming = (int) $m['sender_id'] !== $userId;
+            $msgId = (int) $m['id'];
+            $cached = Message::cachedTranslation($msgId, $targetLang);
+            if ($cached !== null) {
+                $m['cached_translation'] = $cached;
+            } elseif ($isIncoming && $i >= $translateFrom) {
+                $res = Translator::translate((string) $m['body'], $targetLang, $m['source_lang'] ?? null);
+                if ($res['translated']) {
+                    Message::cacheTranslation($msgId, $targetLang, $res['body'], $res['source']);
+                    if (empty($m['source_lang']) && !empty($res['source'])) {
+                        Message::setSourceLang($msgId, (string) $res['source']);
+                    }
+                    $m['cached_translation'] = [
+                        'body' => $res['body'],
+                        'source_lang' => $res['source'],
+                    ];
+                }
+            }
+        }
+        unset($m);
+
         $this->view('messages/index', [
             'title' => $folder === 'archived' ? 'Archived messages' : 'Messages',
             'folder' => $folder,
@@ -138,7 +307,9 @@ final class MessageController extends Controller
                 ? Message::archivedConversations($userId)
                 : Message::conversations($userId),
             'partner' => $partnerUser,
-            'thread' => Message::thread($userId, $partnerId),
+            'isPartnerOnline' => User::isOnline($partnerId),
+            'targetLang' => $targetLang,
+            'thread' => $thread,
             'convSettings' => $settings,
         ]);
     }
@@ -147,11 +318,13 @@ final class MessageController extends Controller
     {
         $this->verifyCsrf();
         $userId = (int) Auth::id();
+        User::touchLastSeen($userId);
         $receiverId = (int) $this->input('receiver_id', 0);
         $body = trim((string) $this->input('body', ''));
 
         if ($receiverId === 0 || $receiverId === $userId || $body === '') {
             redirect('/messages' . ($receiverId ? '/' . $receiverId : ''));
+
         }
         if (User::find($receiverId) === null) {
             abort(404, 'Recipient not found.');

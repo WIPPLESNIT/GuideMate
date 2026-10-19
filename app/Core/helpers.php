@@ -43,11 +43,15 @@ if (!function_exists('url')) {
 
 if (!function_exists('asset')) {
     /**
-     * URL to a file in public/assets.
+     * URL to a file in public/assets with cache-busting timestamp.
      */
     function asset(string $path): string
     {
-        return url('assets/' . ltrim($path, '/'));
+        $cleanPath = ltrim($path, '/');
+        $fullPath = BASE_DIR . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $cleanPath);
+        $ver = is_file($fullPath) ? (string) filemtime($fullPath) : null;
+        $url = url('assets/' . $cleanPath);
+        return $ver !== null ? $url . '?v=' . $ver : $url;
     }
 }
 
@@ -149,6 +153,16 @@ if (!function_exists('csrf_field')) {
     }
 }
 
+if (!function_exists('csrf_token')) {
+    /**
+     * Get the active session's CSRF token string.
+     */
+    function csrf_token(): string
+    {
+        return Auth::csrfToken();
+    }
+}
+
 if (!function_exists('method_field')) {
     /**
      * Spoof a non-POST HTTP method (PUT/DELETE).
@@ -236,7 +250,7 @@ if (!function_exists('host_labels')) {
                 'badge' => 'Hotel Partner',
                 'flash' => 'Message sent to the hotel partner.',
             ],
-            'rental_admin' => [
+            'rental_provider', 'rental_admin' => [
                 'noun' => 'rental partner',
                 'Noun' => 'Rental partner',
                 'message' => 'Message the rental partner',
@@ -349,6 +363,15 @@ if (!function_exists('active_when')) {
             return 'active';
         }
         if ($targetPath === '/admin/users' && str_starts_with($currentPath, '/admin/users')) {
+            return 'active';
+        }
+        if ($targetPath === '/dashboard/vehicles' && str_starts_with($currentPath, '/dashboard/vehicles')) {
+            return 'active';
+        }
+        if ($targetPath === '/admin/vehicles' && str_starts_with($currentPath, '/admin/vehicles')) {
+            return 'active';
+        }
+        if ($targetPath === '/rentals' && str_starts_with($currentPath, '/rentals')) {
             return 'active';
         }
         return '';

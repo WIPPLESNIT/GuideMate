@@ -64,7 +64,14 @@ final class Category
     public static function withCounts(): array
     {
         return Database::all(
-            'SELECT c.*, COUNT(l.id) AS listing_count
+            'SELECT c.*,
+                CASE
+                    WHEN c.slug = "tour-guides" THEN GREATEST(
+                        (SELECT COUNT(*) FROM users WHERE role = "guide" AND guide_status = "approved"),
+                        COUNT(l.id)
+                    )
+                    ELSE COUNT(l.id)
+                END AS listing_count
              FROM categories c
              LEFT JOIN listings l ON l.category_id = c.id AND l.status = "approved"
              GROUP BY c.id

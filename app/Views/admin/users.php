@@ -8,6 +8,7 @@ $roleLabels = [
     'tourist' => 'Tourist',
     'guide' => 'Tour Guide',
     'hotel_admin' => 'Hotel Partner',
+    'rental_provider' => 'Rental Partner',
     'rental_admin' => 'Rental Partner',
     'admin' => 'Admin',
 ];
@@ -15,6 +16,7 @@ $rolePillMap = [
     'admin' => 'completed',
     'guide' => 'confirmed',
     'hotel_admin' => 'refunded',
+    'rental_provider' => 'resolved_warning',
     'rental_admin' => 'resolved_warning',
     'tourist' => 'pending',
 ];

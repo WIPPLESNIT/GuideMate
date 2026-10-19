@@ -1,0 +1,130 @@
+[2026-10-14 23:15:42] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-14 23:16:32] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-14 23:31:48] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-14 23:32:27] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 00:01:13] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 00:05:29] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 00:17:13] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 00:19:13] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 00:31:42] MAIL FAILURE
+To: christianyongzon143@gmail.com
+Subject: GuideMate Live SMTP Test (2026-10-15 00:31:39)
+Error: SMTP response error (expected code 235): 535-5.7.8 Username and Password not accepted. For more information, go to | 535 5.7.8  https://support.google.com/mail/?p=BadCredentials d9443c01a7336-2e8421b16b3sm72242085ad.30 - gsmtp
+----------------------------------------
+[2026-10-15 00:32:46] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 00:50:29] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 00:57:16] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 01:10:49] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 01:17:47] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 01:28:29] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 01:35:02] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 01:38:01] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 01:39:18] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 01:52:47] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 02:18:42] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 03:25:30] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-15 03:28:48] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-19 01:33:14] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-19 01:44:38] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-19 02:06:45] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------
+[2026-10-19 02:24:58] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------

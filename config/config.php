@@ -70,6 +70,8 @@ return [
         'port' => (int) env('MAIL_PORT', 587),
         'username' => env('MAIL_USERNAME', ''),
         'password' => env('MAIL_PASSWORD', ''),
+        'encryption' => env('MAIL_ENCRYPTION', 'tls'),
+        'timeout' => (int) env('MAIL_TIMEOUT', 15),
     ],
     'weather' => [
         'api_key' => env('OPENWEATHER_API_KEY', ''),
@@ -112,5 +114,15 @@ return [
         'video_4k' => env('HERO_VIDEO_4K', 'https://videos.pexels.com/video-files/3571264/3571264-uhd_3840_2160_30fps.mp4'),
         'video_hd' => env('HERO_VIDEO_HD', 'https://videos.pexels.com/video-files/3571264/3571264-hd_1920_1080_30fps.mp4'),
         'poster' => env('HERO_POSTER', 'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?auto=format&fit=crop&w=1920&q=70'),
+    ],
+    'translation' => [
+        'enabled' => (bool) env('TRANSLATION_ENABLED', true),
+        'provider' => env('TRANSLATION_PROVIDER', 'google_free'),
+        'libretranslate_url' => env('LIBRETRANSLATE_URL', 'https://translate.terraprint.co'),
+        'libretranslate_key' => env('LIBRETRANSLATE_KEY', ''),
+    ],
+    'presence' => [
+        'timeout' => (int) env('PRESENCE_TIMEOUT', 90),
+        'ping_interval' => (int) env('PRESENCE_PING_INTERVAL', 25),
     ],
 ];

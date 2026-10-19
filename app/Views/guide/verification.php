@@ -17,7 +17,7 @@ $banner = [
 
 $breadcrumbTitle = match ((string) ($user['role'] ?? '')) {
     'hotel_admin' => 'Hotel Partner Verification',
-    'rental_admin' => 'Rental Partner Verification',
+    'rental_provider', 'rental_admin' => 'Rental Partner Verification',
     default => 'Guide Verification',
 };
 ?>

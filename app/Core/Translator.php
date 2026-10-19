@@ -86,7 +86,7 @@ final class Translator
         return [
             'body' => $changed ? $translatedBody : $text,
             'source' => $detected,
-            'translated' => $changed && ($detected === null || !self::sameLanguage($detected, $target)),
+            'translated' => $changed,
         ];
     }
 
@@ -121,6 +121,21 @@ final class Translator
             }
         }
         $detected = isset($data[2]) && is_string($data[2]) ? $data[2] : $source;
+        if (($detected === null || self::sameLanguage($detected, $target))) {
+            if (isset($data[0][0][8][0][0][1]) && is_string($data[0][0][8][0][0][1]) && preg_match('/^([a-z]{2,3})_([a-z]{2,3})/i', $data[0][0][8][0][0][1], $matches)) {
+                $detected = strtolower($matches[1]);
+            } elseif (preg_match('/\p{Han}/u', $text)) {
+                $detected = 'zh';
+            } elseif (preg_match('/\p{Hiragana}|\p{Katakana}/u', $text)) {
+                $detected = 'ja';
+            } elseif (preg_match('/\p{Hangul}/u', $text)) {
+                $detected = 'ko';
+            } elseif (preg_match('/\p{Cyrillic}/u', $text)) {
+                $detected = 'ru';
+            } elseif (preg_match('/\p{Arabic}/u', $text)) {
+                $detected = 'ar';
+            }
+        }
         return ['body' => $body, 'source' => $detected];
     }
 
@@ -168,7 +183,11 @@ final class Translator
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => self::TIMEOUT_SECONDS,
             CURLOPT_CONNECTTIMEOUT => self::TIMEOUT_SECONDS,
-            CURLOPT_USERAGENT => 'GuideMate/1.0',
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            CURLOPT_HTTPHEADER => [
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: en-US,en;q=0.5',
+            ],
             CURLOPT_SSL_VERIFYPEER => false,
         ]);
         $response = curl_exec($ch);

@@ -37,6 +37,8 @@ $router->get('/things-to-do', [ListingController::class, 'thingsToDo']);
 $router->get('/tour-guides', [ListingController::class, 'tourGuides']);
 $router->get('/hotels', [ListingController::class, 'hotels']);
 $router->get('/restaurants', [ListingController::class, 'restaurants']);
+$router->get('/rentals', [RentalController::class, 'index']);
+$router->get('/rentals/{slug}', [RentalController::class, 'show']);
 $router->get('/listing/{slug}', [ListingController::class, 'show']);
 
 // ---- Auth -----------------------------------------------------------------
@@ -77,6 +79,9 @@ $router->get('/messages', [MessageController::class, 'index'], ['auth']);
 $router->get('/messages/archived', [MessageController::class, 'archived'], ['auth']);
 $router->get('/messages/archived/{partner}', [MessageController::class, 'archivedThread'], ['auth']);
 $router->get('/messages/{partner}/poll', [MessageController::class, 'poll'], ['auth']);
+$router->post('/messages/{id}/translate', [MessageController::class, 'translate'], ['auth']);
+$router->post('/presence/ping', [MessageController::class, 'pingPresence'], ['auth']);
+$router->post('/presence/offline', [MessageController::class, 'leavePresence'], ['auth']);
 $router->get('/messages/{partner}', [MessageController::class, 'thread'], ['auth']);
 $router->post('/messages', [MessageController::class, 'send'], ['auth']);
 $router->post('/messages/{partner}/pin', [MessageController::class, 'pin'], ['auth']);
@@ -114,10 +119,18 @@ $router->post('/dashboard/listings/{id}/schedule/add', [GuideController::class, 
 $router->post('/dashboard/listings/{id}/schedule/remove', [GuideController::class, 'removeSchedule'], ['listing_provider']);
 
 // ---- Rental partner management (relocated from the admin portal) -----------
-$router->get('/dashboard/rentals', [RentalController::class, 'requests'], ['rental_admin']);
-$router->post('/dashboard/rentals/{id}/status', [RentalController::class, 'updateStatus'], ['rental_admin']);
-$router->post('/dashboard/rentals/{id}/refund', [RentalController::class, 'refund'], ['rental_admin']);
-$router->post('/dashboard/rentals/{id}/reject-report', [RentalController::class, 'rejectReport'], ['rental_admin']);
+$router->get('/dashboard/vehicles', [RentalController::class, 'vehicles'], ['rental_provider']);
+$router->get('/dashboard/vehicles/create', [RentalController::class, 'createVehicle'], ['rental_provider']);
+$router->post('/dashboard/vehicles', [RentalController::class, 'storeVehicle'], ['rental_provider']);
+$router->get('/dashboard/vehicles/{id}/edit', [RentalController::class, 'editVehicle'], ['rental_provider']);
+$router->post('/dashboard/vehicles/{id}', [RentalController::class, 'updateVehicle'], ['rental_provider']);
+$router->post('/dashboard/vehicles/{id}/toggle-availability', [RentalController::class, 'toggleAvailability'], ['rental_provider']);
+$router->post('/dashboard/vehicles/{id}/resubmit', [RentalController::class, 'resubmitVehicle'], ['rental_provider']);
+$router->post('/dashboard/vehicles/{id}/delete', [RentalController::class, 'destroyVehicle'], ['rental_provider']);
+$router->get('/dashboard/rentals', [RentalController::class, 'requests'], ['rental_provider']);
+$router->post('/dashboard/rentals/{id}/status', [RentalController::class, 'updateStatus'], ['rental_provider']);
+$router->post('/dashboard/rentals/{id}/refund', [RentalController::class, 'refund'], ['rental_provider']);
+$router->post('/dashboard/rentals/{id}/reject-report', [RentalController::class, 'rejectReport'], ['rental_provider']);
 
 // ---- Admin portal (separate auth, isolated from public users) -------------
 $router->get('/admin/login', [AdminAuthController::class, 'showLogin']);
@@ -143,6 +156,10 @@ $router->post('/admin/security/disable', [AdminAuthController::class, 'disableTw
 $router->get('/admin/listings', [AdminController::class, 'listings'], ['admin']);
 $router->post('/admin/listings/{id}/status', [AdminController::class, 'updateListingStatus'], ['admin']);
 $router->post('/admin/listings/{id}/feature', [AdminController::class, 'toggleFeatured'], ['admin']);
+$router->get('/admin/vehicles', [AdminController::class, 'vehicles'], ['admin']);
+$router->get('/admin/vehicles/{id}', [AdminController::class, 'showVehicle'], ['admin']);
+$router->post('/admin/vehicles/{id}/approve', [AdminController::class, 'approveVehicle'], ['admin']);
+$router->post('/admin/vehicles/{id}/reject', [AdminController::class, 'rejectVehicle'], ['admin']);
 $router->get('/admin/users', [AdminController::class, 'users'], ['admin']);
 $router->get('/admin/users/create', [AdminController::class, 'createUser'], ['admin']);
 $router->post('/admin/users', [AdminController::class, 'storeUser'], ['admin']);

@@ -67,7 +67,7 @@ function formatTimeLabel(value: string): string {
 
 function hostMessageLabel(listing: Pick<ApiListing, 'owner_name' | 'owner_role'>): string {
   if (listing.owner_role === 'hotel_admin') return 'Message the hotel';
-  if (listing.owner_role === 'rental_admin') return 'Message the rental partner';
+  if (listing.owner_role === 'rental_provider' || listing.owner_role === 'rental_admin') return 'Message the rental partner';
   return listing.owner_name ? `Message ${listing.owner_name}` : 'Message the guide';
 }
 

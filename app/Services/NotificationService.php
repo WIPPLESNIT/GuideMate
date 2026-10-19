@@ -15,16 +15,67 @@ final class NotificationService
         self::send($email, 'Welcome to GuideMate', "Hi {$name},\n\nWelcome to GuideMate! Start exploring the best of Cebu.\n\n" . self::appUrl());
     }
 
-    public static function passwordReset(string $email, string $token, ?string $link = null): void
+    public static function passwordReset(string $email, string $token, ?string $link = null): bool
     {
         $link = $link ?? self::appUrl('/reset-password/' . $token);
-        self::send(
-            $email,
-            'Reset your GuideMate password',
-            "Hi,\n\nWe received a request to reset your GuideMate password.\n\n"
-            . "Use this link to set a new password (valid for 1 hour):\n\n{$link}\n\n"
-            . "If you didn't request this, you can safely ignore this email.\n\n— GuideMate"
-        );
+        $subject = 'Reset your GuideMate password';
+
+        $textBody = "Hello,\n\n"
+            . "We received a request to reset the password for your GuideMate account.\n\n"
+            . "Click the link below to set a new password:\n"
+            . "{$link}\n\n"
+            . "IMPORTANT:\n"
+            . "- This link is valid for 30 minutes.\n"
+            . "- This link is single-use and cannot be reused once your password is changed.\n\n"
+            . "If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.\n\n"
+            . "— The GuideMate Team\n"
+            . self::appUrl('/');
+
+        $htmlBody = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+.card { max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.brand { font-size: 22px; font-weight: 800; color: #0f172a; margin-bottom: 24px; }
+.brand span { color: #059669; }
+h1 { font-size: 20px; font-weight: 700; margin: 0 0 16px 0; color: #0f172a; }
+p { font-size: 15px; line-height: 1.6; margin: 0 0 16px 0; color: #475569; }
+.btn-wrap { margin: 28px 0; text-align: center; }
+.btn { display: inline-block; background-color: #059669; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; }
+.notice { background: #f1f5f9; border-left: 4px solid #059669; padding: 12px 16px; border-radius: 4px; font-size: 13px; color: #475569; margin: 24px 0; }
+.footer { font-size: 12px; color: #94a3b8; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px; word-break: break-all; }
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="brand">Guide<span>Mate</span></div>
+    <h1>Password Reset Request</h1>
+    <p>Hello,</p>
+    <p>We received a request to reset your GuideMate account password. Click the button below to set a new password:</p>
+    <div class="btn-wrap">
+        <a href="{$link}" class="btn" target="_blank">Reset Password</a>
+    </div>
+    <div class="notice">
+        <strong>Security Notice:</strong>
+        <ul style="margin:6px 0 0 18px;padding:0;">
+            <li>This link expires in <strong>30 minutes</strong>.</li>
+            <li>This link is single-use and cannot be reused after your password is changed.</li>
+        </ul>
+    </div>
+    <p>If you did not request a password reset, you can safely ignore this email. Your account remains secure.</p>
+    <div class="footer">
+        If the button above does not work, copy and paste this link into your browser:<br>
+        <a href="{$link}" style="color:#059669;">{$link}</a>
+    </div>
+</div>
+</body>
+</html>
+HTML;
+
+        return self::send($email, $subject, $textBody, $htmlBody);
     }
 
     public static function bookingAwaitingConfirmation(string $email, string $listingTitle, string $date): void
@@ -125,18 +176,43 @@ final class NotificationService
         self::send($email, 'Application update', $body);
     }
 
-    private static function send(string $to, string $subject, string $body): void
+    public static function vehicleApproved(string $email, string $vehicleName): void
     {
-        Mailer::send($to, $subject, $body);
+        self::send(
+            $email,
+            'Vehicle listing approved — ' . $vehicleName,
+            "Great news! Your vehicle listing for {$vehicleName} has been approved by the administrator and is now published and available for tourists to rent."
+        );
+    }
+
+    public static function vehicleRejected(string $email, string $vehicleName, string $reason = ''): void
+    {
+        $body = "Your vehicle listing for {$vehicleName} was not approved by the administrator.";
+        if ($reason !== '') {
+            $body .= "\n\nReason: {$reason}";
+        }
+        $body .= "\n\nYou can review the feedback, update your listing details or photos, and resubmit it for approval from your dashboard.";
+        self::send($email, 'Vehicle listing update — ' . $vehicleName, $body);
+    }
+
+    private static function send(string $to, string $subject, string $body, ?string $htmlBody = null): bool
+    {
+        $mailOk = Mailer::send($to, $subject, $body, $htmlBody);
         SmsService::notifyIfConfigured($to, $subject);
+        return $mailOk;
     }
 
     private static function appUrl(string $path = '/'): string
     {
         $base = trim((string) (App::config('app')['url'] ?? ''));
         if ($base !== '') {
-            return rtrim($base, '/') . $path;
+            return rtrim($base, '/') . '/' . ltrim($path, '/');
         }
-        return \url($path);
+
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $relative = \url($path);
+
+        return $scheme . '://' . $host . $relative;
     }
 }

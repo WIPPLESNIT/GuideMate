@@ -113,7 +113,17 @@ final class Auth
     public static function hasRole(string $role): bool
     {
         $user = self::user();
-        return $user !== null && $user['role'] === $role;
+        if ($user === null) {
+            return false;
+        }
+        $userRole = (string) ($user['role'] ?? '');
+        if ($role === 'rental_admin' && $userRole === 'rental_provider') {
+            return true;
+        }
+        if ($role === 'rental_provider' && $userRole === 'rental_admin') {
+            return true;
+        }
+        return $userRole === $role;
     }
 
     public static function isAdmin(): bool

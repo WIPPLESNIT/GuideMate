@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS `password_resets` (
     `email` VARCHAR(190) NOT NULL,
     `token` VARCHAR(64) NOT NULL,
     `expires_at` TIMESTAMP NOT NULL,
-    PRIMARY KEY (`email`)
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `used_at` TIMESTAMP NULL DEFAULT NULL,
+    PRIMARY KEY (`email`),
+    KEY `idx_password_resets_token` (`token`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL,
     <<<'SQL'
@@ -90,7 +93,7 @@ SQL,
     'ALTER TABLE listings ADD COLUMN sale_price DECIMAL(10,2) DEFAULT NULL',
     'ALTER TABLE listings ADD COLUMN sale_ends_at DATE DEFAULT NULL',
     // Rental Partner + Hotel Partner provider roles (self-registerable dashboards).
-    "ALTER TABLE users MODIFY COLUMN role ENUM('admin','guide','tourist','rental_admin','hotel_admin') NOT NULL DEFAULT 'tourist'",
+    "ALTER TABLE users MODIFY COLUMN role ENUM('admin','guide','tourist','rental_provider','hotel_admin') NOT NULL DEFAULT 'tourist'",
     'ALTER TABLE users ADD COLUMN admin_totp_secret VARCHAR(64) DEFAULT NULL',
     'ALTER TABLE users ADD COLUMN admin_totp_enabled TINYINT(1) NOT NULL DEFAULT 0',
     // Presence for the mobile chat (updated on every authenticated API request).

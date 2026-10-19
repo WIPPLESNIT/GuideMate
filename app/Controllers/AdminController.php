@@ -17,6 +17,7 @@ use App\Models\Message;
 use App\Models\Payment;
 use App\Models\Review;
 use App\Models\User;
+use App\Models\Vehicle;
 use App\Services\NotificationService;
 
 final class AdminController extends Controller
@@ -32,6 +33,7 @@ final class AdminController extends Controller
                 'listings' => Listing::count('approved'),
                 'pending' => Listing::count('pending'),
                 'pendingGuides' => User::countProvidersByStatus('pending'),
+                'pendingVehicles' => Vehicle::pendingCount(),
                 'openDisputes' => Dispute::countOpen(),
                 'revenue' => Payment::totalRevenue(),
             ],
@@ -174,6 +176,84 @@ final class AdminController extends Controller
         redirect('/admin/listings');
     }
 
+    public function vehicles(): void
+    {
+        $status = (string) $this->input('status', 'all');
+        $this->view('admin/vehicles', [
+            'title' => 'Vehicle Listings Review',
+            'vehicles' => Vehicle::allForAdmin($status),
+            'status' => $status,
+            'pendingCount' => Vehicle::pendingCount(),
+        ], 'admin');
+    }
+
+    public function showVehicle(string $id): void
+    {
+        $vehicle = Vehicle::find((int) $id);
+        if ($vehicle === null) {
+            abort(404, 'Vehicle listing not found.');
+        }
+
+        $this->view('admin/vehicle-show', [
+            'title' => 'Review Vehicle: ' . $vehicle['name'],
+            'vehicle' => $vehicle,
+            'gallery' => Vehicle::gallery((int) $vehicle['id']),
+            'specs' => Vehicle::parseSpecs($vehicle['specs'] ?? null),
+        ], 'admin');
+    }
+
+    public function approveVehicle(string $id): void
+    {
+        $this->verifyCsrf();
+        $vehicle = Vehicle::find((int) $id);
+        if ($vehicle === null) {
+            flash('error', 'Vehicle not found.');
+            redirect('/admin/vehicles');
+        }
+
+        $adminId = (int) AdminAuth::id();
+        Vehicle::approve((int) $id, $adminId);
+
+        AuditLog::recordAction('vehicle.approve', 'vehicle', (int) $id, [
+            'vehicle_name' => $vehicle['name'],
+            'provider_id' => $vehicle['user_id'],
+        ]);
+
+        if (!empty($vehicle['provider_email'])) {
+            NotificationService::vehicleApproved((string) $vehicle['provider_email'], (string) $vehicle['name']);
+        }
+
+        flash('success', "Vehicle '{$vehicle['name']}' has been approved and published.");
+        redirect('/admin/vehicles');
+    }
+
+    public function rejectVehicle(string $id): void
+    {
+        $this->verifyCsrf();
+        $vehicle = Vehicle::find((int) $id);
+        if ($vehicle === null) {
+            flash('error', 'Vehicle not found.');
+            redirect('/admin/vehicles');
+        }
+
+        $reason = trim((string) $this->input('reason', ''));
+        $adminId = (int) AdminAuth::id();
+        Vehicle::reject((int) $id, $adminId, $reason !== '' ? $reason : null);
+
+        AuditLog::recordAction('vehicle.reject', 'vehicle', (int) $id, [
+            'vehicle_name' => $vehicle['name'],
+            'provider_id' => $vehicle['user_id'],
+            'reason' => $reason,
+        ]);
+
+        if (!empty($vehicle['provider_email'])) {
+            NotificationService::vehicleRejected((string) $vehicle['provider_email'], (string) $vehicle['name'], $reason);
+        }
+
+        flash('info', "Vehicle '{$vehicle['name']}' has been rejected.");
+        redirect('/admin/vehicles');
+    }
+
     public function users(): void
     {
         $appeals = AccountAppeal::all();
@@ -213,7 +293,10 @@ final class AdminController extends Controller
         $location = trim((string) $this->input('location', ''));
         $bio = trim((string) $this->input('bio', ''));
 
-        $validRoles = ['tourist', 'guide', 'hotel_admin', 'rental_admin', 'admin'];
+        if ($role === 'rental_admin') {
+            $role = 'rental_provider';
+        }
+        $validRoles = ['tourist', 'guide', 'hotel_admin', 'rental_provider', 'admin'];
         if (!in_array($role, $validRoles, true)) {
             $role = 'tourist';
         }
@@ -301,7 +384,10 @@ final class AdminController extends Controller
         $bio = trim((string) $this->input('bio', ''));
         $guideStatus = (string) $this->input('guide_status', (string) ($user['guide_status'] ?? 'none'));
 
-        $validRoles = ['tourist', 'guide', 'hotel_admin', 'rental_admin', 'admin'];
+        if ($role === 'rental_admin') {
+            $role = 'rental_provider';
+        }
+        $validRoles = ['tourist', 'guide', 'hotel_admin', 'rental_provider', 'admin'];
         if (!in_array($role, $validRoles, true)) {
             $role = (string) $user['role'];
         }

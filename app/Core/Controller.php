@@ -45,7 +45,13 @@ abstract class Controller
      */
     protected function verifyCsrf(): void
     {
-        $token = (string) ($_POST['_token'] ?? '');
+        $token = (string) ($_POST['_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        if ($token === '') {
+            $input = json_decode((string) file_get_contents('php://input'), true);
+            if (is_array($input) && !empty($input['_token'])) {
+                $token = (string) $input['_token'];
+            }
+        }
         if (!Auth::verifyCsrf($token)) {
             abort(419, 'Your session expired. Please try again.');
         }

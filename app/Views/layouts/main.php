@@ -16,8 +16,9 @@ if ($base !== '' && str_starts_with($current, $base)) {
 }
 $current = '/' . trim($current, '/');
 $publicBrowse = $current === '/'
-    || in_array($current, ['/listings', '/things-to-do', '/tour-guides', '/hotels'], true)
-    || str_starts_with($current, '/listing/');
+    || in_array($current, ['/listings', '/things-to-do', '/tour-guides', '/hotels', '/rentals'], true)
+    || str_starts_with($current, '/listing/')
+    || str_starts_with($current, '/rentals/');
 $isMessages = str_starts_with($current, '/messages');
 $isDashboard = str_starts_with($current, '/dashboard') || str_starts_with($current, '/profile');
 $hideFooter = $isMessages;
@@ -45,6 +46,11 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
+    <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
+    <?php if ($user !== null): ?>
+        <meta name="auth-user-id" content="<?= (int) $user['id'] ?>">
+        <meta name="auth-user-role" content="<?= e((string) $user['role']) ?>">
+    <?php endif; ?>
 </head>
 <body class="<?= e(trim(($isMessages ? 'page-messages ' : '') . ($isDashboard ? 'page-dashboard ' : '') . ($hideFooter ? 'page-no-footer ' : '') . ($guideWarned ? 'guide-warned' : ''))) ?>">
 <header class="site-header" id="siteHeader">
@@ -73,6 +79,7 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
                 <a href="<?= e(url('/things-to-do')) ?>" class="nav-item <?= active_when('/things-to-do', $navCategory === 'things-to-do') ?>"><?= __('nav_things', 'Things to Do') ?></a>
                 <a href="<?= e(url('/tour-guides')) ?>" class="nav-item <?= active_when('/tour-guides', $navCategory === 'tour-guides') ?>"><?= __('nav_guides', 'Tour Guides') ?></a>
                 <a href="<?= e(url('/hotels')) ?>" class="nav-item <?= active_when('/hotels', $navCategory === 'hotels') ?>"><?= __('nav_hotels', 'Hotels') ?></a>
+                <a href="<?= e(url('/rentals')) ?>" class="nav-item <?= active_when('/rentals', $navCategory === 'rentals') ?>"><?= __('nav_rentals', 'Rentals') ?></a>
             <?php endif; ?>
 
             <div class="nav-spacer"></div>
@@ -88,9 +95,9 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
                     </button>
                     <div class="dropdown" id="userMenu">
                         <a href="<?= e(url('/dashboard')) ?>">Dashboard</a>
-                        <a href="<?= e(url('/bookings')) ?>">My Bookings</a>
-                        <?php // Saved/favorites is a tourist feature — hidden for providers. ?>
+                        <?php // My Bookings and Saved are tourist features — hidden for providers. ?>
                         <?php if (!$isProvider): ?>
+                            <a href="<?= e(url('/bookings')) ?>">My Bookings</a>
                             <a href="<?= e(url('/favorites')) ?>">Saved</a>
                         <?php endif; ?>
                         <a href="<?= e(url('/profile')) ?>">Profile</a>
@@ -140,6 +147,7 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
             <a href="<?= e(url('/things-to-do')) ?>">Things to Do</a>
             <a href="<?= e(url('/tour-guides')) ?>">Tour Guides</a>
             <a href="<?= e(url('/hotels')) ?>">Hotels &amp; Stays</a>
+            <a href="<?= e(url('/rentals')) ?>">Vehicle Rentals</a>
         </div>
         <div>
             <h4>Account</h4>

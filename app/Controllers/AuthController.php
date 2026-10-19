@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Controllers\Concerns\HandlesGuideDocuments;
+use App\Core\App;
 use App\Core\Auth;
 use App\Core\Controller;
+use App\Core\Mailer;
 use App\Models\AccountAppeal;
 use App\Models\GuideDocument;
 use App\Models\PasswordReset;
@@ -197,6 +199,10 @@ final class AuthController extends Controller
     public function logout(): void
     {
         $this->verifyCsrf();
+        $user = Auth::user();
+        if ($user !== null) {
+            User::markOffline((int) $user['id']);
+        }
         Auth::logout();
         unset($_SESSION['is_first_login']);
         flash('success', 'You have been logged out successfully.');
@@ -205,7 +211,12 @@ final class AuthController extends Controller
 
     public function showForgotPassword(): void
     {
-        $this->view('auth/forgot', ['title' => 'Forgot password', 'errors' => errors()], 'auth');
+        $this->view('auth/forgot', [
+            'title' => 'Forgot password',
+            'errors' => errors(),
+            'sentEmail' => flash('reset_sent_email'),
+            'devResetUrl' => flash('dev_reset_url'),
+        ], 'auth');
     }
 
     public function sendResetLink(): void
@@ -221,30 +232,93 @@ final class AuthController extends Controller
         }
 
         $user = User::findByEmail($email);
-        if ($user !== null && $user['role'] !== 'admin') {
-            $token = PasswordReset::create($email);
-            NotificationService::passwordReset($email, $token);
+        if ($user === null) {
+            flash_keep_old(
+                ['email' => 'We could not find an account with that email address.'],
+                ['email' => $email],
+                '/forgot-password'
+            );
         }
 
-        flash('success', 'If that email is registered, we sent a password reset link.');
-        redirect('/login');
+        $token = PasswordReset::create($email);
+
+        $sent = false;
+        try {
+            $sent = NotificationService::passwordReset($email, $token);
+            if (!$sent) {
+                error_log("[Password Reset] Email delivery returned false for recipient {$email}");
+            }
+        } catch (\Throwable $e) {
+            // Log server-side without exposing sensitive token or credentials
+            error_log("[Password Reset] Email delivery exception for recipient {$email}: " . $e->getMessage());
+        }
+
+        $mailConfigured = \App\Core\Mailer::isConfigured(App::config('mail') ?? []);
+        $debug = (bool) (App::config('app')['debug'] ?? false);
+
+        if ($mailConfigured && !$sent) {
+            if ($debug) {
+                flash('error', 'We could not deliver the reset link via SMTP. Please check your Gmail SMTP credentials in .env (or inspect storage/logs/mail_error.log).');
+                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
+                $devResetUrl = rtrim($scheme . '://' . $host . App::basePath(), '/') . '/reset-password/' . $token;
+                flash('dev_reset_url', $devResetUrl);
+            } else {
+                flash('error', 'Unable to send password reset email at this time. Please try again later.');
+            }
+            redirect('/forgot-password');
+        }
+
+        // App-style dev fallback: if SMTP is unconfigured in local dev, provide direct reset link
+        if ($debug && !$mailConfigured) {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            $devResetUrl = rtrim($scheme . '://' . $host . App::basePath(), '/') . '/reset-password/' . $token;
+            flash('dev_reset_url', $devResetUrl);
+        }
+
+        flash('reset_sent_email', $email);
+        redirect('/forgot-password');
     }
 
     public function showResetPassword(string $token): void
     {
-        if (PasswordReset::findValid($token) === null) {
+        $token = trim($token);
+        if ($token === '') {
             flash('error', 'This reset link is invalid or has expired.');
             redirect('/forgot-password');
         }
+
+        $row = PasswordReset::findValid($token);
+        if ($row === null) {
+            $existing = PasswordReset::findByToken($token);
+            if ($existing !== null && !empty($existing['used_at'])) {
+                flash('error', 'This password reset link has already been used. Please request a new one.');
+            } elseif ($existing !== null && strtotime((string) $existing['expires_at']) <= time()) {
+                flash('error', 'This password reset link has expired. Please request a new one.');
+            } else {
+                flash('error', 'This reset link is invalid or has expired.');
+            }
+            redirect('/forgot-password');
+        }
+
         $this->view('auth/reset', ['title' => 'Reset password', 'token' => $token, 'errors' => errors()], 'auth');
     }
 
     public function resetPassword(string $token): void
     {
         $this->verifyCsrf();
+        $token = trim($token);
         $row = PasswordReset::findValid($token);
         if ($row === null) {
-            flash('error', 'This reset link is invalid or has expired.');
+            $existing = PasswordReset::findByToken($token);
+            if ($existing !== null && !empty($existing['used_at'])) {
+                flash('error', 'This password reset link has already been used. Please request a new one.');
+            } elseif ($existing !== null && strtotime((string) $existing['expires_at']) <= time()) {
+                flash('error', 'This password reset link has expired. Please request a new one.');
+            } else {
+                flash('error', 'This reset link is invalid or has expired.');
+            }
             redirect('/forgot-password');
         }
 
@@ -270,8 +344,9 @@ final class AuthController extends Controller
         }
 
         User::updatePassword((int) $user['id'], $password);
-        PasswordReset::delete((string) $row['email']);
-        flash('success', 'Password updated. You can log in now.');
+        PasswordReset::markUsed($token);
+
+        flash('success', 'Your password has been reset successfully. You can now log in.');
         redirect('/login');
     }
 

@@ -85,6 +85,6 @@ final class App
         $script = $_SERVER['SCRIPT_NAME'] ?? '';
         // Strip the trailing index.php to get the public dir path.
         $dir = str_replace('\\', '/', dirname($script));
-        self::$basePath = $dir === '/' ? '' : rtrim($dir, '/');
+        self::$basePath = ($dir === '/' || $dir === '.') ? '' : rtrim($dir, '/');
     }
 }

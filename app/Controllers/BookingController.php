@@ -52,6 +52,16 @@ final class BookingController extends Controller
 
     public function index(): void
     {
+        $user = Auth::user();
+        $role = (string) ($user['role'] ?? 'tourist');
+        if ($role === 'hotel_admin') {
+            redirect('/dashboard/bookings');
+        } elseif ($role === 'guide') {
+            redirect('/dashboard/bookings');
+        } elseif ($role === 'rental_provider' || $role === 'rental_admin') {
+            redirect('/dashboard/rentals');
+        }
+
         Booking::reconcileOrphanRefunds();
         $bookings = Booking::forCustomer((int) Auth::id());
         foreach ($bookings as &$b) {

@@ -47,7 +47,11 @@ export default function RegisterScreen() {
   };
 
   const handleClose = () => {
-    router.back();
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(auth)/login');
+    }
   };
 
   // Password policy: 8-12 characters with an uppercase letter, a number, and a special character.

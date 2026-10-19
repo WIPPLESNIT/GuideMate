@@ -52,7 +52,9 @@ $user = auth_user();
                                 <p class="listing-summary mb-0"><?= e(mb_strimwidth((string) $g['bio'], 0, 140, '…')) ?></p>
                             <?php endif; ?>
                         </div>
-                        <?php if ($user): ?>
+                        <?php if ($user && (int) $user['id'] === (int) $g['id']): ?>
+                            <span class="btn btn-ghost" style="cursor:default;opacity:.7;">Your profile</span>
+                        <?php elseif ($user): ?>
                             <form method="post" action="<?= e(url('/guides/' . (int) $g['id'] . '/contact')) ?>">
                                 <?= csrf_field() ?>
                                 <button class="btn btn-primary" type="submit">💬 Message</button>

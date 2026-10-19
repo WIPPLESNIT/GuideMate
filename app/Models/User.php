@@ -12,20 +12,20 @@ final class User
      * Roles that offer services and go through the verification workflow
      * (document upload + admin approval via the `guide_status` column).
      */
-    public const PROVIDER_ROLES = ['guide', 'rental_admin', 'hotel_admin'];
+    public const PROVIDER_ROLES = ['guide', 'rental_provider', 'hotel_admin'];
 
     /**
      * Human-readable labels for the provider roles.
      */
     public const PROVIDER_LABELS = [
         'guide' => 'Tour Guide',
-        'rental_admin' => 'Rental Partner',
+        'rental_provider' => 'Rental Partner',
         'hotel_admin' => 'Hotel Partner',
     ];
 
     public static function isProviderRole(string $role): bool
     {
-        return in_array($role, self::PROVIDER_ROLES, true);
+        return in_array($role, self::PROVIDER_ROLES, true) || $role === 'rental_admin';
     }
 
     /**
@@ -53,15 +53,20 @@ final class User
     }
 
     /**
-     * Create a user with a hashed password. Returns the new id.
-     * Provider roles (guide, rental_admin, hotel_admin) start 'pending' until
+     * Create a user with a hashed password and zeroed initial account metrics.
+     * Newly registered users automatically start with revenue = 0 and total_requests = 0.
+     * Provider roles (guide, rental_provider, hotel_admin) start 'pending' until
      * an admin reviews their submitted documents; everyone else 'none'.
      */
     public static function create(string $name, string $email, string $password, string $role): int
     {
+        // Backward-compatibility: normalize legacy rental_admin to rental_provider
+        if ($role === 'rental_admin') {
+            $role = 'rental_provider';
+        }
         $guideStatus = self::isProviderRole($role) ? 'pending' : 'none';
         return Database::insert(
-            'INSERT INTO users (name, email, password, role, guide_status) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO users (name, email, password, role, guide_status, revenue, total_requests) VALUES (?, ?, ?, ?, ?, 0.00, 0)',
             [$name, $email, password_hash($password, PASSWORD_BCRYPT), $role, $guideStatus]
         );
     }
@@ -100,8 +105,8 @@ final class User
         $password = password_hash(bin2hex(random_bytes(24)), PASSWORD_BCRYPT);
 
         return Database::insert(
-            'INSERT INTO users (name, email, password, role, guide_status, oauth_provider, oauth_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO users (name, email, password, role, guide_status, oauth_provider, oauth_id, revenue, total_requests)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0.00, 0)',
             [$label, $email, $password, 'tourist', 'none', $provider, $oauthId]
         );
     }
@@ -280,14 +285,27 @@ final class User
     /**
      * A user counts as online if they pinged the API within the last 90s.
      */
-    public static function isOnline(int $id, int $withinSeconds = 90): bool
+    public static function isOnline(int $id, ?int $withinSeconds = null): bool
     {
+        $withinSeconds = $withinSeconds ?? (int) (\App\Core\App::config('presence')['timeout'] ?? 90);
         $row = Database::first('SELECT last_seen_at FROM users WHERE id = ?', [$id]);
         $seen = $row['last_seen_at'] ?? null;
         if ($seen === null || $seen === '') {
             return false;
         }
         return (time() - strtotime((string) $seen)) <= $withinSeconds;
+    }
+
+    /**
+     * Mark a user as offline immediately (e.g. on logout or window closure).
+     */
+    public static function markOffline(int $id): void
+    {
+        try {
+            Database::run('UPDATE users SET last_seen_at = NULL WHERE id = ?', [$id]);
+        } catch (\Throwable $e) {
+            // Best effort
+        }
     }
 
     public static function updatePassword(int $id, string $password): void
@@ -373,7 +391,7 @@ final class User
     {
         $row = Database::first(
             'SELECT COUNT(*) AS c FROM users
-             WHERE role IN ("guide","rental_admin","hotel_admin") AND guide_warned = 1'
+             WHERE role IN ("guide","rental_provider","hotel_admin") AND guide_warned = 1'
         );
         return (int) ($row['c'] ?? 0);
     }
@@ -450,14 +468,14 @@ final class User
         if ($status !== null) {
             return Database::all(
                 'SELECT * FROM users
-                 WHERE role IN ("guide","rental_admin","hotel_admin") AND guide_status = ?
+                 WHERE role IN ("guide","rental_provider","hotel_admin") AND guide_status = ?
                  ORDER BY created_at DESC',
                 [$status]
             );
         }
         return Database::all(
             'SELECT * FROM users
-             WHERE role IN ("guide","rental_admin","hotel_admin")
+             WHERE role IN ("guide","rental_provider","hotel_admin")
              ORDER BY FIELD(guide_status, "pending", "rejected", "approved", "none"), created_at DESC'
         );
     }
@@ -466,10 +484,45 @@ final class User
     {
         $row = Database::first(
             'SELECT COUNT(*) AS c FROM users
-             WHERE role IN ("guide","rental_admin","hotel_admin") AND guide_status = ?',
+             WHERE role IN ("guide","rental_provider","hotel_admin") AND guide_status = ?',
             [$status]
         );
         return (int) ($row['c'] ?? 0);
+    }
+
+    /**
+     * Account metric management (revenue and total_requests).
+     */
+    public static function incrementRequests(int $userId, int $by = 1): void
+    {
+        Database::run(
+            'UPDATE users SET total_requests = GREATEST(0, CAST(total_requests AS SIGNED) + ?) WHERE id = ?',
+            [$by, $userId]
+        );
+    }
+
+    public static function addRevenue(int $userId, float $amount): void
+    {
+        Database::run(
+            'UPDATE users SET revenue = GREATEST(0.00, revenue + ?) WHERE id = ?',
+            [$amount, $userId]
+        );
+    }
+
+    public static function deductRevenue(int $userId, float $amount): void
+    {
+        Database::run(
+            'UPDATE users SET revenue = GREATEST(0.00, revenue - ?) WHERE id = ?',
+            [$amount, $userId]
+        );
+    }
+
+    public static function setMetrics(int $userId, float $revenue, int $totalRequests): void
+    {
+        Database::run(
+            'UPDATE users SET revenue = ?, total_requests = ? WHERE id = ?',
+            [$revenue, $totalRequests, $userId]
+        );
     }
 
     /**

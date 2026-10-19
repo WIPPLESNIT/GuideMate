@@ -32,6 +32,24 @@ final class RentalRequest
     }
 
     /**
+     * Rental requests for vehicles owned by a specific rental provider.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function forProvider(int $providerId): array
+    {
+        return Database::all(
+            'SELECT r.*, u.name AS user_name, u.email AS user_email
+             FROM rental_requests r
+             JOIN users u ON u.id = r.user_id
+             JOIN vehicles v ON CAST(v.id AS CHAR) = CAST(r.vehicle_id AS CHAR)
+             WHERE v.user_id = ?
+             ORDER BY FIELD(r.status, "pending", "approved", "contacted", "completed", "cancelled", "refunded"), r.created_at DESC',
+            [$providerId]
+        );
+    }
+
+    /**
      * Reservations that belong to a specific tourist (for the mobile app).
      *
      * @return array<int, array<string, mixed>>
@@ -66,7 +84,7 @@ final class RentalRequest
 
         $paid = !empty($data['payment_reference']) || ($data['payment_status'] ?? '') === 'paid';
 
-        return Database::insert(
+        $id = Database::insert(
             'INSERT INTO rental_requests (
                 user_id, vehicle_id, vehicle_name, vehicle_type, shop_name, location,
                 pickup_date, rental_days, total_amount, customer_name, customer_email,
@@ -98,6 +116,20 @@ final class RentalRequest
                 (string) ($data['id_number'] ?? '') !== '' ? (string) $data['id_number'] : null,
             ]
         );
+
+        $vehicleId = $data['vehicle_id'] ?? null;
+        if ($vehicleId !== null && is_numeric($vehicleId)) {
+            $vehicle = Vehicle::find((int) $vehicleId);
+            if ($vehicle !== null && !empty($vehicle['user_id'])) {
+                $providerId = (int) $vehicle['user_id'];
+                User::incrementRequests($providerId);
+                if ($paid) {
+                    User::addRevenue($providerId, $total);
+                }
+            }
+        }
+
+        return $id;
     }
 
     /**
@@ -119,6 +151,8 @@ final class RentalRequest
      */
     public static function refund(int $id, ?string $ownerNote = null): void
     {
+        $rental = self::find($id);
+
         Database::run(
             "UPDATE rental_requests
              SET status = 'refunded', payment_status = 'refunded',
@@ -127,6 +161,16 @@ final class RentalRequest
              WHERE id = ?",
             [$ownerNote, $id]
         );
+
+        if ($rental !== null && ($rental['payment_status'] ?? '') === 'paid') {
+            $vehicleId = $rental['vehicle_id'] ?? null;
+            if ($vehicleId !== null && is_numeric($vehicleId)) {
+                $vehicle = Vehicle::find((int) $vehicleId);
+                if ($vehicle !== null && !empty($vehicle['user_id'])) {
+                    User::deductRevenue((int) $vehicle['user_id'], (float) ($rental['total_amount'] ?? 0));
+                }
+            }
+        }
     }
 
     /**
@@ -178,79 +222,34 @@ final class RentalRequest
     }
 
     /**
-     * Catalog of rentable vehicles shown in the mobile app.
+     * Catalog of rentable vehicles shown in the mobile app and tourist portal.
+     * Backed by approved and available vehicle listings created by rental providers.
      *
      * @return array<int, array<string, mixed>>
      */
     public static function vehicleCatalog(): array
     {
-        return [
-            [
-                'id' => 'scooter',
-                'name' => 'Honda Click 125i',
-                'type' => 'Scooter',
-                'price_per_day' => 500,
-                'specs' => ['Automatic', '2 seats', 'Helmet included'],
-                'shop' => 'Cebu Moto Rentals',
-                'location' => 'Cebu City · Fuente Osmeña',
-                'rating' => 4.8,
-                'image' => 'scooter.jpg',
-            ],
-            [
-                'id' => 'motorcycle',
-                'name' => 'KTM 390 Adventure',
-                'type' => 'Motorcycle',
-                'price_per_day' => 1200,
-                'specs' => ['Manual', '2 seats', 'Off-road ready'],
-                'shop' => 'ADV Riders Cebu',
-                'location' => 'Mandaue City · A.S. Fortuna',
-                'rating' => 4.7,
-                'image' => 'motorcycle.png',
-            ],
-            [
-                'id' => 'ebike',
-                'name' => 'City E-Bike',
-                'type' => 'E-Bike',
-                'price_per_day' => 350,
-                'specs' => ['Electric', 'Pedal-assist', '60km range'],
-                'shop' => 'GreenRide Mactan',
-                'location' => 'Lapu-Lapu · Mactan Island',
-                'rating' => 4.9,
-                'image' => 'ebike.jpg',
-            ],
-            [
-                'id' => 'sedan',
-                'name' => 'Toyota Vios',
-                'type' => 'Sedan',
-                'price_per_day' => 1800,
-                'specs' => ['5 seats', 'Aircon', 'Self-drive'],
-                'shop' => 'Cebu Car Hub',
-                'location' => 'Cebu City · IT Park',
-                'rating' => 4.6,
-                'image' => 'sedan.jpg',
-            ],
-            [
-                'id' => 'suv',
-                'name' => 'Kia Sportage',
-                'type' => 'SUV',
-                'price_per_day' => 2800,
-                'specs' => ['5 seats', '4x4', 'Self-drive'],
-                'shop' => 'Island SUV Rentals',
-                'location' => 'Cebu City · SRP',
-                'rating' => 4.7,
-                'image' => 'suv.jpg',
-            ],
-            [
-                'id' => 'van',
-                'name' => 'Toyota HiAce Grandia',
-                'type' => 'Van',
-                'price_per_day' => 4500,
-                'specs' => ['12 seats', 'With driver', 'Tours'],
-                'shop' => 'Cebu Van Tours',
-                'location' => 'Lapu-Lapu · near Airport',
-                'rating' => 4.9,
-                'image' => 'van.jpg',
-            ],
-        ];
+        $vehicles = Vehicle::approvedAndAvailable();
+        if ($vehicles !== []) {
+            return array_map(static function (array $v): array {
+                return [
+                    'id' => (string) $v['id'],
+                    'slug' => (string) $v['slug'],
+                    'name' => (string) $v['name'],
+                    'make' => (string) $v['make'],
+                    'model' => (string) $v['model'],
+                    'year' => (int) $v['year'],
+                    'type' => (string) $v['type'],
+                    'price_per_day' => (float) $v['price_per_day'],
+                    'specs' => Vehicle::parseSpecs($v['specs'] ?? null),
+                    'shop' => (string) ($v['provider_name'] ?? 'Rental Partner'),
+                    'location' => (string) ($v['location'] ?? 'Cebu'),
+                    'rating' => 4.8,
+                    'image' => (string) ($v['image'] ?? ''),
+                ];
+            }, $vehicles);
+        }
+
+        return [];
     }
 }

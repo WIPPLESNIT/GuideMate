@@ -42,12 +42,12 @@
                 <?php endif; ?>
                 <div class="filter-group">
                     <label for="filter_rating">Minimum rating</label>
-                    <select class="input" id="filter_rating" name="min_rating">
-                        <option value="any" <?= in_array($filters['min_rating'], ['', 'any'], true) ? 'selected' : '' ?>>Any rating</option>
-                        <option value="4.0" <?= in_array($filters['min_rating'], ['4', '4.0'], true) ? 'selected' : '' ?>>4.0+</option>
-                        <option value="4.5" <?= in_array($filters['min_rating'], ['4.5'], true) ? 'selected' : '' ?>>4.5+</option>
-                        <option value="5.0" <?= in_array($filters['min_rating'], ['5', '5.0'], true) ? 'selected' : '' ?>>5.0</option>
-                    </select>
+                        <select class="input" id="filter_rating" name="min_rating">
+                            <option value="any" <?= in_array($filters['min_rating'], ['', 'any'], true) ? 'selected' : '' ?>>Any rating</option>
+                            <option value="below4" <?= ($filters['min_rating'] === 'below4') ? 'selected' : '' ?>>Below 4.0</option>
+                            <option value="4.0" <?= in_array($filters['min_rating'], ['4', '4.0'], true) ? 'selected' : '' ?>>4.0–4.9</option>
+                            <option value="5.0" <?= in_array($filters['min_rating'], ['5', '5.0'], true) ? 'selected' : '' ?>>5.0</option>
+                        </select>
                 </div>
                 <div class="filter-group">
                     <label for="filter_sort">Sort by</label>
