@@ -297,12 +297,19 @@ if (!function_exists('absolute_url')) {
      */
     function absolute_url(string $path = '/'): string
     {
+        // When accessed via HTTP (e.g. mobile app calling API), prioritize the client-requested host
+        // so image URLs automatically match the exact IP/domain the mobile app reached.
+        if (!empty($_SERVER['HTTP_HOST'])) {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            return rtrim($scheme . '://' . $_SERVER['HTTP_HOST'] . App::basePath(), '/') . '/' . ltrim($path, '/');
+        }
+
         $configured = (string) (App::config('app')['url'] ?? '');
         if ($configured !== '') {
             return rtrim($configured, '/') . '/' . ltrim($path, '/');
         }
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $host = 'localhost';
         return rtrim($scheme . '://' . $host . App::basePath(), '/') . '/' . ltrim($path, '/');
     }
 }
@@ -319,7 +326,12 @@ if (!function_exists('api_img_src')) {
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
             return $path;
         }
-        return absolute_url(ltrim($path, '/'));
+        $relative = ltrim($path, '/');
+        // If it references a local upload that no longer exists on disk, fall back to a placeholder
+        if (defined('BASE_DIR') && !file_exists(BASE_DIR . '/public/' . $relative)) {
+            return "https://picsum.photos/seed/{$fallbackSeed}/1200/800";
+        }
+        return absolute_url($relative);
     }
 }
 

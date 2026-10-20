@@ -1660,7 +1660,7 @@ final class ApiController extends Controller
                     'shop' => (string) $v['shop'],
                     'location' => (string) $v['location'],
                     'rating' => (float) $v['rating'],
-                    'image' => api_img_src('uploads/rentals/' . $v['image'], 'rental-' . $v['id']),
+                    'image' => (string) ($v['image'] ?? ''),
                 ],
                 RentalRequest::vehicleCatalog()
             ),

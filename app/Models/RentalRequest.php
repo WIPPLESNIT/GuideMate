@@ -245,7 +245,7 @@ final class RentalRequest
                     'shop' => (string) ($v['provider_name'] ?? 'Rental Partner'),
                     'location' => (string) ($v['location'] ?? 'Cebu'),
                     'rating' => 4.8,
-                    'image' => (string) ($v['image'] ?? ''),
+                    'image' => api_img_src((string) ($v['image'] ?? ''), 'vehicle' . $v['id']),
                 ];
             }, $vehicles);
         }

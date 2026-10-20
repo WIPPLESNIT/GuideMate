@@ -21,7 +21,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import CalendarPicker from '../components/CalendarPicker';
 import { useTheme } from '../lib/theme';
-import { ApiRentalVehicle, createRentalRequest, getRentalVehicles, isUnauthorized, PaymentMethod } from '../services/api';
+import { ApiRentalVehicle, createRentalRequest, getRentalVehicles, isUnauthorized, PaymentMethod, resolveImage } from '../services/api';
 
 const TIME_SLOTS = ['07:00', '08:00', '09:00', '10:00', '11:00', '13:00', '15:00', '17:00'];
 
@@ -63,6 +63,7 @@ export default function CarRentalsScreen() {
   const [contactPhone, setContactPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   // Verification (valid ID held for the owner)
   const [idType, setIdType] = useState('');
@@ -205,60 +206,106 @@ export default function CarRentalsScreen() {
     if (LOCAL_IMAGES[item.id]) {
       return LOCAL_IMAGES[item.id];
     }
-    return item.image ? { uri: item.image } : undefined;
+    const resolved = resolveImage(item.image);
+    return resolved ? { uri: resolved } : undefined;
   };
 
-  const renderItem = ({ item }: { item: ApiRentalVehicle }) => (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, shadow.sm]}>
-      <View>
-        {imageSource(item) ? (
-          <Image source={imageSource(item)!} style={styles.image} resizeMode="cover" />
-        ) : (
-          <View style={[styles.image, { backgroundColor: colors.chipBg, alignItems: 'center', justifyContent: 'center' }]}>
-            <Ionicons name="car-sport" size={42} color={colors.primary} />
-          </View>
-        )}
-        <View style={[styles.typeBadge, { backgroundColor: colors.primary }]}>
-          <Text style={styles.typeBadgeText}>{item.type}</Text>
-        </View>
-      </View>
+  const renderItem = ({ item }: { item: ApiRentalVehicle }) => {
+    const src = imageSource(item);
+    const hasImage = src && !failedImages[item.id];
+    const formattedPrice = `₱${item.price_per_day.toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
 
-      <View style={{ padding: 14 }}>
-        <View style={styles.rowBetween}>
-          <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
-          <View style={styles.ratingPill}>
-            <Ionicons name="star" size={12} color="#F6B100" />
-            <Text style={[styles.ratingText, { color: colors.text }]}>{item.rating}</Text>
-          </View>
-        </View>
-
-        <View style={styles.locationRow}>
-          <Ionicons name="location" size={14} color={colors.primary} />
-          <Text style={[styles.locationText, { color: colors.textSub }]} numberOfLines={1}>
-            {item.shop} · {item.location}
-          </Text>
-        </View>
-
-        <View style={styles.specsRow}>
-          {item.specs.map((s) => (
-            <View key={s} style={[styles.specChip, { backgroundColor: colors.chipBg }]}>
-              <Text style={[styles.specText, { color: colors.textSub }]}>{s}</Text>
+    return (
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, shadow.sm]}>
+        <View style={styles.imageWrap}>
+          {hasImage ? (
+            <Image
+              source={src!}
+              style={styles.image}
+              resizeMode="cover"
+              onError={() => setFailedImages((prev) => ({ ...prev, [item.id]: true }))}
+            />
+          ) : (
+            <View style={[styles.image, { backgroundColor: colors.chipBg, alignItems: 'center', justifyContent: 'center' }]}>
+              <Ionicons name="car-sport" size={42} color={colors.primary} />
             </View>
-          ))}
+          )}
+          <View style={styles.badgesRow}>
+            <View style={styles.catBadge}>
+              <Text style={styles.catBadgeText}>{item.type}</Text>
+            </View>
+            <View style={styles.verifiedBadge}>
+              <Text style={styles.verifiedBadgeText}>Verified Partner</Text>
+            </View>
+          </View>
         </View>
 
-        <View style={[styles.rowBetween, { marginTop: 12 }]}>
-          <Text style={[styles.price, { color: colors.primary }]}>
-            ₱{item.price_per_day.toLocaleString()}
-            <Text style={[styles.priceUnit, { color: colors.textMute }]}> / day</Text>
+        <View style={styles.cardBody}>
+          <View style={styles.locationRow}>
+            <Text style={[styles.locationText, { color: isDark ? colors.textMute : '#64748B' }]} numberOfLines={1}>
+              📍 {item.location}
+            </Text>
+          </View>
+
+          <Text style={[styles.name, { color: colors.text }]} numberOfLines={2}>
+            {item.name}
           </Text>
-          <TouchableOpacity style={[styles.reserveBtn, { backgroundColor: colors.primary }]} activeOpacity={0.85} onPress={() => openRental(item)}>
-            <Text style={styles.reserveText}>Reserve</Text>
-          </TouchableOpacity>
+
+          <View style={styles.partnerRow}>
+            <Text style={[styles.partnerLabel, { color: isDark ? colors.textMute : '#64748B' }]} numberOfLines={1}>
+              Partner: <Text style={[styles.partnerName, { color: colors.text }]}>{item.shop}</Text>
+            </Text>
+          </View>
+
+          {item.specs && item.specs.length > 0 ? (
+            <View style={styles.specsRow}>
+              {item.specs.slice(0, 3).map((s) => (
+                <View
+                  key={s}
+                  style={[
+                    styles.specChip,
+                    { backgroundColor: isDark ? colors.chipBg : '#F1F5F9' },
+                  ]}
+                >
+                  <Text style={[styles.specText, { color: isDark ? colors.textSub : '#475569' }]}>
+                    {s}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          <View style={[styles.divider, { backgroundColor: isDark ? colors.border : '#E2E8F0' }]} />
+
+          <View style={styles.footerRow}>
+            <View style={styles.priceWrap}>
+              <View style={styles.priceTopRow}>
+                <Text style={[styles.priceAmount, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                  {formattedPrice}
+                </Text>
+                <Text style={[styles.priceUnit, { color: isDark ? colors.textMute : '#8E99A8' }]}>
+                  {' '}per
+                </Text>
+              </View>
+              <Text style={[styles.priceUnit, { color: isDark ? colors.textMute : '#8E99A8' }]}>
+                day
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.reserveBtn}
+              activeOpacity={0.85}
+              onPress={() => openRental(item)}
+            >
+              <Text style={styles.reserveText}>Rent Unit</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgAlt }]} edges={['left', 'right']}>
@@ -511,23 +558,121 @@ const styles = StyleSheet.create({
   headerBtn: { width: 44, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '800' },
   intro: { fontSize: 13, lineHeight: 19, marginBottom: 16 },
-  card: { borderRadius: 18, borderWidth: 1, overflow: 'hidden' },
-  image: { width: '100%', height: 170 },
-  typeBadge: { position: 'absolute', top: 12, left: 12, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999 },
-  typeBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  name: { fontSize: 16, fontWeight: '800', flex: 1, marginRight: 8 },
-  ratingPill: { flexDirection: 'row', alignItems: 'center' },
-  ratingText: { fontSize: 12, fontWeight: '700', marginLeft: 3 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  locationText: { fontSize: 12, fontWeight: '600', marginLeft: 4, flex: 1 },
-  specsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 7 },
-  specChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  specText: { fontSize: 11, fontWeight: '700' },
-  price: { fontSize: 18, fontWeight: '900' },
-  priceUnit: { fontSize: 12, fontWeight: '600' },
-  reserveBtn: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 999 },
-  reserveText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  card: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  imageWrap: { width: '100%', aspectRatio: 16 / 11, position: 'relative', overflow: 'hidden', backgroundColor: '#E2E8F0' },
+  image: { width: '100%', height: '100%' },
+  badgesRow: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    zIndex: 2,
+  },
+  catBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  catBadgeText: {
+    color: '#0f5132',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  verifiedBadge: {
+    backgroundColor: '#0f5132',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  verifiedBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cardBody: {
+    padding: 16,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  locationText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  name: {
+    fontSize: 17,
+    fontWeight: '800',
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  partnerRow: {
+    marginBottom: 8,
+  },
+  partnerLabel: {
+    fontSize: 13,
+    fontWeight: '400',
+  },
+  partnerName: {
+    fontWeight: '700',
+  },
+  specsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 14,
+  },
+  specChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4.5,
+    borderRadius: 5,
+  },
+  specText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  divider: {
+    height: 1,
+    width: '100%',
+    marginBottom: 12,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  priceWrap: {
+    justifyContent: 'center',
+  },
+  priceTopRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  priceAmount: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  priceUnit: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  reserveBtn: {
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  reserveText: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.58)', justifyContent: 'center', padding: 16 },
   modalCard: { borderRadius: 26, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 8, maxHeight: '88%' },
   modalScrollContent: { paddingBottom: 12 },

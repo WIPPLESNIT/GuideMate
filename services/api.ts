@@ -167,7 +167,18 @@ export function resolveImage(url?: string | null): string {
   if (!url) {
     return '';
   }
-  return url.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, API_ORIGIN);
+  // If the URL is a relative path, resolve it against API_BASE_URL
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    const cleanBase = API_BASE_URL.replace(/\/+$/, '');
+    const cleanPath = url.replace(/^\/+/, '');
+    return `${cleanBase}/${cleanPath}`;
+  }
+  // Rewrite localhost, loopback, or stale private LAN IP addresses (e.g. from DHCP changes)
+  // to the active API_ORIGIN that this device is connected to.
+  return url.replace(
+    /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?/i,
+    API_ORIGIN
+  );
 }
 
 // ── Token handling ──

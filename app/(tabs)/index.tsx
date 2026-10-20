@@ -61,6 +61,7 @@ export default function HomeScreen() {
   const [firstName, setFirstName] = useState('');
   // How many newly published places have appeared since the user last looked.
   const [newCount, setNewCount] = useState(0);
+  const [failedImages, setFailedImages] = useState<Record<number, boolean>>({});
 
   const load = useCallback(async () => {
     setError('');
@@ -159,13 +160,25 @@ export default function HomeScreen() {
   const featured = (data?.featured?.length ? data.featured : data?.recommended ?? []).filter((item) => !isHiddenListing(item));
   const listings = (data?.recommended?.length ? data.recommended : data?.featured ?? []).filter((item) => !isHiddenListing(item));
 
+  const getListingImageUri = (item: ApiListing): string => {
+    if (failedImages[item.id]) {
+      return `https://picsum.photos/seed/listing${item.id}/1200/800`;
+    }
+    const resolved = resolveImage(item.image);
+    return resolved || `https://picsum.photos/seed/listing${item.id}/1200/800`;
+  };
+
   const renderHero = ({ item }: { item: ApiListing }) => (
     <TouchableOpacity
       style={[styles.heroCard, { width: HERO_WIDTH }, shadow.md]}
       activeOpacity={0.9}
       onPress={() => openListing(item.slug)}
     >
-      <Image source={{ uri: resolveImage(item.image) }} style={styles.heroImage} />
+      <Image
+        source={{ uri: getListingImageUri(item) }}
+        style={styles.heroImage}
+        onError={() => setFailedImages((prev) => ({ ...prev, [item.id]: true }))}
+      />
       <LinearGradient colors={gradients.hero} style={StyleSheet.absoluteFill as any} />
       <View style={styles.heroTopRow}>
         <View style={styles.featuredTag}>
@@ -206,7 +219,11 @@ export default function HomeScreen() {
       activeOpacity={0.88}
     >
       <View style={styles.placeImageWrap}>
-        <Image source={{ uri: resolveImage(item.image) }} style={styles.placeImage} />
+        <Image
+          source={{ uri: getListingImageUri(item) }}
+          style={styles.placeImage}
+          onError={() => setFailedImages((prev) => ({ ...prev, [item.id]: true }))}
+        />
         {item.is_new ? (
           <View style={styles.newBadge}>
             <Ionicons name="sparkles" size={9} color="#FFFFFF" />
