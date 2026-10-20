@@ -219,7 +219,11 @@ export default function CarRentalsScreen() {
     })}`;
 
     return (
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, shadow.sm]}>
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPress={() => router.push({ pathname: '/rental/[id]', params: { id: item.id } })}
+        style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, shadow.sm]}
+      >
         <View style={styles.imageWrap}>
           {hasImage ? (
             <Image
@@ -297,13 +301,16 @@ export default function CarRentalsScreen() {
             <TouchableOpacity
               style={styles.reserveBtn}
               activeOpacity={0.85}
-              onPress={() => openRental(item)}
+              onPress={(e) => {
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                openRental(item);
+              }}
             >
               <Text style={styles.reserveText}>Rent Unit</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

@@ -232,6 +232,29 @@ final class RentalRequest
         $vehicles = Vehicle::approvedAndAvailable();
         if ($vehicles !== []) {
             return array_map(static function (array $v): array {
+                $mainImg = api_img_src((string) ($v['image'] ?? ''), 'vehicle' . $v['id']);
+                $gallery = Vehicle::gallery((int) $v['id']);
+                $images = [];
+                if ($mainImg !== '') {
+                    $images[] = $mainImg;
+                }
+                foreach ($gallery as $g) {
+                    $gUrl = api_img_src((string) ($g['image_path'] ?? ''), 'vehicle' . $v['id'] . '-' . $g['id']);
+                    if (!in_array($gUrl, $images, true)) {
+                        $images[] = $gUrl;
+                    }
+                }
+                if ($images === [] && $mainImg !== '') {
+                    $images[] = $mainImg;
+                }
+
+                $stats = RentalReview::vehicleStats((string) $v['id']);
+                $vRating = $stats['rating'];
+                if ($vRating <= 0.0) {
+                    $pStats = RentalReview::providerStats((int) ($v['user_id'] ?? 0));
+                    $vRating = $pStats['rating'];
+                }
+
                 return [
                     'id' => (string) $v['id'],
                     'slug' => (string) $v['slug'],
@@ -243,9 +266,17 @@ final class RentalRequest
                     'price_per_day' => (float) $v['price_per_day'],
                     'specs' => Vehicle::parseSpecs($v['specs'] ?? null),
                     'shop' => (string) ($v['provider_name'] ?? 'Rental Partner'),
+                    'provider_id' => (int) ($v['user_id'] ?? 0),
+                    'provider_name' => (string) ($v['provider_name'] ?? 'Rental Partner'),
+                    'provider_email' => (string) ($v['provider_email'] ?? ''),
                     'location' => (string) ($v['location'] ?? 'Cebu'),
-                    'rating' => 4.8,
-                    'image' => api_img_src((string) ($v['image'] ?? ''), 'vehicle' . $v['id']),
+                    'address' => (string) ($v['address'] ?? ''),
+                    'description' => (string) ($v['description'] ?? ''),
+                    'status' => (string) ($v['status'] ?? 'approved'),
+                    'is_available' => (bool) ($v['is_available'] ?? true),
+                    'rating' => (float) $vRating,
+                    'image' => $mainImg,
+                    'images' => $images,
                 ];
             }, $vehicles);
         }

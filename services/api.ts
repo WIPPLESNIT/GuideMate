@@ -328,24 +328,66 @@ export const getTripMap = () =>
 
 export const getMapsConfig = () => api<{ mapbox_token: string }>('/api/maps');
 
+export type ApiVehicleProvider = {
+  id: number;
+  name: string;
+  email?: string;
+  avatar?: string | null;
+  online?: boolean;
+  role?: string;
+  rating?: number;
+  reviews_count?: number;
+  response_time?: string;
+  completed_rentals?: number;
+};
+
 export type ApiRentalVehicle = {
   id: string;
+  slug?: string;
   name: string;
+  make?: string;
+  model?: string;
+  year?: number;
   type: string;
   price_per_day: number;
   specs: string[];
   shop: string;
+  provider_id?: number;
+  provider_name?: string;
   location: string;
+  address?: string;
+  description?: string;
+  status?: string;
+  is_available?: boolean;
   rating: number;
   image: string;
+  images?: string[];
+  provider?: ApiVehicleProvider;
+  requirements?: string[];
 };
 
 export const getRentalVehicles = () => api<{ vehicles: ApiRentalVehicle[] }>('/api/rentals');
 
+export const getRentalVehicle = (id: string | number) =>
+  api<{ vehicle: ApiRentalVehicle }>(`/api/rentals/${id}`);
+
 export type PaymentMethod = 'gcash' | 'instapay' | 'card';
+
+export type ApiRentalReview = {
+  id: number;
+  rental_id: number;
+  reviewer_id?: number;
+  provider_id?: number;
+  vehicle_id?: string;
+  rating: number;
+  feedback: string;
+  created_at: string;
+  updated_at?: string;
+};
 
 export type ApiRental = {
   id: number;
+  vehicle_id?: string;
   vehicle_name: string;
   vehicle_type: string;
   shop_name: string;
@@ -364,6 +406,9 @@ export type ApiRental = {
   report_message: string;
   owner_report_note: string;
   can_report: boolean;
+  can_review?: boolean;
+  has_reviewed?: boolean;
+  review?: ApiRentalReview | null;
   created_at: string;
 };
 
@@ -436,6 +481,25 @@ export const reportRental = (payload: {
   problem_type: string;
   description: string;
 }) => api<{ request: ApiRental | null }>('/api/rentals/report', { method: 'POST', body: payload });
+
+export const submitRentalReview = (payload: {
+  rental_id: number;
+  rating: number;
+  feedback: string;
+}) =>
+  api<{
+    success: boolean;
+    message: string;
+    review: ApiRentalReview;
+    provider_stats: {
+      rating: number;
+      reviews_count: number;
+      completed_rentals: number;
+    };
+  }>('/api/rentals/reviews', { method: 'POST', body: payload });
+
+export const getRentalReview = (rentalId: number) =>
+  api<{ review: ApiRentalReview | null }>(`/api/rentals/reviews?rental_id=${rentalId}`);
 
 export const createBooking = (payload: {
   listing_id: number;

@@ -55,8 +55,11 @@ $router->post('/api/messages/delete', [ApiController::class, 'deleteConversation
 
 $router->get('/api/rentals', [ApiController::class, 'rentalUnits']);
 $router->get('/api/rentals/mine', [ApiController::class, 'myRentals']);
+$router->get('/api/rentals/{id}', [ApiController::class, 'rentalDetail']);
 $router->post('/api/rentals', [ApiController::class, 'createRental']);
 $router->post('/api/rentals/report', [ApiController::class, 'reportRental']);
+$router->post('/api/rentals/reviews', [ApiController::class, 'submitRentalReview']);
+$router->get('/api/rentals/reviews', [ApiController::class, 'getRentalReview']);
 
 $router->get('/api/feedback', [ApiController::class, 'myFeedback']);
 $router->post('/api/feedback', [ApiController::class, 'submitFeedback']);

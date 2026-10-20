@@ -26,9 +26,11 @@ use App\Models\PasswordReset;
 use App\Models\Payment;
 use App\Models\PromoCode;
 use App\Models\RentalRequest;
+use App\Models\RentalReview;
 use App\Models\Review;
 use App\Models\ReviewImage;
 use App\Models\User;
+use App\Models\Vehicle;
 use App\Services\NotificationService;
 use App\Services\OAuthPending;
 use App\Services\RecommendationService;
@@ -1653,17 +1655,111 @@ final class ApiController extends Controller
             'vehicles' => array_map(
                 static fn (array $v): array => [
                     'id' => (string) $v['id'],
+                    'slug' => (string) ($v['slug'] ?? ''),
                     'name' => (string) $v['name'],
+                    'make' => (string) ($v['make'] ?? ''),
+                    'model' => (string) ($v['model'] ?? ''),
+                    'year' => (int) ($v['year'] ?? 0),
                     'type' => (string) $v['type'],
                     'price_per_day' => (float) $v['price_per_day'],
                     'specs' => $v['specs'],
                     'shop' => (string) $v['shop'],
+                    'provider_id' => (int) ($v['provider_id'] ?? 0),
+                    'provider_name' => (string) ($v['provider_name'] ?? $v['shop']),
                     'location' => (string) $v['location'],
+                    'address' => (string) ($v['address'] ?? ''),
+                    'description' => (string) ($v['description'] ?? ''),
+                    'status' => (string) ($v['status'] ?? 'approved'),
+                    'is_available' => (bool) ($v['is_available'] ?? true),
                     'rating' => (float) $v['rating'],
                     'image' => (string) ($v['image'] ?? ''),
+                    'images' => (array) ($v['images'] ?? [$v['image']]),
                 ],
                 RentalRequest::vehicleCatalog()
             ),
+        ]);
+    }
+
+    /**
+     * GET /api/rentals/{id} — full vehicle details for mobile and web.
+     */
+    public function rentalDetail(string $id): void
+    {
+        $vehicle = is_numeric($id) ? Vehicle::find((int) $id) : Vehicle::findBySlug($id);
+        if ($vehicle === null) {
+            $this->json(['error' => 'Vehicle listing not found.'], 404);
+            return;
+        }
+
+        $providerUser = User::find((int) $vehicle['user_id']);
+        $providerName = $providerUser['name'] ?? ($vehicle['provider_name'] ?? 'Rental Partner');
+        $providerAvatar = !empty($providerUser['avatar'])
+            ? api_img_src($providerUser['avatar'], 'user' . $vehicle['user_id'])
+            : null;
+        $isOnline = User::isOnline((int) $vehicle['user_id']);
+
+        $mainImg = api_img_src((string) ($vehicle['image'] ?? ''), 'vehicle' . $vehicle['id']);
+        $gallery = Vehicle::gallery((int) $vehicle['id']);
+        $images = [];
+        if ($mainImg !== '') {
+            $images[] = $mainImg;
+        }
+        foreach ($gallery as $g) {
+            $gUrl = api_img_src((string) ($g['image_path'] ?? ''), 'vehicle' . $vehicle['id'] . '-' . $g['id']);
+            if (!in_array($gUrl, $images, true)) {
+                $images[] = $gUrl;
+            }
+        }
+        if ($images === [] && $mainImg !== '') {
+            $images[] = $mainImg;
+        }
+
+        $specs = Vehicle::parseSpecs($vehicle['specs'] ?? null);
+        $providerStats = RentalReview::providerStats((int) $vehicle['user_id']);
+        $vehicleStats = RentalReview::vehicleStats((string) $vehicle['id']);
+        $displayRating = $vehicleStats['rating'] > 0.0 ? $vehicleStats['rating'] : $providerStats['rating'];
+
+        $this->json([
+            'vehicle' => [
+                'id' => (string) $vehicle['id'],
+                'slug' => (string) $vehicle['slug'],
+                'name' => (string) $vehicle['name'],
+                'make' => (string) $vehicle['make'],
+                'model' => (string) $vehicle['model'],
+                'year' => (int) $vehicle['year'],
+                'type' => (string) $vehicle['type'],
+                'price_per_day' => (float) $vehicle['price_per_day'],
+                'specs' => $specs,
+                'shop' => (string) $providerName,
+                'location' => (string) $vehicle['location'],
+                'address' => (string) ($vehicle['address'] ?? ''),
+                'description' => (string) ($vehicle['description'] ?? ''),
+                'status' => (string) ($vehicle['status'] ?? 'approved'),
+                'is_available' => (bool) ($vehicle['is_available'] ?? true),
+                'rating' => (float) $displayRating,
+                'reviews_count' => (int) $vehicleStats['reviews_count'],
+                'image' => $mainImg,
+                'images' => $images,
+                'provider' => [
+                    'id' => (int) $vehicle['user_id'],
+                    'name' => (string) $providerName,
+                    'email' => (string) ($providerUser['email'] ?? ''),
+                    'avatar' => $providerAvatar,
+                    'online' => $isOnline,
+                    'role' => (string) ($providerUser['role'] ?? 'rental_provider'),
+                    'rating' => (float) $providerStats['rating'],
+                    'reviews_count' => (int) $providerStats['reviews_count'],
+                    'response_time' => 'Typically replies in 15 mins',
+                    'completed_rentals' => (int) $providerStats['completed_rentals'],
+                ],
+                'requirements' => [
+                    "Valid Philippine Driver's License or International Driving Permit",
+                    "Government-issued ID or Passport held for the duration of the rental",
+                    "Full-to-full fuel policy (unit is provided full and returned full)",
+                    "Certified helmet use mandatory at all times for riders and passengers",
+                    "Deposit of valid physical ID safely held by the partner until vehicle return",
+                ],
+            ],
         ]);
     }
 
@@ -1804,6 +1900,126 @@ final class ApiController extends Controller
      * POST /api/rentals/report — report a problem with a reserved unit so the
      * rental owner can review and refund. JSON body.
      */
+
+    /**
+     * POST /api/rentals/reviews — submit or update rating and feedback for a completed rental.
+     */
+    public function submitRentalReview(): void
+    {
+        $userId = ApiAuth::id();
+        if ($userId === null) {
+            $this->json(['error' => 'Unauthorized.'], 401);
+            return;
+        }
+
+        $body = $this->jsonBody();
+        $rentalId = (int) ($body['rental_id'] ?? 0);
+        $rating = (int) ($body['rating'] ?? 0);
+        $feedback = trim((string) ($body['feedback'] ?? ''));
+
+        if ($rentalId <= 0) {
+            $this->json(['error' => 'Rental ID is required.'], 422);
+            return;
+        }
+
+        $rental = RentalRequest::find($rentalId);
+        if ($rental === null || (int) $rental['user_id'] !== $userId) {
+            $this->json(['error' => 'Rental reservation not found or access denied.'], 404);
+            return;
+        }
+
+        // Must be completed!
+        if (($rental['status'] ?? '') !== 'completed') {
+            $this->json([
+                'error' => 'You can only rate and review a rental after it has been marked as Completed by the provider.'
+            ], 403);
+            return;
+        }
+
+        if ($rating < 1 || $rating > 5) {
+            $this->json(['error' => 'Please select a valid rating between 1 and 5 stars.'], 422);
+            return;
+        }
+
+        if (mb_strlen($feedback) < 3) {
+            $this->json(['error' => 'Please provide written feedback with at least 3 characters.'], 422);
+            return;
+        }
+
+        // Resolve provider ID
+        $providerId = 0;
+        $vehicleId = $rental['vehicle_id'] ?? null;
+        if ($vehicleId !== null && is_numeric($vehicleId)) {
+            $vehicle = Vehicle::find((int) $vehicleId);
+            if ($vehicle !== null && !empty($vehicle['user_id'])) {
+                $providerId = (int) $vehicle['user_id'];
+            }
+        }
+        if ($providerId <= 0) {
+            $shopName = trim((string) ($rental['shop_name'] ?? ''));
+            $partnerUser = Database::first("SELECT id FROM users WHERE name = ? AND role = 'rental_provider'", [$shopName]);
+            if ($partnerUser !== null) {
+                $providerId = (int) $partnerUser['id'];
+            }
+        }
+        if ($providerId <= 0) {
+            $providerId = 1;
+        }
+
+        try {
+            $review = RentalReview::createOrUpdate(
+                $rentalId,
+                $userId,
+                $providerId,
+                $vehicleId ? (string) $vehicleId : null,
+                $rating,
+                $feedback
+            );
+
+            $stats = RentalReview::providerStats($providerId);
+
+            $this->json([
+                'success' => true,
+                'message' => 'Review submitted successfully.',
+                'review' => [
+                    'id' => (int) $review['id'],
+                    'rental_id' => (int) $review['rental_id'],
+                    'rating' => (int) $review['rating'],
+                    'feedback' => (string) $review['feedback'],
+                    'created_at' => (string) $review['created_at'],
+                    'updated_at' => (string) $review['updated_at'],
+                ],
+                'provider_stats' => $stats,
+            ]);
+        } catch (\Throwable $e) {
+            $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * GET /api/rentals/reviews?rental_id=... — fetch a review by rental ID.
+     */
+    public function getRentalReview(): void
+    {
+        $rentalId = (int) $this->input('rental_id', 0);
+        if ($rentalId <= 0) {
+            $this->json(['error' => 'Rental ID is required.'], 422);
+            return;
+        }
+
+        $review = RentalReview::findForRental($rentalId);
+        $this->json([
+            'review' => $review !== null ? [
+                'id' => (int) $review['id'],
+                'rental_id' => (int) $review['rental_id'],
+                'rating' => (int) $review['rating'],
+                'feedback' => (string) $review['feedback'],
+                'created_at' => (string) $review['created_at'],
+                'updated_at' => (string) $review['updated_at'],
+            ] : null,
+        ]);
+    }
+
     public function reportRental(): void
     {
         $userId = ApiAuth::id();
@@ -1857,8 +2073,11 @@ final class ApiController extends Controller
         $paymentStatus = (string) ($r['payment_status'] ?? 'unpaid');
         $status = (string) $r['status'];
 
+        $review = RentalReview::findForRental((int) $r['id']);
+
         return [
             'id' => (int) $r['id'],
+            'vehicle_id' => (string) ($r['vehicle_id'] ?? ''),
             'vehicle_name' => (string) $r['vehicle_name'],
             'vehicle_type' => (string) $r['vehicle_type'],
             'shop_name' => (string) $r['shop_name'],
@@ -1877,6 +2096,15 @@ final class ApiController extends Controller
             'report_message' => (string) ($r['report_message'] ?? ''),
             'owner_report_note' => (string) ($r['owner_report_note'] ?? ''),
             'can_report' => $paymentStatus === 'paid' && $reportStatus === 'none' && $status !== 'refunded',
+            'can_review' => $status === 'completed',
+            'has_reviewed' => $review !== null,
+            'review' => $review !== null ? [
+                'id' => (int) $review['id'],
+                'rating' => (int) $review['rating'],
+                'feedback' => (string) $review['feedback'],
+                'created_at' => (string) $review['created_at'],
+                'updated_at' => (string) $review['updated_at'],
+            ] : null,
             'created_at' => (string) ($r['created_at'] ?? ''),
         ];
     }
