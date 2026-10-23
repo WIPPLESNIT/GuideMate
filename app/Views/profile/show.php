@@ -36,14 +36,21 @@ $alignedBioHeight = max(48, ($bioLineCount * 24) + 28);
     <div class="dash-layout">
         <?= \App\Core\View::partial('partials/dash-nav') ?>
         <div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+            <div style="margin-bottom:1.5rem;">
                 <h1 class="mb-0">My profile</h1>
-                <a href="<?= e(url('/profile/edit')) ?>" class="btn btn-primary">✏️ Edit profile</a>
             </div>
 
-            <div class="panel" style="max-width:680px;">
+            <div class="panel profile-details-panel" id="profileDetailsSection" style="max-width:680px;position:relative;">
+                <div class="profile-details-corner-action">
+                    <a href="<?= e(url('/profile/edit')) ?>" class="profile-corner-control has-tooltip" aria-label="Edit profile" title="Edit profile" data-tooltip="Edit profile" id="editProfileBtn">
+                        <svg class="ico-edit-pencil" width="18" height="18" viewBox="126 126 260 260" fill="none" stroke="currentColor" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M 265 173 H 146 a 6 6 0 0 0 -6 6 v 186 a 6 6 0 0 0 6 6 h 186 a 6 6 0 0 0 6 -6 V 250" />
+                            <path d="M 186 328 l 18 -52 L 344 136 l 34 34 L 238 310 Z" />
+                        </svg>
+                    </a>
+                </div>
                 <div class="panel-body">
-                    <div style="display:flex;align-items:center;gap:1.25rem;padding-bottom:1.5rem;border-bottom:1px solid var(--line);margin-bottom:1.5rem;">
+                    <div style="display:flex;align-items:center;gap:1.25rem;padding-bottom:1.5rem;border-bottom:1px solid var(--line);margin-bottom:1.5rem;padding-right:3rem;">
                         <img src="<?= e(img_src($user['avatar'] ?? null, 'avatar' . $user['id'])) ?>" alt="<?= e($user['name']) ?>" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid var(--line);">
                         <div>
                             <h2 style="margin:0 0 .3rem;font-size:1.35rem;"><?= e($user['name']) ?></h2>
@@ -108,7 +115,19 @@ $alignedBioHeight = max(48, ($bioLineCount * 24) + 28);
                                 <?php foreach ($documents as $d): ?>
                                     <li>
                                         <span class="doc-type"><?= e(\App\Models\GuideDocument::typeLabel($d['doc_type'])) ?></span>
-                                        <a href="<?= e(url($d['file_path'])) ?>" target="_blank" rel="noopener" class="doc-link">📎 <?= e($d['label'] ?: basename($d['file_path'])) ?> ↗</a>
+                                        <?php
+                                        $hasFile = !empty($d['file_path']);
+                                        $docUrl = $hasFile ? url($d['file_path']) : url('/documents/' . (int) $d['id']);
+                                        $docLabel = !empty($d['label']) ? $d['label'] : ($hasFile ? basename($d['file_path']) : 'Document #' . $d['id']);
+                                        ?>
+                                        <a href="<?= e($docUrl) ?>" target="_blank" rel="noopener" class="doc-link"
+                                           data-doc-preview="1"
+                                           data-doc-id="<?= (int) $d['id'] ?>"
+                                           data-doc-url="<?= e($docUrl) ?>"
+                                           data-doc-label="<?= e($docLabel) ?>"
+                                           data-doc-type="<?= e(\App\Models\GuideDocument::typeLabel($d['doc_type'])) ?>"
+                                           data-doc-status="<?= e($guideStatus) ?>"
+                                           data-doc-owner="<?= e($user['name'] ?? '') ?>">📎 <?= e($docLabel) ?></a>
                                         <?php if ($isVerified): ?>
                                             <span class="pill pill-confirmed" style="margin-left:.5rem;">✓ Verified</span>
                                         <?php elseif ($guideStatus === 'pending'): ?>
@@ -119,7 +138,7 @@ $alignedBioHeight = max(48, ($bioLineCount * 24) + 28);
                             </ul>
                         <?php endif; ?>
 
-                        <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost" style="margin-top:1rem;">
+                        <a href="<?= e(url('/documents')) ?>" class="btn btn-ghost" style="margin-top:1rem;">
                             Submit or Update Documents
                         </a>
                     </div>

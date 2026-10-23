@@ -50,6 +50,8 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
     <?php if ($user !== null): ?>
         <meta name="auth-user-id" content="<?= (int) $user['id'] ?>">
         <meta name="auth-user-role" content="<?= e((string) $user['role']) ?>">
+        <meta name="auth-user-verified" content="<?= (string) ($user['guide_status'] ?? 'none') === 'approved' ? '1' : '0' ?>">
+        <meta name="auth-user-status" content="<?= e((string) ($user['guide_status'] ?? 'none')) ?>">
     <?php endif; ?>
 </head>
 <body class="<?= e(trim(($isMessages ? 'page-messages ' : '') . ($isDashboard ? 'page-dashboard ' : '') . ($hideFooter ? 'page-no-footer ' : '') . ($guideWarned ? 'guide-warned' : ''))) ?>">
@@ -127,6 +129,10 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
     <?= $content ?>
 </main>
 
+<?php if ($user !== null && \App\Models\User::isProviderRole((string) ($user['role'] ?? ''))): ?>
+    <?= \App\Core\View::partial('partials/verification-gating-modal') ?>
+<?php endif; ?>
+
 <?php if (!$hideFooter): ?>
 <footer class="site-footer<?= $isDashboard ? ' site-footer--dash' : '' ?>">
     <div class="container footer-grid">
@@ -171,6 +177,7 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
 $suspendedUser = $suspendedUser ?? $_SESSION['suspended_user'] ?? null;
 unset($_SESSION['suspended_user']);
 require BASE_DIR . '/app/Views/partials/suspension_modal.php';
+require BASE_DIR . '/app/Views/partials/doc-preview-modal.php';
 ?>
 <script src="<?= e(asset('js/main.js')) ?>"></script>
 </body>

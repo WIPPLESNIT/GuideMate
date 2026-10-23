@@ -31,52 +31,45 @@ final class Upload
      */
     public static function present(?array $file): bool
     {
-        return is_array($file)
+        return $file !== null
             && isset($file['error'])
-            && !is_array($file['error'])
             && (int) $file['error'] !== UPLOAD_ERR_NO_FILE;
     }
 
     /**
-     * Validate and store a single uploaded file. Returns the path relative to
-     * the public/ directory (e.g. "uploads/guide-docs/12/ab12.pdf").
+     * Validate and save an upload. Returns the relative path suitable for
+     * storing in the database (e.g. "uploads/guide-docs/42/a1b2c3d4.pdf").
      *
-     * @param array<string, mixed> $file a single $_FILES[...] entry
-     * @param array<int, string>   $allowedExt
-     * @throws RuntimeException on any validation or move failure
+     * @param array<string, mixed> $file
+     * @param array<int, string>|null $allowedExt override self::DOC_EXT when needed
      */
-    public static function store(
-        array $file,
-        string $subdir,
-        array $allowedExt = self::DOC_EXT,
-        int $maxBytes = self::MAX_BYTES
-    ): string {
-        if (!isset($file['error']) || is_array($file['error'])) {
-            throw new RuntimeException('Invalid upload.');
+    public static function store(array $file, string $subdir, ?array $allowedExt = null): string
+    {
+        $code = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($code !== UPLOAD_ERR_OK) {
+            throw match ($code) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => new RuntimeException('The file is larger than the server allows.'),
+                UPLOAD_ERR_PARTIAL => new RuntimeException('The file only partially uploaded. Please try again.'),
+                UPLOAD_ERR_NO_FILE => new RuntimeException('Please choose a file to upload.'),
+                default => new RuntimeException('Upload failed with error code ' . $code . '.'),
+            };
         }
 
-        switch ((int) $file['error']) {
-            case UPLOAD_ERR_OK:
-                break;
-            case UPLOAD_ERR_NO_FILE:
-                throw new RuntimeException('No file was selected.');
-            case UPLOAD_ERR_INI_SIZE:
-            case UPLOAD_ERR_FORM_SIZE:
-                throw new RuntimeException('File is too large (server limit).');
-            default:
-                throw new RuntimeException('Upload failed, please try again.');
+        if ((int) ($file['size'] ?? 0) > self::MAX_BYTES) {
+            throw new RuntimeException('Files must be 5 MB or smaller.');
         }
 
-        if ((int) $file['size'] > $maxBytes) {
-            throw new RuntimeException('File must be ' . (int) round($maxBytes / 1048576) . 'MB or smaller.');
+        $orig = (string) ($file['name'] ?? '');
+        $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+        $allowed = $allowedExt ?? self::DOC_EXT;
+
+        if (!in_array($ext, $allowed, true)) {
+            throw new RuntimeException(
+                'Invalid file type (.' . $ext . '). Allowed: ' . implode(', ', $allowed) . '.'
+            );
         }
 
-        $ext = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
-        if (!in_array($ext, $allowedExt, true)) {
-            throw new RuntimeException('Allowed file types: ' . implode(', ', $allowedExt) . '.');
-        }
-
-        // Verify the real content type, not just the extension.
+        // Sniff actual content bytes, not just client-provided MIME header.
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mime = $finfo ? (string) finfo_file($finfo, (string) $file['tmp_name']) : '';
         if ($finfo) {
@@ -97,8 +90,12 @@ final class Upload
         $filename = bin2hex(random_bytes(8)) . '.' . $ext;
         $dest = $absDir . DIRECTORY_SEPARATOR . $filename;
 
-        if (!move_uploaded_file((string) $file['tmp_name'], $dest)) {
-            throw new RuntimeException('Could not save the upload.');
+        if (!@move_uploaded_file((string) $file['tmp_name'], $dest)) {
+            if (PHP_SAPI === 'cli' && @copy((string) $file['tmp_name'], $dest)) {
+                @unlink((string) $file['tmp_name']);
+            } else {
+                throw new RuntimeException('Could not save the upload.');
+            }
         }
 
         return $relDir . '/' . $filename;

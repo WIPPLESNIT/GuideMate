@@ -14,8 +14,10 @@ use App\Controllers\AuthController;
 use App\Controllers\BookingController;
 use App\Controllers\DashboardController;
 use App\Controllers\DisputeController;
+use App\Controllers\DocumentController;
 use App\Controllers\GuideController;
 use App\Controllers\HomeController;
+use App\Controllers\HotelController;
 use App\Controllers\ListingController;
 use App\Controllers\LocaleController;
 use App\Controllers\MessageController;
@@ -95,9 +97,21 @@ $router->post('/guides/{id}/contact', [MessageController::class, 'contactGuidePr
 $router->get('/dashboard', [DashboardController::class, 'index'], ['auth']);
 $router->get('/dashboard/reviews', [DashboardController::class, 'reviews'], ['provider']);
 
-// ---- Provider verification (guides, rental & hotel partners) --------------
-$router->get('/dashboard/verification', [GuideController::class, 'verification'], ['provider']);
-$router->post('/dashboard/verification', [GuideController::class, 'submitVerification'], ['provider']);
+// ---- Documents & Verification ---------------------------------------------
+$router->get('/documents', [DocumentController::class, 'myDocuments'], ['auth']);
+$router->post('/documents/upload', [DocumentController::class, 'upload'], ['auth']);
+$router->post('/documents', [DocumentController::class, 'upload'], ['auth']);
+$router->get('/documents/{id}', [DocumentController::class, 'show'], ['auth']);
+$router->get('/documents/download/{id}', [DocumentController::class, 'download'], ['auth']);
+$router->get('/admin/users/{id}/documents', [DocumentController::class, 'adminShow'], ['admin']);
+$router->get('/uploads/guide-docs/{userId}/{filename}', [DocumentController::class, 'serveFile']);
+$router->get('/uploads/rentals/ids/{userId}/{filename}', [DocumentController::class, 'serveRentalId']);
+$router->get('/documents/file/{id}', [DocumentController::class, 'serveFileById']);
+
+// ---- Legacy verification route redirects directly to /documents -----------
+$router->get('/dashboard/verification', [GuideController::class, 'verification'], ['auth']);
+$router->post('/dashboard/verification', [DocumentController::class, 'upload'], ['auth']);
+$router->get('/dashboard/verification/status', [GuideController::class, 'verificationStatus'], ['auth']);
 
 // ---- Listing management (guides + hotel partners) -------------------------
 $router->get('/dashboard/listings', [GuideController::class, 'listings'], ['listing_provider']);
@@ -117,6 +131,12 @@ $router->post('/dashboard/listings/{id}/availability/unblock', [GuideController:
 $router->get('/dashboard/listings/{id}/schedule', [GuideController::class, 'schedule'], ['listing_provider']);
 $router->post('/dashboard/listings/{id}/schedule/add', [GuideController::class, 'addSchedule'], ['listing_provider']);
 $router->post('/dashboard/listings/{id}/schedule/remove', [GuideController::class, 'removeSchedule'], ['listing_provider']);
+
+// ---- Hotel partner room inventory & reservations ----------------------------
+$router->post('/dashboard/hotel/rooms/create', [HotelController::class, 'createRoom'], ['auth']);
+$router->post('/dashboard/hotel/rooms/{id}/edit', [HotelController::class, 'updateRoom'], ['auth']);
+$router->post('/dashboard/hotel/rooms/{id}/status', [HotelController::class, 'updateRoomStatus'], ['auth']);
+$router->post('/dashboard/hotel/bookings/{id}/status', [HotelController::class, 'updateReservationStatus'], ['auth']);
 
 // ---- Rental partner management (relocated from the admin portal) -----------
 $router->get('/dashboard/vehicles', [RentalController::class, 'vehicles'], ['rental_provider']);
@@ -145,6 +165,7 @@ $router->post('/admin/feedback/{id}/status', [AdminController::class, 'updateFee
 $router->get('/admin/analytics', [AdminController::class, 'analytics'], ['admin']);
 $router->get('/admin/messages', [AdminController::class, 'messages'], ['admin']);
 $router->post('/admin/messages/send', [AdminController::class, 'sendMessage'], ['admin']);
+$router->get('/admin/messages/{partner}/poll', [AdminController::class, 'poll'], ['admin']);
 $router->get('/admin/messages/{partner}', [AdminController::class, 'messageThread'], ['admin']);
 $router->get('/admin/export/bookings', [AdminController::class, 'exportBookings'], ['admin']);
 $router->get('/admin/export/users', [AdminController::class, 'exportUsers'], ['admin']);

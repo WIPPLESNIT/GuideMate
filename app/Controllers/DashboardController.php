@@ -8,6 +8,7 @@ use App\Core\Auth;
 use App\Core\Controller;
 use App\Models\Booking;
 use App\Models\Favorite;
+use App\Models\HotelRoom;
 use App\Models\Listing;
 use App\Models\Message;
 use App\Models\RentalRequest;
@@ -63,8 +64,7 @@ final class DashboardController extends Controller
     }
 
     /**
-     * Hotel Partner dashboard — listings and guest inquiries only.
-     * Hotel stays are not bookable on GuideMate; tourists message the hotel.
+     * Hotel Partner dashboard — listings, room inventory, reservations, and guest inquiries.
      *
      * @param array<string, mixed> $user
      */
@@ -78,6 +78,8 @@ final class DashboardController extends Controller
             'title' => 'Hotel Dashboard',
             'user' => $user,
             'isFirstLogin' => User::isFirstLogin($user),
+            'rooms' => HotelRoom::forOwner($uid),
+            'reservations' => Booking::forGuide($uid),
             'listings' => Listing::forOwner($uid),
             'inquiries' => array_slice(Message::conversations($uid), 0, 6),
             'unread' => Message::unreadCount($uid),

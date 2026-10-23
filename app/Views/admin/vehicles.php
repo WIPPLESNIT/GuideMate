@@ -38,7 +38,7 @@
                         <th>Type / Rate</th>
                         <th>Status</th>
                         <th>Dates / Audit</th>
-                        <th style="text-align:right;">Actions</th>
+                        <th class="col-actions" style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -113,21 +113,23 @@
                                 <?php endif; ?>
                             <?php endif; ?>
                         </td>
-                        <td style="white-space:nowrap;text-align:right;">
-                            <a href="<?= e(url('/admin/vehicles/' . (int) $v['id'])) ?>" class="btn btn-ghost btn-sm">Inspect</a>
+                        <td class="vehicle-actions-cell" style="white-space:nowrap;text-align:right;vertical-align:middle;">
+                            <div class="vehicle-actions-vertical">
+                                <a href="<?= e(url('/admin/vehicles/' . (int) $v['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical">Inspect</a>
 
-                            <?php if ($vStatus !== 'approved'): ?>
-                                <form method="post" action="<?= e(url('/admin/vehicles/' . (int) $v['id'] . '/approve')) ?>" style="display:inline;" onsubmit="return confirm('Approve and publish this vehicle listing? It will become visible to tourists immediately.');">
-                                    <?= csrf_field() ?>
-                                    <button type="submit" class="btn btn-primary btn-sm">✓ Approve</button>
-                                </form>
-                            <?php endif; ?>
+                                <?php if ($vStatus !== 'approved'): ?>
+                                    <form method="post" action="<?= e(url('/admin/vehicles/' . (int) $v['id'] . '/approve')) ?>" class="vehicle-action-form" onsubmit="return confirm('Approve and publish this vehicle listing? It will become visible to tourists immediately.');">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-primary btn-sm btn-action-vertical">✓ Approve</button>
+                                    </form>
+                                <?php endif; ?>
 
-                            <?php if ($vStatus !== 'rejected'): ?>
-                                <button type="button" class="btn btn-ghost btn-sm" style="color:var(--coral-600);" onclick="openRejectModal(<?= (int) $v['id'] ?>, '<?= e(addslashes((string) $v['name'])) ?>');">
-                                    Reject
-                                </button>
-                            <?php endif; ?>
+                                <?php if ($vStatus !== 'rejected'): ?>
+                                    <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-reject" style="color:var(--coral-600);" onclick="openRejectModal(<?= (int) $v['id'] ?>, '<?= e(addslashes((string) $v['name'])) ?>');">
+                                        Reject
+                                    </button>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>

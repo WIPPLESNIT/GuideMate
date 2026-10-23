@@ -108,10 +108,8 @@ final class RentalController extends Controller
      */
     public function createVehicle(): void
     {
-        $user = Auth::user();
-        if ((string) ($user['guide_status'] ?? 'none') !== 'approved') {
-            flash('error', 'You must be an approved rental partner before listing vehicles for rent.');
-            redirect('/dashboard/vehicles');
+        if (!$this->ensureApproved()) {
+            return;
         }
 
         $this->view('rental/vehicle-form', [
@@ -127,14 +125,11 @@ final class RentalController extends Controller
      */
     public function storeVehicle(): void
     {
-        $user = Auth::user();
-        $userId = (int) Auth::id();
-
-        if ((string) ($user['guide_status'] ?? 'none') !== 'approved') {
-            flash('error', 'You must be an approved rental partner before listing vehicles for rent.');
-            redirect('/dashboard/vehicles');
+        if (!$this->ensureApproved()) {
+            return;
         }
 
+        $userId = (int) Auth::id();
         $this->verifyCsrf();
 
         $data = $this->validateVehicleData();
@@ -459,6 +454,31 @@ final class RentalController extends Controller
     // =========================================================================
     // Helpers & Validation
     // =========================================================================
+
+    /**
+     * Rental providers can only create listings once an administrator has approved them.
+     */
+    private function ensureApproved(): bool
+    {
+        $user = Auth::user();
+        if ((string) ($user['guide_status'] ?? 'none') === 'approved') {
+            return true;
+        }
+
+        if ($this->isJson()) {
+            $this->json([
+                'error' => 'You must be an approved rental partner before listing vehicles for rent.',
+                'guide_status' => (string) ($user['guide_status'] ?? 'none'),
+                'is_verified' => false,
+                'redirect' => url('/documents'),
+            ], 403);
+            return false;
+        }
+
+        flash('error', 'You must be an approved rental partner before listing vehicles for rent.');
+        redirect('/documents');
+        return false;
+    }
 
     /**
      * Ensure the vehicle exists and belongs to the currently authenticated provider.

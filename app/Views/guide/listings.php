@@ -11,9 +11,7 @@ $errors = $errors ?? [];
 $isHotel = ((auth_user() ?? [])['role'] ?? '') === 'hotel_admin';
 // Reopen the modal automatically if a create attempt came back with errors.
 $openModal = $errors !== [];
-$newBtnAttrs = $canCreate
-    ? 'href="' . e(url('/dashboard/listings/create')) . '" data-open-new-listing'
-    : 'href="' . e(url('/dashboard/verification')) . '"';
+$newBtnAttrs = 'href="' . e(url('/dashboard/listings/create')) . '" data-open-new-listing data-action="new-listing"';
 ?>
 <div class="container">
     <div class="dash-layout">
@@ -199,7 +197,14 @@ $newBtnAttrs = $canCreate
     }
 
     document.querySelectorAll('[data-open-new-listing]').forEach(function (btn) {
-        btn.addEventListener('click', openModal);
+        btn.addEventListener('click', function (e) {
+            // Only handle if user is verified (unverified handled by verification modal)
+            var gatingModal = document.getElementById('verificationGatingModal');
+            if (gatingModal && gatingModal.dataset.userVerified !== '1') {
+                return;
+            }
+            openModal(e);
+        });
     });
     modal.querySelectorAll('[data-close-modal]').forEach(function (btn) {
         btn.addEventListener('click', closeModal);

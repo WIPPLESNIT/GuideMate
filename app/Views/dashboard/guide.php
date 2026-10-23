@@ -30,11 +30,14 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
                 <div>
                     <h1 class="mb-0"><?= e(!empty($isFirstLogin) ? __('d_welcome_first', 'Welcome to GuideMate') : __('d_welcome', 'Welcome back')) ?>, <?= e(explode(' ', $user['name'])[0]) ?></h1>
                 </div>
-                <?php if ($isVerified): ?>
-                    <a href="<?= e(url('/dashboard/listings/create')) ?>" class="btn btn-primary">+ <?= e(__('d_new_listing', 'New listing')) ?></a>
-                <?php else: ?>
-                    <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?><?= e(__('d_verification', 'Verification')) ?></a>
-                <?php endif; ?>
+                <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                    <a href="<?= e(url('/dashboard/listings/create')) ?>" class="btn btn-primary" data-action="new-listing" data-open-new-listing>+ <?= e(__('d_new_listing', 'New listing')) ?></a>
+                    <?php if (!$isVerified): ?>
+                        <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?><?= e(__('d_verification', 'Verification')) ?></a>
+                    <?php else: ?>
+                        <a href="<?= e(url('/documents')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?>Documents</a>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <?php if ($isWarned): ?>
@@ -124,7 +127,7 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
                 <div class="panel-head"><h3><?= e(__('d_your_listings', 'Your listings')) ?></h3><a href="<?= e(url('/dashboard/listings')) ?>" class="btn btn-ghost btn-sm"><?= e(__('d_view_all', 'View all')) ?></a></div>
                 <div class="panel-body" style="padding:0;overflow-x:auto;">
                     <?php if ($listings === []): ?>
-                        <div class="empty-state" style="padding:2.5rem 1rem;"><p><?= e(__('d_no_listings', "You haven't created any listings yet.")) ?> <a href="<?= e(url('/dashboard/listings/create')) ?>"><?= e(__('d_create_first', 'Create your first')) ?> →</a></p></div>
+                        <div class="empty-state" style="padding:2.5rem 1rem;"><p><?= e(__('d_no_listings', "You haven't created any listings yet.")) ?> <a href="<?= e(url('/dashboard/listings/create')) ?>" data-action="new-listing" data-open-new-listing><?= e(__('d_create_first', 'Create your first')) ?> →</a></p></div>
                     <?php else: ?>
                         <table class="table">
                             <thead><tr><th><?= e(__('th_title', 'Title')) ?></th><th><?= e(__('th_category', 'Category')) ?></th><th><?= e(__('th_price', 'Price')) ?></th><th><?= e(__('th_rating', 'Rating')) ?></th><th><?= e(__('th_status', 'Status')) ?></th></tr></thead>

@@ -15,11 +15,12 @@
                     <h1 class="mb-0">My Vehicles</h1>
                     <p class="hint mb-0">Manage your rental fleet and track approval statuses.</p>
                 </div>
-                <?php if ($isVerified): ?>
-                    <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary">+ List a Vehicle</a>
-                <?php else: ?>
-                    <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?> Complete Verification</a>
-                <?php endif; ?>
+                <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                    <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary" data-action="new-listing" data-open-new-listing>+ List a Vehicle</a>
+                    <?php if (!$isVerified): ?>
+                        <a href="<?= e(url('/documents')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?> Complete Verification</a>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <?php if (!$isVerified): ?>
@@ -29,7 +30,7 @@
                         <strong>Rental Partner Verification Pending</strong>
                         <p class="mb-0">
                             Your rental partner documents are currently under administrative review. Once your account is verified, you will be able to list vehicles and accept reservations.
-                            <a href="<?= e(url('/dashboard/verification')) ?>">View verification status →</a>
+                            <a href="<?= e(url('/documents')) ?>">View verification status →</a>
                         </p>
                     </div>
                 </div>
@@ -73,9 +74,7 @@
             <div class="panel">
                 <div class="panel-head">
                     <h3>Vehicle Inventory (<?= count($vehicles) ?>)</h3>
-                    <?php if ($isVerified): ?>
-                        <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm">+ List Vehicle</a>
-                    <?php endif; ?>
+                    <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm" data-action="new-listing" data-open-new-listing>+ List Vehicle</a>
                 </div>
                 <div class="panel-body" style="padding:0;overflow-x:auto;">
                     <?php if ($vehicles === []): ?>
@@ -83,11 +82,7 @@
                             <div class="big">🚗</div>
                             <h3>No vehicle listings yet</h3>
                             <p>Add your scooters, motorcycles, cars, or vans so tourists traveling in Cebu can rent from you.</p>
-                            <?php if ($isVerified): ?>
-                                <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary mt-2">+ List your first vehicle</a>
-                            <?php else: ?>
-                                <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost mt-2">Submit verification documents</a>
-                            <?php endif; ?>
+                            <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary mt-2" data-action="new-listing" data-open-new-listing>+ List your first vehicle</a>
                         </div>
                     <?php else: ?>
                         <table class="table table-vehicles">

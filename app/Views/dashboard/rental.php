@@ -19,15 +19,14 @@ $guideStats = $guideStats ?? [];
                     <h1 class="mb-0"><?= !empty($isFirstLogin) ? 'Welcome to GuideMate' : 'Welcome back' ?>, <?= e(explode(' ', (string) $user['name'])[0]) ?></h1>
                     <p class="hint mb-0">Rental Partner dashboard</p>
                 </div>
-                <?php if ($isVerified): ?>
-                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-                        <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary">+ List a Vehicle</a>
-                        <a href="<?= e(url('/dashboard/vehicles')) ?>" class="btn btn-ghost"><?= admin_icon('listings', 16) ?> My Vehicles (<?= (int) ($vehicleStats['total'] ?? 0) ?>)</a>
-                        <a href="<?= e(url('/dashboard/rentals')) ?>" class="btn btn-ghost"><?= admin_icon('rentals', 16) ?> Requests</a>
-                    </div>
-                <?php else: ?>
-                    <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?>Verification</a>
-                <?php endif; ?>
+                <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                    <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary" data-action="new-listing" data-open-new-listing>+ List a Vehicle</a>
+                    <?php if (!$isVerified): ?>
+                        <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?>Verification</a>
+                    <?php else: ?>
+                        <a href="<?= e(url('/documents')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?>Documents</a>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <?php if (!$isVerified): ?>
@@ -86,9 +85,7 @@ $guideStats = $guideStats ?? [];
                 <div class="panel-head">
                     <h3>My Vehicle Listings</h3>
                     <div>
-                        <?php if ($isVerified): ?>
-                            <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm">+ List Vehicle</a>
-                        <?php endif; ?>
+                        <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm" data-action="new-listing" data-open-new-listing>+ List Vehicle</a>
                         <a href="<?= e(url('/dashboard/vehicles')) ?>" class="btn btn-ghost btn-sm">View All</a>
                     </div>
                 </div>
@@ -96,9 +93,7 @@ $guideStats = $guideStats ?? [];
                     <?php if (empty($vehicles)): ?>
                         <div class="empty-state" style="padding:2.5rem 1rem;">
                             <p>You have not listed any vehicles yet.</p>
-                            <?php if ($isVerified): ?>
-                                <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm" style="margin-top:0.5rem;">List your first vehicle</a>
-                            <?php endif; ?>
+                            <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm" style="margin-top:0.5rem;" data-action="new-listing" data-open-new-listing>List your first vehicle</a>
                         </div>
                     <?php else: ?>
                         <table class="table">

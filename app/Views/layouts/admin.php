@@ -45,6 +45,7 @@ $pageTitle = $title ?? 'Admin';
     </div>
 </main>
 
+<?= \App\Core\View::partial('partials/doc-preview-modal') ?>
 <script src="<?= e(asset('js/main.js')) ?>"></script>
 </body>
 </html>

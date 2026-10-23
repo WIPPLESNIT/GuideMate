@@ -36,5 +36,4 @@ $role = $user['role'] ?? 'tourist';
     <?php if (!\App\Models\User::isProviderRole((string) $role)): ?>
         <a href="<?= e(url('/messages')) ?>" class="<?= active_when('/messages') ?>"><?= admin_icon('feedback') ?><span class="nav-label"><?= e(__('d_messages', 'Messages')) ?></span></a>
     <?php endif; ?>
-    <a href="<?= e(url('/profile')) ?>" class="<?= active_when('/profile') ?>"><?= admin_icon('profile') ?><span class="nav-label"><?= e(__('d_profile', 'Profile')) ?></span></a>
 </nav>

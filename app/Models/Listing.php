@@ -355,10 +355,11 @@ final class Listing
         return (int) ($row['c'] ?? 0);
     }
 
-    /** Only tour-guide listings can be booked. Hotels and things-to-do are inquire-only. */
+    /** Tour guides and hotels support direct online booking with deposit. */
     public static function isBookable(array $listing): bool
     {
-        return ($listing['category_slug'] ?? '') === 'tour-guides';
+        $slug = (string) ($listing['category_slug'] ?? '');
+        return in_array($slug, ['tour-guides', 'hotels'], true);
     }
 
     /**

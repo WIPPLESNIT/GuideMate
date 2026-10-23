@@ -31,6 +31,7 @@ $statusPill = [
                     </h3>
                     <p class="hint mb-0"><?= e($g['email']) ?> · joined <?= e(date('M j, Y', strtotime($g['created_at']))) ?></p>
                 </div>
+                <a href="<?= e(url('/admin/users/' . $g['id'] . '/documents')) ?>" class="btn btn-ghost btn-sm">Documents</a>
             </div>
             <div class="panel-body">
                 <h4 style="margin:0 0 .6rem;">Submitted documents</h4>
@@ -41,8 +42,20 @@ $statusPill = [
                         <?php foreach ($docs as $d): ?>
                             <li>
                                 <span class="doc-type"><?= e(GuideDocument::typeLabel($d['doc_type'])) ?></span>
-                                <a href="<?= e(url($d['file_path'])) ?>" target="_blank" rel="noopener" class="doc-link">
-                                    📎 <?= e($d['label'] ?: basename($d['file_path'])) ?> ↗
+                                <?php
+                                $hasFile = !empty($d['file_path']);
+                                $docUrl = $hasFile ? url($d['file_path']) : url('/documents/' . (int) $d['id']);
+                                $docLabel = !empty($d['label']) ? $d['label'] : ($hasFile ? basename($d['file_path']) : 'Document #' . $d['id']);
+                                ?>
+                                <a href="<?= e($docUrl) ?>" target="_blank" rel="noopener" class="doc-link"
+                                   data-doc-preview="1"
+                                   data-doc-id="<?= (int) $d['id'] ?>"
+                                   data-doc-url="<?= e($docUrl) ?>"
+                                   data-doc-label="<?= e($docLabel) ?>"
+                                   data-doc-type="<?= e(GuideDocument::typeLabel($d['doc_type'])) ?>"
+                                   data-doc-status="<?= e($status) ?>"
+                                   data-doc-owner="<?= e($g['name'] ?? '') ?>">
+                                    📎 <?= e($docLabel) ?>
                                 </a>
                             </li>
                         <?php endforeach; ?>

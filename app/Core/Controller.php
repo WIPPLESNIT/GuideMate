@@ -27,8 +27,20 @@ abstract class Controller
     protected function json(array $data, int $status = 200): void
     {
         http_response_code($status);
-        header('Content-Type: application/json');
+        if (!headers_sent()) {
+            header('Content-Type: application/json');
+        }
         echo json_encode($data);
+    }
+
+    /**
+     * Check if the incoming request expects a JSON response.
+     */
+    protected function isJson(): bool
+    {
+        $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+        $requestedWith = (string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
+        return str_contains($accept, 'application/json') || strtolower($requestedWith) === 'xmlhttprequest';
     }
 
     /**

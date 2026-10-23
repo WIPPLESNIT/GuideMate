@@ -7,6 +7,10 @@
     RewriteCond %{HTTP:Authorization} .
     RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
+    # Route sensitive verification documents through PHP front controller for authorization & MIME handling
+    RewriteRule ^uploads/guide-docs/ index.php [L]
+    RewriteRule ^uploads/rentals/ids/ index.php [L]
+
     # Serve existing files/directories directly.
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d

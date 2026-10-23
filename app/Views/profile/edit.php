@@ -35,7 +35,15 @@ $bioPlaceholder = ($user['role'] === 'guide')
                 <h1 class="mb-0">Edit profile</h1>
                 <a href="<?= e(url('/profile')) ?>" class="btn btn-ghost">← Back to profile</a>
             </div>
-            <div class="panel" style="max-width:680px;">
+            <div class="panel profile-details-panel" id="profileDetailsContainer" style="max-width:680px;position:relative;">
+                <div class="profile-details-corner-action">
+                    <button type="button" class="profile-corner-control has-tooltip" aria-label="Edit profile details" title="Edit profile details" data-tooltip="Edit profile details" id="editProfileCornerBtn">
+                        <svg class="ico-edit-pencil" width="20" height="20" viewBox="126 126 260 260" fill="none" stroke="currentColor" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <path d="M 265 173 H 146 a 6 6 0 0 0 -6 6 v 186 a 6 6 0 0 0 6 6 h 186 a 6 6 0 0 0 6 -6 V 250" />
+                            <path d="M 186 328 l 18 -52 L 344 136 l 34 34 L 238 310 Z" />
+                        </svg>
+                    </button>
+                </div>
                 <div class="panel-body">
                     <form method="post" action="<?= e(url('/profile/edit')) ?>" enctype="multipart/form-data">
                         <?= csrf_field() ?>
@@ -102,7 +110,19 @@ $bioPlaceholder = ($user['role'] === 'guide')
                                 <?php foreach ($documents as $d): ?>
                                     <li>
                                         <span class="doc-type"><?= e(\App\Models\GuideDocument::typeLabel($d['doc_type'])) ?></span>
-                                        <a href="<?= e(url($d['file_path'])) ?>" target="_blank" rel="noopener" class="doc-link">📎 <?= e($d['label'] ?: basename($d['file_path'])) ?> ↗</a>
+                                        <?php
+                                        $hasFile = !empty($d['file_path']);
+                                        $docUrl = $hasFile ? url($d['file_path']) : url('/documents/' . (int) $d['id']);
+                                        $docLabel = !empty($d['label']) ? $d['label'] : ($hasFile ? basename($d['file_path']) : 'Document #' . $d['id']);
+                                        ?>
+                                        <a href="<?= e($docUrl) ?>" target="_blank" rel="noopener" class="doc-link"
+                                           data-doc-preview="1"
+                                           data-doc-id="<?= (int) $d['id'] ?>"
+                                           data-doc-url="<?= e($docUrl) ?>"
+                                           data-doc-label="<?= e($docLabel) ?>"
+                                           data-doc-type="<?= e(\App\Models\GuideDocument::typeLabel($d['doc_type'])) ?>"
+                                           data-doc-status="<?= e($guideStatus) ?>"
+                                           data-doc-owner="<?= e($user['name'] ?? '') ?>">📎 <?= e($docLabel) ?></a>
                                         <?php if ($isVerified): ?>
                                             <span class="pill pill-confirmed" style="margin-left:.5rem;">✓ Verified</span>
                                         <?php elseif ($guideStatus === 'pending'): ?>
@@ -113,7 +133,7 @@ $bioPlaceholder = ($user['role'] === 'guide')
                             </ul>
                         <?php endif; ?>
 
-                        <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost" style="margin-top:1rem;">
+                        <a href="<?= e(url('/documents')) ?>" class="btn btn-ghost" style="margin-top:1rem;">
                             Submit or Update Documents
                         </a>
                     </div>
@@ -143,5 +163,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     autoResizeBio();
     window.addEventListener('load', autoResizeBio);
+
+    var editCornerBtn = document.getElementById('editProfileCornerBtn');
+    if (editCornerBtn) {
+        editCornerBtn.addEventListener('click', function () {
+            var nameInput = document.getElementById('name');
+            if (nameInput) {
+                nameInput.focus();
+                if (typeof nameInput.select === 'function') {
+                    nameInput.select();
+                }
+            }
+        });
+    }
 });
 </script>

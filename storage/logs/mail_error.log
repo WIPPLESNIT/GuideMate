@@ -128,3 +128,8 @@ To: test_reset_user@example.com
 Subject: Reset your GuideMate password
 Error: Simulated email delivery failure
 ----------------------------------------
+[2026-10-22 22:31:22] MAIL FAILURE
+To: test_reset_user@example.com
+Subject: Reset your GuideMate password
+Error: Simulated email delivery failure
+----------------------------------------

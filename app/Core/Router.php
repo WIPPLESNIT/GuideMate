@@ -99,6 +99,14 @@ final class Router
             switch ($guard) {
                 case 'auth':
                     if (!Auth::check()) {
+                        $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+                        $requestedWith = (string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
+                        if (str_contains($accept, 'application/json') || strtolower($requestedWith) === 'xmlhttprequest') {
+                            http_response_code(401);
+                            header('Content-Type: application/json');
+                            echo json_encode(['authenticated' => false, 'error' => 'Unauthorized']);
+                            exit;
+                        }
                         flash('error', 'Please sign in to continue.');
                         redirect('/login');
                     }
@@ -106,6 +114,14 @@ final class Router
                     // exists (e.g. account deleted or DB reset) must not crash.
                     if (Auth::user() === null) {
                         Auth::logout();
+                        $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+                        $requestedWith = (string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
+                        if (str_contains($accept, 'application/json') || strtolower($requestedWith) === 'xmlhttprequest') {
+                            http_response_code(401);
+                            header('Content-Type: application/json');
+                            echo json_encode(['authenticated' => false, 'error' => 'Your session has expired. Please sign in again.']);
+                            exit;
+                        }
                         flash('error', 'Your session has expired. Please sign in again.');
                         redirect('/login');
                     }

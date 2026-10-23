@@ -104,6 +104,23 @@ export type NearestHotel = {
 
 export type ApiArea = { slug: string; name: string; tagline: string };
 
+export type ApiHotelRoom = {
+  id: number;
+  listing_id: number;
+  name: string;
+  description?: string | null;
+  room_size?: string;
+  bed_type?: string;
+  max_guests?: number;
+  price_per_night: number;
+  deposit_percentage?: number;
+  total_units?: number;
+  available_units?: number;
+  status: 'available' | 'unavailable' | 'blocked' | 'fully_booked';
+  amenities?: string | null;
+  image?: string | null;
+};
+
 export type ApiBooking = {
   id: number;
   listing_id: number;
@@ -117,6 +134,15 @@ export type ApiBooking = {
   booking_end_time?: string;
   guests: number;
   total_amount: number;
+  room_id?: number | null;
+  room_name?: string;
+  check_in_date?: string;
+  check_out_date?: string;
+  nights?: number;
+  deposit_amount?: number;
+  balance_amount?: number;
+  payment_stage?: string;
+  hotel_status?: string;
   status: string;
   status_label?: string;
   area: string;
@@ -260,6 +286,7 @@ export const getListings = (params: Record<string, string> = {}) => {
 export const getListing = (slug: string) =>
   api<{
     listing: ApiListing;
+    rooms?: ApiHotelRoom[];
     gallery: { id: number; url: string }[];
     reviews: { id: number; rating: number; comment: string; user_name: string; created_at: string }[];
     summary: { average: number; total: number } | any;
@@ -503,6 +530,9 @@ export const getRentalReview = (rentalId: number) =>
 
 export const createBooking = (payload: {
   listing_id: number;
+  room_id?: number;
+  check_in_date?: string;
+  check_out_date?: string;
   booking_date?: string;
   booking_dates?: string[];
   booking_time?: string;
@@ -513,7 +543,7 @@ export const createBooking = (payload: {
   payment_method?: PaymentMethod;
   payment_reference?: string;
   card_last4?: string;
-}) => api<{ booking: ApiBooking | null }>('/api/bookings', { method: 'POST', body: payload });
+}) => api<{ booking: ApiBooking | null; deposit_amount?: number; balance_amount?: number; payment_instructions?: string }>('/api/bookings', { method: 'POST', body: payload });
 
 export type ApiVoucher = {
   code: string;

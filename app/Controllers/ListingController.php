@@ -10,6 +10,7 @@ use App\Core\Geo;
 use App\Models\Booking;
 use App\Models\Category;
 use App\Models\Favorite;
+use App\Models\HotelRoom;
 use App\Models\Listing;
 use App\Models\Review;
 use App\Models\ReviewImage;
@@ -153,6 +154,7 @@ final class ListingController extends Controller
             'bookedDates' => Booking::bookedDates($listingId),
             'canSeeMapLocation' => $canSeeMapLocation,
             'isBookable' => Listing::isBookable($listing),
+            'hotelRooms' => HotelRoom::forListing($listingId),
             'errors' => errors(),
         ]);
     }

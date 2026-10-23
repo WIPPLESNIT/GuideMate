@@ -37,7 +37,9 @@ final class GuideController extends Controller
 
     public function create(): void
     {
-        $this->ensureApproved();
+        if (!$this->ensureApproved()) {
+            return;
+        }
         $this->view('guide/form', [
             'title' => 'Create Listing',
             'listing' => null,
@@ -48,7 +50,9 @@ final class GuideController extends Controller
 
     public function store(): void
     {
-        $this->ensureApproved();
+        if (!$this->ensureApproved()) {
+            return;
+        }
         $this->verifyCsrf();
         $data = $this->validateListing();
 
@@ -84,7 +88,9 @@ final class GuideController extends Controller
 
     public function edit(string $id): void
     {
-        $this->ensureApproved();
+        if (!$this->ensureApproved()) {
+            return;
+        }
         $listing = $this->ownedListing((int) $id);
         $this->view('guide/form', [
             'title' => 'Edit Listing',
@@ -96,7 +102,9 @@ final class GuideController extends Controller
 
     public function update(string $id): void
     {
-        $this->ensureApproved();
+        if (!$this->ensureApproved()) {
+            return;
+        }
         $this->verifyCsrf();
         $listing = $this->ownedListing((int) $id);
         $data = $this->validateListing();
@@ -125,7 +133,9 @@ final class GuideController extends Controller
 
     public function destroy(string $id): void
     {
-        $this->ensureApproved();
+        if (!$this->ensureApproved()) {
+            return;
+        }
         $this->verifyCsrf();
         $listing = $this->ownedListing((int) $id);
         Listing::delete((int) $listing['id']);
@@ -139,68 +149,77 @@ final class GuideController extends Controller
      */
     public function verification(): void
     {
-        $user = Auth::user();
-        // Title reflects the provider's role so a rental/hotel partner doesn't
-        // see "Guide verification".
-        $headings = [
-            'guide' => 'Guide Verification',
-            'hotel_admin' => 'Hotel Partner Verification',
-            'rental_provider' => 'Rental Partner Verification',
-            'rental_admin' => 'Rental Partner Verification',
-        ];
-        $heading = $headings[(string) ($user['role'] ?? '')] ?? 'Account Verification';
-        $this->view('guide/verification', [
-            'title' => $heading,
-            'heading' => $heading,
-            'user' => $user,
-            'documents' => GuideDocument::forUser((int) $user['id']),
-            'errors' => errors(),
-        ]);
+        redirect('/documents');
     }
 
     public function submitVerification(): void
     {
-        $this->verifyCsrf();
+        (new DocumentController())->upload();
+    }
+
+    /**
+     * Check verification status dynamically for modal and listing-creation gating.
+     */
+    public function verificationStatus(): void
+    {
         $user = Auth::user();
-        $uid = (int) $user['id'];
-
-        if (($user['guide_status'] ?? 'none') === 'approved') {
-            flash('info', 'Your guide account is already verified.');
-            redirect('/dashboard');
+        if ($user === null) {
+            $this->json(['authenticated' => false, 'error' => 'Unauthorized'], 401);
+            return;
         }
 
-        $errors = $this->guideDocErrors();
-        if ($errors !== []) {
-            flash_keep_old($errors, [], '/dashboard/verification');
-        }
+        $userId = (int) $user['id'];
+        $fresh = User::find($userId);
+        $status = (string) ($fresh['guide_status'] ?? $user['guide_status'] ?? 'none');
+        $isVerified = $status === 'approved';
 
-        // Replace any previously submitted documents with the new set.
-        GuideDocument::deleteForUser($uid);
-        try {
-            $this->storeGuideDocs($uid);
-        } catch (RuntimeException $e) {
-            flash('error', 'We could not save your documents: ' . $e->getMessage());
-            redirect('/dashboard/verification');
-        }
+        $role = (string) ($user['role'] ?? 'guide');
+        $verificationUrl = url('/documents');
 
-        User::setGuideStatus($uid, 'pending');
-        flash('success', 'Your documents were re-submitted. Your application is pending review again.');
-        redirect('/dashboard');
+        $message = match ($status) {
+            'approved' => 'Your account is verified. You can publish listings.',
+            'rejected' => 'Your application was not approved. Please review administrator notes and re-submit your documents.',
+            'pending' => 'An administrator is verifying your account documents. You can publish listings once approved.',
+            default => 'Account verification is required before creating a listing. Please submit your verification documents.',
+        };
+
+        $this->json([
+            'authenticated' => true,
+            'user_id' => $userId,
+            'role' => $role,
+            'guide_status' => $status,
+            'is_verified' => $isVerified,
+            'verification_url' => $verificationUrl,
+            'message' => $message,
+            'admin_note' => (string) ($fresh['guide_review_note'] ?? ''),
+        ]);
     }
 
     /**
      * Guides can only manage listings once an admin has approved them.
      */
-    private function ensureApproved(): void
+    private function ensureApproved(): bool
     {
         $status = (string) (Auth::user()['guide_status'] ?? 'none');
         if ($status === 'approved') {
-            return;
+            return true;
         }
+
+        if ($this->isJson()) {
+            $this->json([
+                'error' => 'Account verification is required before creating a listing.',
+                'guide_status' => $status,
+                'is_verified' => false,
+                'redirect' => url('/documents'),
+            ], 403);
+            return false;
+        }
+
         flash('info', $status === 'rejected'
             ? 'Your guide application was not approved. Please review the notes and re-submit your documents.'
             : 'Your guide application is under review. You can publish listings once an admin approves it.');
-        redirect('/dashboard/verification');
+        redirect('/documents');
+        return false;
     }
 
     /**
@@ -209,10 +228,7 @@ final class GuideController extends Controller
      */
     private function rejectHotelPaidTools(): void
     {
-        if (Auth::hasRole('hotel_admin')) {
-            flash('info', 'Hotel listings are inquire-only. Guests message you instead of booking.');
-            redirect('/dashboard');
-        }
+        // Hotel partners manage inventory and reservations directly from their dashboard.
     }
 
     public function bookings(): void

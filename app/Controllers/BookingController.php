@@ -8,6 +8,7 @@ use App\Core\App;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Models\Booking;
+use App\Models\HotelRoom;
 use App\Models\Listing;
 use App\Models\Payment;
 use App\Models\PromoCode;
@@ -27,6 +28,69 @@ final class BookingController extends Controller
             redirect('/listing/' . $listing['slug']);
         }
 
+        $isHotel = ($listing['category_slug'] ?? '') === 'hotels';
+
+        if ($isHotel) {
+            $roomId = (int) $this->input('room_id', 0);
+            $room = HotelRoom::find($roomId);
+            if ($room === null || (int) $room['listing_id'] !== (int) $listing['id']) {
+                flash('error', 'Please choose an available room.');
+                redirect('/listing/' . $listing['slug']);
+            }
+
+            if ($room['status'] !== HotelRoom::STATUS_AVAILABLE) {
+                flash('error', 'This room is currently ' . str_replace('_', ' ', $room['status']) . ' and cannot be booked.');
+                redirect('/listing/' . $listing['slug']);
+            }
+
+            $checkIn = (string) $this->input('check_in_date', '');
+            $checkOut = (string) $this->input('check_out_date', '');
+            $guests = max(1, (int) $this->input('guests', 1));
+            $notes = (string) $this->input('notes', '');
+
+            $errors = [];
+            if ($checkIn === '' || strtotime($checkIn) === false || strtotime($checkIn) < strtotime('today')) {
+                $errors['check_in_date'] = 'Please choose a valid check-in date (today or future).';
+            }
+            if ($checkOut === '' || strtotime($checkOut) === false || strtotime($checkOut) <= strtotime($checkIn)) {
+                $errors['check_out_date'] = 'Check-out date must be after check-in date.';
+            }
+
+            if ($errors === [] && !HotelRoom::isAvailableForDates($roomId, $checkIn, $checkOut)) {
+                $errors['check_in_date'] = 'Sorry, this room is already booked or blocked for these dates.';
+            }
+
+            if ($errors !== []) {
+                flash_keep_old($errors, [], '/listing/' . $listing['slug']);
+            }
+
+            $nights = max(1, (int) round((strtotime($checkOut) - strtotime($checkIn)) / 86400));
+            $breakdown = HotelRoom::calculateBreakdown(
+                (float) $room['price_per_night'],
+                $nights,
+                (int) ($room['deposit_percentage'] ?? 20)
+            );
+
+            $bookingId = Booking::createHotelReservation(
+                (int) $listing['id'],
+                $roomId,
+                (int) Auth::id(),
+                $checkIn,
+                $checkOut,
+                $nights,
+                $guests,
+                $breakdown['total_amount'],
+                $breakdown['deposit_amount'],
+                $breakdown['balance_amount'],
+                $notes
+            );
+
+            flash('info', 'Room selected! Complete the partial deposit to secure your room.');
+            redirect('/checkout/' . $bookingId);
+            return;
+        }
+
+        // Tour guide booking flow
         $date = (string) $this->input('booking_date', '');
         $guests = max(1, (int) $this->input('guests', 1));
         $notes = (string) $this->input('notes', '');
@@ -118,12 +182,15 @@ final class BookingController extends Controller
             redirect('/bookings');
         }
 
-        // Someone else may have confirmed this exact date while this booking sat
-        // unpaid — don't let two tourists hold the same guide on the same day.
-        if (Booking::isDateBooked((int) $booking['listing_id'], (string) $booking['booking_date'], (int) $booking['id'])) {
-            Booking::updateStatus((int) $booking['id'], 'cancelled');
-            flash('error', 'Sorry, this date was just booked by someone else. Please choose another date or another guide.');
-            redirect('/listing/' . $booking['listing_slug']);
+        $isHotel = !empty($booking['room_id']) || ((float) ($booking['deposit_amount'] ?? 0) > 0);
+
+        if (!$isHotel) {
+            // Tour guide collision check
+            if (Booking::isDateBooked((int) $booking['listing_id'], (string) $booking['booking_date'], (int) $booking['id'])) {
+                Booking::updateStatus((int) $booking['id'], 'cancelled');
+                flash('error', 'Sorry, this date was just booked by someone else. Please choose another date or another guide.');
+                redirect('/listing/' . $booking['listing_slug']);
+            }
         }
 
         // Simulated payment gateway — validate the card-shaped fields only.
@@ -139,9 +206,12 @@ final class BookingController extends Controller
             flash_keep_old($errors, [], '/checkout/' . $booking['id']);
         }
 
+        $deposit = (float) ($booking['deposit_amount'] ?? 0);
+        $total = (float) $booking['total_amount'];
+
         $promoCode = strtoupper(trim((string) $this->input('promo_code', '')));
         if ($promoCode !== '') {
-            $check = PromoCode::validate($promoCode, (float) $booking['total_amount'], (int) Auth::id());
+            $check = PromoCode::validate($promoCode, $total, (int) Auth::id());
             if (!$check['valid'] || $check['id'] === null) {
                 flash_keep_old(['promo_code' => $check['message']], [], '/checkout/' . $booking['id']);
             }
@@ -151,13 +221,23 @@ final class BookingController extends Controller
             $booking = $this->ownedBooking((int) $id);
         }
 
-        Payment::create((int) $booking['id'], (float) $booking['total_amount'], $method, 'paid');
-        // Paid but not confirmed — the guide or hotel partner must accept it.
+        // Charge deposit for hotels, or full total for tours
+        $chargeAmount = ($isHotel && $deposit > 0) ? $deposit : (float) $booking['total_amount'];
+
+        Payment::create((int) $booking['id'], $chargeAmount, $method, 'paid');
+
+        if ($isHotel && $deposit > 0) {
+            \App\Core\Database::run(
+                "UPDATE bookings SET hotel_status = 'deposit_paid', payment_stage = 'deposit_paid' WHERE id = ?",
+                [(int) $booking['id']]
+            );
+        }
+
         $customer = Auth::user();
         NotificationService::bookingAwaitingConfirmation(
             (string) $booking['customer_email'],
             (string) $booking['listing_title'],
-            (string) $booking['booking_date']
+            (string) ($booking['check_in_date'] ?? $booking['booking_date'])
         );
         $owner = \App\Models\User::find((int) $booking['guide_id']);
         if ($owner !== null && !empty($owner['email'])) {
@@ -166,11 +246,15 @@ final class BookingController extends Controller
                 (string) ($owner['name'] ?? 'Partner'),
                 (string) $booking['listing_title'],
                 (string) ($customer['name'] ?? 'A tourist'),
-                (string) $booking['booking_date']
+                (string) ($booking['check_in_date'] ?? $booking['booking_date'])
             );
         }
 
-        flash('success', 'Payment received. Your booking is waiting for the partner to confirm it. You can track it under My Bookings.');
+        if ($isHotel && $deposit > 0) {
+            flash('success', 'Room deposit of ' . money($chargeAmount) . ' received! The hotel partner will confirm your stay. Remaining ' . money($booking['balance_amount'] ?? 0) . ' is payable at check-in.');
+        } else {
+            flash('success', 'Payment received. Your booking is waiting for the partner to confirm it. You can track it under My Bookings.');
+        }
         redirect('/bookings');
     }
 
@@ -179,6 +263,7 @@ final class BookingController extends Controller
         $this->verifyCsrf();
         $booking = $this->ownedBooking((int) $id);
         Booking::updateStatus((int) $booking['id'], 'cancelled');
+        \App\Core\Database::run("UPDATE bookings SET hotel_status = 'cancelled' WHERE id = ?", [(int) $booking['id']]);
         flash('info', 'Booking cancelled.');
         redirect('/bookings');
     }

@@ -32,6 +32,23 @@ final class GuideDocument
     }
 
     /**
+     * @return ?array<string, mixed>
+     */
+    public static function find(int $id): ?array
+    {
+        return Database::first('SELECT * FROM guide_documents WHERE id = ?', [$id]);
+    }
+
+    /**
+     * @return ?array<string, mixed>
+     */
+    public static function findByPath(string $path): ?array
+    {
+        $clean = ltrim($path, '/');
+        return Database::first('SELECT * FROM guide_documents WHERE file_path = ? OR file_path = ?', [$clean, '/' . $clean]);
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public static function forUser(int $userId): array

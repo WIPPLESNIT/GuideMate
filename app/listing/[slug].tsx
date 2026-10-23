@@ -16,7 +16,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { ApiListing, createBooking, getListing, isUnauthorized, PaymentMethod, resolveImage, validateVoucher } from '../../services/api';
+import { ApiHotelRoom, ApiListing, createBooking, getListing, isUnauthorized, PaymentMethod, resolveImage, validateVoucher } from '../../services/api';
 import { clearSession, restoreSession } from '../../lib/authStore';
 import { usePreferences } from '../../lib/preferences';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -79,6 +79,8 @@ export default function ListingDetailScreen() {
   const { colors, gradients } = useTheme();
 
   const [listing, setListing] = useState<ApiListing | null>(null);
+  const [hotelRooms, setHotelRooms] = useState<ApiHotelRoom[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<ApiHotelRoom | null>(null);
   const [alreadyBooked, setAlreadyBooked] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const [canReview, setCanReview] = useState(false);
@@ -124,6 +126,11 @@ export default function ListingDetailScreen() {
     try {
       const data = await getListing(String(slug));
       setListing(data.listing);
+      const r = Array.isArray(data.rooms) ? data.rooms : [];
+      setHotelRooms(r);
+      if (r.length > 0) {
+        setSelectedRoom(r.find((x) => x.status === 'available') || r[0]);
+      }
       setFavorited(!!data.favorited);
       setAlreadyBooked(!!data.already_booked);
       setCanReview(!!data.can_review);
@@ -174,11 +181,17 @@ export default function ListingDetailScreen() {
     setModalOpen(true);
   };
 
+  const isHotel = listing?.category === 'Hotels' || (listing as any)?.category_slug === 'hotels';
   const daysCount = Math.max(1, bookingDates.length);
-  const subtotal = listing ? listing.price * guests * daysCount : 0;
+  const roomPrice = isHotel && selectedRoom ? selectedRoom.price_per_night : (listing ? listing.price : 0);
+  const hotelTotal = roomPrice * daysCount;
+  const depositPct = isHotel && selectedRoom ? (selectedRoom.deposit_percentage ?? 20) : 100;
+  const hotelDeposit = Math.round((hotelTotal * depositPct) / 100);
+  const hotelBalance = Math.max(0, hotelTotal - hotelDeposit);
+  const subtotal = isHotel ? hotelTotal : (listing ? listing.price * guests * daysCount : 0);
   const appliedVoucher = voucherCode ? findVoucher(voucherCode) : null;
   const voucherDiscount = appliedVoucher ? getVoucherDiscount(appliedVoucher, subtotal) : 0;
-  const totalAmount = Math.max(0, subtotal - voucherDiscount);
+  const totalAmount = isHotel ? hotelDeposit : Math.max(0, subtotal - voucherDiscount);
 
   // Set of "YYYY-MM-DD|HH:MM" slots already taken, and dates where every slot
   // is taken (so the calendar can fully disable them).
@@ -225,20 +238,22 @@ export default function ListingDetailScreen() {
 
   const goToPayment = () => {
     if (bookingDates.length === 0) {
-      Alert.alert('Pick date(s)', 'Please choose one or more dates from the calendar.');
+      Alert.alert('Pick date(s)', isHotel ? 'Please select your check-in and check-out dates.' : 'Please choose one or more dates from the calendar.');
       return;
     }
-    if (!bookingTime) {
-      Alert.alert('Pick a start time', 'Please choose a start time for your experience.');
-      return;
-    }
-    if (!bookingEndTime) {
-      Alert.alert('Pick an end time', 'Please choose an end time for your experience.');
-      return;
-    }
-    if (bookingEndTime <= bookingTime) {
-      Alert.alert('Invalid time', 'End time must be after the start time.');
-      return;
+    if (!isHotel) {
+      if (!bookingTime) {
+        Alert.alert('Pick a start time', 'Please choose a start time for your experience.');
+        return;
+      }
+      if (!bookingEndTime) {
+        Alert.alert('Pick an end time', 'Please choose an end time for your experience.');
+        return;
+      }
+      if (bookingEndTime <= bookingTime) {
+        Alert.alert('Invalid time', 'End time must be after the start time.');
+        return;
+      }
     }
     // Free listings skip the payment step entirely.
     if (totalAmount <= 0) {
@@ -390,10 +405,13 @@ export default function ListingDetailScreen() {
     try {
       await createBooking({
         listing_id: listing.id,
+        room_id: isHotel ? selectedRoom?.id : undefined,
+        check_in_date: isHotel ? bookingDates[0] : undefined,
+        check_out_date: isHotel ? (bookingDates[bookingDates.length - 1] || bookingDates[0]) : undefined,
         booking_date: bookingDates[0],
         booking_dates: bookingDates,
-        booking_time: bookingTime,
-        booking_end_time: bookingEndTime,
+        booking_time: isHotel ? undefined : bookingTime,
+        booking_end_time: isHotel ? undefined : bookingEndTime,
         guests,
         payment_method: method,
         payment_reference: reference,
@@ -551,6 +569,115 @@ export default function ListingDetailScreen() {
             </TouchableOpacity>
           ) : null}
 
+          {isHotel && hotelRooms.length > 0 ? (
+            <>
+              <Text style={[styles.sectionTitle, { color: theme.textMain }]}>Available Rooms & Suites</Text>
+              <Text style={[styles.about, { color: theme.textSub, marginBottom: 12 }]}>
+                Choose your room. Reserve with a partial deposit now — pay the rest at hotel check-in.
+              </Text>
+              {hotelRooms.map((room) => {
+                const isAvail = room.status === 'available';
+                const isCurrent = selectedRoom?.id === room.id;
+                const roomDepPct = room.deposit_percentage ?? 20;
+                const roomDepNow = Math.round((room.price_per_night * roomDepPct) / 100);
+                const roomBal = room.price_per_night - roomDepNow;
+
+                return (
+                  <View
+                    key={room.id}
+                    style={[
+                      styles.roomCard,
+                      { backgroundColor: theme.card, borderColor: isCurrent ? theme.accent : theme.border },
+                      !isAvail && { opacity: 0.65 },
+                    ]}
+                  >
+                    {room.image ? (
+                      <Image source={{ uri: resolveImage(room.image) }} style={styles.roomImage} />
+                    ) : null}
+                    <View style={styles.roomBody}>
+                      <View style={styles.roomHeaderRow}>
+                        <Text style={[styles.roomTitle, { color: theme.textMain }]} numberOfLines={1}>
+                          {room.name}
+                        </Text>
+                        <View
+                          style={[
+                            styles.roomBadge,
+                            {
+                              backgroundColor:
+                                room.status === 'available'
+                                  ? '#DCFCE7'
+                                  : room.status === 'blocked'
+                                  ? '#FEF3C7'
+                                  : '#FEE2E2',
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.roomBadgeText,
+                              {
+                                color:
+                                  room.status === 'available'
+                                    ? '#166534'
+                                    : room.status === 'blocked'
+                                    ? '#92400E'
+                                    : '#991B1B',
+                              },
+                            ]}
+                          >
+                            {room.status === 'available'
+                              ? 'Available'
+                              : room.status === 'blocked'
+                              ? 'Blocked'
+                              : 'Booked'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={[styles.roomSpecs, { color: theme.textSub }]}>
+                        {room.bed_type || '1 King Bed'} · {room.room_size || '32 m²'} · Max {room.max_guests || 2} guests
+                      </Text>
+
+                      {room.description ? (
+                        <Text style={[styles.roomDesc, { color: theme.textSub }]} numberOfLines={2}>
+                          {room.description}
+                        </Text>
+                      ) : null}
+
+                      <View style={styles.roomBottomRow}>
+                        <View>
+                          <Text style={[styles.roomPrice, { color: colors.accent }]}>
+                            {formatPrice(room.price_per_night)}
+                            <Text style={[styles.roomPriceUnit, { color: theme.textSub }]}> / night</Text>
+                          </Text>
+                          <Text style={styles.roomDepositHint}>
+                            {roomDepPct}% deposit ({formatPrice(roomDepNow)}) today · {formatPrice(roomBal)} at check-in
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          disabled={!isAvail}
+                          onPress={() => {
+                            setSelectedRoom(room);
+                            openBooking();
+                          }}
+                          style={[
+                            styles.roomSelectBtn,
+                            { backgroundColor: isAvail ? theme.accent : theme.border },
+                          ]}
+                        >
+                          <Text style={styles.roomSelectBtnText}>
+                            {isAvail ? (isCurrent ? 'Selected' : 'Select') : 'Unavailable'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </>
+          ) : null}
+
           <Text style={[styles.sectionTitle, { color: theme.textMain }]}>About this experience</Text>
           <Text style={[styles.about, { color: theme.textSub }]}>
             {listing.description || listing.summary || 'No description provided yet.'}
@@ -651,7 +778,7 @@ export default function ListingDetailScreen() {
               style={styles.bookButton}
             >
               <Ionicons name="calendar" size={17} color="#FFFFFF" style={{ marginRight: 7 }} />
-              <Text style={styles.bookButtonText}>Book now</Text>
+              <Text style={styles.bookButtonText}>{isHotel ? 'Reserve room' : 'Book now'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -790,7 +917,41 @@ export default function ListingDetailScreen() {
                     </View>
                   ) : null}
 
-                  <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select start time</Text>
+                  {isHotel && hotelRooms.length > 0 ? (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select room</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+                        {hotelRooms.map((rm) => {
+                          const isCur = selectedRoom?.id === rm.id;
+                          const isAvail = rm.status === 'available';
+                          return (
+                            <TouchableOpacity
+                              key={rm.id}
+                              disabled={!isAvail}
+                              onPress={() => setSelectedRoom(rm)}
+                              style={[
+                                styles.timeChip,
+                                { backgroundColor: theme.inputBg, borderColor: theme.border, marginHorizontal: 4, paddingVertical: 10, paddingHorizontal: 12 },
+                                isCur && { backgroundColor: theme.accent, borderColor: theme.accent },
+                                !isAvail && { opacity: 0.4 },
+                              ]}
+                            >
+                              <Text style={[styles.timeChipText, { color: isCur ? '#FFFFFF' : theme.textMain }]}>
+                                {rm.name}
+                              </Text>
+                              <Text style={[styles.bookedTag, { color: isCur ? '#FFFFFF' : theme.textSub }]}>
+                                {formatPrice(rm.price_per_night)}/nt
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  ) : null}
+
+                  {!isHotel ? (
+                    <>
+                      <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select start time</Text>
                   <View style={styles.timeGrid}>
                     {START_TIME_SLOTS.map((slot) => {
                       const selected = bookingTime === slot;
@@ -874,6 +1035,9 @@ export default function ListingDetailScreen() {
                     </Text>
                   ) : null}
 
+                  </>
+                  ) : null}
+
                   <Text style={[styles.modalLabel, { color: theme.textSub }]}>Guests</Text>
                   <View style={styles.guestRow}>
                     <TouchableOpacity
@@ -891,7 +1055,25 @@ export default function ListingDetailScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {listing.price > 0 ? (
+                  {isHotel && selectedRoom ? (
+                    <View style={[styles.priceSummaryBox, { backgroundColor: theme.card, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={[styles.priceBreakdownText, { color: theme.textSub }]}>Total Stay ({daysCount} night{daysCount > 1 ? 's' : ''}):</Text>
+                        <Text style={[styles.totalLine, { fontSize: 14, color: theme.textMain }]}>{formatPrice(hotelTotal)}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={[styles.priceBreakdownText, { color: '#059669', fontWeight: '700' }]}>Deposit Due Today ({depositPct}%):</Text>
+                        <Text style={[styles.totalLine, { color: '#059669' }]}>{formatPrice(hotelDeposit)}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 6, marginTop: 4 }}>
+                        <Text style={[styles.priceBreakdownText, { color: '#D97706', fontWeight: '700' }]}>Balance at Hotel Check-in:</Text>
+                        <Text style={[styles.totalLine, { fontSize: 14, color: '#D97706' }]}>{formatPrice(hotelBalance)}</Text>
+                      </View>
+                      <Text style={[styles.slotHint, { color: theme.textSub, marginTop: 6 }]}>
+                        🔒 Free cancellation up to 48 hours before check-in. Remaining balance is paid at the hotel front desk upon arrival.
+                      </Text>
+                    </View>
+                  ) : listing.price > 0 ? (
                     <View style={styles.priceSummaryBox}>
                       <Text style={[styles.totalLine, { color: theme.textMain }]}>
                         {`Total: ${formatPrice(totalAmount)}`}
@@ -1259,4 +1441,19 @@ const styles = StyleSheet.create({
   voucherApplyBtn: { height: 44, borderRadius: 12, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   voucherApplyText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   voucherHint: { fontSize: 12, lineHeight: 17, paddingHorizontal: 12, paddingBottom: 12 },
+  roomCard: { borderRadius: 16, borderWidth: 1, marginBottom: 14, overflow: 'hidden' },
+  roomImage: { width: '100%', height: 160, backgroundColor: '#E2E8F0' },
+  roomBody: { padding: 14 },
+  roomHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  roomTitle: { fontSize: 16, fontWeight: '800', flex: 1, marginRight: 8 },
+  roomBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  roomBadgeText: { fontSize: 11, fontWeight: '700' },
+  roomSpecs: { fontSize: 13, marginTop: 4, marginBottom: 6 },
+  roomDesc: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
+  roomBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 10 },
+  roomPrice: { fontSize: 16, fontWeight: '800' },
+  roomPriceUnit: { fontSize: 12, fontWeight: '500' },
+  roomDepositHint: { fontSize: 11, color: '#059669', fontWeight: '600', marginTop: 2 },
+  roomSelectBtn: { borderRadius: 10, paddingVertical: 8, paddingHorizontal: 16 },
+  roomSelectBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 });

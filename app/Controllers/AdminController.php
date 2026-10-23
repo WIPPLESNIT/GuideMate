@@ -670,6 +670,36 @@ final class AdminController extends Controller
         ], 'admin');
     }
 
+    public function poll(string $partner): void
+    {
+        $adminId = $this->adminMessagingId();
+        $partnerId = (int) $partner;
+        $partnerUser = User::find($partnerId);
+        if ($partnerUser === null) {
+            $this->json(['error' => 'Conversation not found.'], 404);
+            return;
+        }
+        $since = (int) $this->input('since', 0);
+        $messages = Message::since($adminId, $partnerId, $since);
+        if ($messages !== []) {
+            Message::markRead($adminId, $partnerId);
+        }
+
+        $formatted = array_map(function ($m) use ($adminId) {
+            return [
+                'id' => (int) $m['id'],
+                'sender_id' => (int) $m['sender_id'],
+                'receiver_id' => (int) $m['receiver_id'],
+                'body' => (string) $m['body'],
+                'created_at' => (string) $m['created_at'],
+                'time_formatted' => date('g:i a', strtotime((string) $m['created_at'])),
+                'is_mine' => (int) $m['sender_id'] === $adminId,
+            ];
+        }, $messages);
+
+        $this->json(['messages' => $formatted]);
+    }
+
     public function sendMessage(): void
     {
         $this->verifyCsrf();
@@ -678,15 +708,39 @@ final class AdminController extends Controller
         $body = trim((string) $this->input('body', ''));
 
         if ($receiverId === 0 || $receiverId === $adminId || $body === '') {
+            if ($this->isJson()) {
+                $this->json(['error' => 'Invalid recipient or empty message.'], 422);
+                return;
+            }
             redirect('/admin/messages' . ($receiverId ? '/' . $receiverId : ''));
         }
         if (User::find($receiverId) === null) {
+            if ($this->isJson()) {
+                $this->json(['error' => 'Recipient not found.'], 404);
+                return;
+            }
             abort(404, 'Recipient not found.');
         }
 
-        Message::send($adminId, $receiverId, $body);
+        $msgId = Message::send($adminId, $receiverId, $body);
         AuditLog::recordAction('admin.message', 'user', $receiverId);
-        flash('success', 'Reply sent.');
+
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => [
+                    'id' => $msgId,
+                    'sender_id' => $adminId,
+                    'receiver_id' => $receiverId,
+                    'body' => $body,
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'time_formatted' => date('g:i a'),
+                    'is_mine' => true,
+                ],
+            ]);
+            return;
+        }
+
         redirect('/admin/messages/' . $receiverId);
     }
 

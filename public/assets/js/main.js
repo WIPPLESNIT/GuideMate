@@ -43,6 +43,13 @@
                 threadMenuBtn.setAttribute('aria-expanded', 'false');
             }
         });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && threadMenu.classList.contains('open')) {
+                threadMenu.classList.remove('open');
+                threadMenuBtn.setAttribute('aria-expanded', 'false');
+                threadMenuBtn.focus();
+            }
+        });
     }
 
     // Dismiss flash messages
@@ -887,4 +894,584 @@
             textSpan.textContent = isExpanded ? 'Show less' : 'Read more';
         }
     });
+
+    // -------------------------------------------------------------
+    // Account Verification Gating for Listing-Creation Flow
+    // -------------------------------------------------------------
+    function initVerificationGating() {
+        var modal = document.getElementById('verificationGatingModal');
+        if (!modal) {
+            return;
+        }
+
+        var loadingState = document.getElementById('verifLoadingState');
+        var errorState = document.getElementById('verifErrorState');
+        var approvedState = document.getElementById('verifApprovedState');
+        var defaultState = document.getElementById('verifDefaultState');
+        var statusBanner = document.getElementById('verifStatusBanner');
+        var statusTitle = document.getElementById('verifStatusTitle');
+        var statusText = document.getElementById('verifStatusText');
+        var statusIcon = document.getElementById('verifStatusIcon');
+        var cancelBtn = document.getElementById('verifCancelBtn');
+        var actionBtn = document.getElementById('verifActionBtn');
+        var retryBtn = document.getElementById('verifRetryBtn');
+        var proceedBtn = document.getElementById('verifProceedBtn');
+        var closeBtns = modal.querySelectorAll('[data-close-verif-modal]');
+
+        var endpoint = modal.dataset.statusEndpoint || '/dashboard/verification/status';
+        var lastTrigger = null;
+        var isChecking = false;
+
+        function isUserVerified() {
+            var metaVerified = document.querySelector('meta[name="auth-user-verified"]');
+            if (metaVerified && metaVerified.content === '1') {
+                return true;
+            }
+            return modal.dataset.userVerified === '1';
+        }
+
+        function setUserVerified(verified, status) {
+            modal.dataset.userVerified = verified ? '1' : '0';
+            if (status) {
+                modal.dataset.userStatus = status;
+            }
+            var metaVerified = document.querySelector('meta[name="auth-user-verified"]');
+            if (metaVerified) {
+                metaVerified.content = verified ? '1' : '0';
+            }
+            var metaStatus = document.querySelector('meta[name="auth-user-status"]');
+            if (metaStatus && status) {
+                metaStatus.content = status;
+            }
+        }
+
+        function showState(state) {
+            if (loadingState) loadingState.style.display = (state === 'loading') ? 'block' : 'none';
+            if (errorState) errorState.style.display = (state === 'error') ? 'block' : 'none';
+            if (approvedState) approvedState.style.display = (state === 'approved') ? 'block' : 'none';
+            if (defaultState) defaultState.style.display = (state === 'default') ? 'block' : 'none';
+        }
+
+        function openModal() {
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+
+            // Show default view or check live status
+            checkStatus();
+        }
+
+        function closeModal() {
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+            if (lastTrigger && typeof lastTrigger.focus === 'function') {
+                try { lastTrigger.focus(); } catch (err) {}
+            }
+        }
+
+        function checkStatus() {
+            if (isChecking) return;
+            isChecking = true;
+            showState('loading');
+
+            fetch(endpoint, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(function (res) {
+                if (!res.ok) {
+                    throw new Error('Server returned ' + res.status);
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                isChecking = false;
+                if (data.is_verified || data.guide_status === 'approved') {
+                    setUserVerified(true, 'approved');
+                    showState('approved');
+                    if (proceedBtn) proceedBtn.focus();
+                } else {
+                    setUserVerified(false, data.guide_status || 'none');
+                    updateUnverifiedContent(data);
+                    showState('default');
+                    if (actionBtn) actionBtn.focus();
+                }
+            })
+            .catch(function (err) {
+                isChecking = false;
+                var errMessage = document.getElementById('verifErrorMessage');
+                if (errMessage) {
+                    errMessage.textContent = 'Unable to verify your account status. Please check your network connection and try again.';
+                }
+                showState('error');
+                if (retryBtn) retryBtn.focus();
+            });
+        }
+
+        function updateUnverifiedContent(data) {
+            var status = data.guide_status || 'pending';
+            if (status === 'rejected') {
+                if (statusBanner) {
+                    statusBanner.className = 'status-banner banner-red';
+                }
+                if (statusIcon) statusIcon.textContent = '⚠️';
+                if (statusTitle) statusTitle.textContent = 'Application Needs Update';
+                if (statusText) {
+                    statusText.textContent = data.admin_note
+                        ? ('Admin note: ' + data.admin_note)
+                        : 'Your submitted verification documents were not approved. Please review the note and re-submit your documents.';
+                }
+            } else if (status === 'none') {
+                if (statusBanner) {
+                    statusBanner.className = 'status-banner banner-amber';
+                }
+                if (statusIcon) statusIcon.textContent = '📋';
+                if (statusTitle) statusTitle.textContent = 'Verification Required';
+                if (statusText) statusText.textContent = 'Please submit your valid government ID and credentials for administrator review.';
+            } else {
+                if (statusBanner) {
+                    statusBanner.className = 'status-banner banner-amber';
+                }
+                if (statusIcon) statusIcon.textContent = '⏳';
+                if (statusTitle) statusTitle.textContent = 'Verification in Progress';
+                if (statusText) statusText.textContent = 'An administrator is currently reviewing your account information and documents.';
+            }
+        }
+
+        // Close button handlers
+        closeBtns.forEach(function (btn) {
+            btn.addEventListener('click', closeModal);
+        });
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', closeModal);
+        }
+
+        // Retry handler
+        if (retryBtn) {
+            retryBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                checkStatus();
+            });
+        }
+
+        // Proceed handler when verified
+        if (proceedBtn) {
+            proceedBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeModal();
+                var newListingModal = document.getElementById('newListingModal');
+                if (newListingModal) {
+                    newListingModal.hidden = false;
+                    newListingModal.setAttribute('aria-hidden', 'false');
+                    document.body.style.overflow = 'hidden';
+                    var firstInput = newListingModal.querySelector('input, select, textarea');
+                    if (firstInput) firstInput.focus();
+                } else if (lastTrigger && lastTrigger.href) {
+                    window.location.href = lastTrigger.href;
+                } else {
+                    window.location.href = '/dashboard/listings/create';
+                }
+            });
+        }
+
+        // Escape key to close
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !modal.hidden) {
+                closeModal();
+            }
+        });
+
+        // Accessible focus trap inside modal dialog
+        modal.addEventListener('keydown', function (e) {
+            if (e.key !== 'Tab' || modal.hidden) return;
+            var focusable = modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+            var visibleFocusable = Array.prototype.filter.call(focusable, function (el) {
+                return el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0;
+            });
+            if (visibleFocusable.length === 0) return;
+
+            var first = visibleFocusable[0];
+            var last = visibleFocusable[visibleFocusable.length - 1];
+
+            if (e.shiftKey) {
+                if (document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            }
+        });
+
+        // Global click interceptor for all listing creation entry points
+        document.addEventListener('click', function (e) {
+            var target = e.target;
+            var trigger = target.closest('[data-open-new-listing], [data-action="new-listing"], a[href*="/dashboard/listings/create"], a[href*="/dashboard/vehicles/create"]');
+
+            if (!trigger) {
+                var btn = target.closest('a.btn, button.btn');
+                if (btn && btn.closest('.dash-layout, .section-head, .empty-state')) {
+                    var txt = (btn.textContent || '').trim().toLowerCase();
+                    if (txt.indexOf('new listing') !== -1 || txt.indexOf('add listing') !== -1 || txt.indexOf('create listing') !== -1 || txt.indexOf('list a vehicle') !== -1 || txt.indexOf('new hotel listing') !== -1) {
+                        trigger = btn;
+                    }
+                }
+            }
+
+            if (!trigger) {
+                return;
+            }
+
+            // If user is already verified, do not show gating modal!
+            if (isUserVerified()) {
+                return;
+            }
+
+            // Gated! Prevent accessing listing form and display pop-up modal
+            e.preventDefault();
+            e.stopPropagation();
+            lastTrigger = trigger;
+            openModal();
+        }, true);
+    }
+
+    window.initVerificationGating = initVerificationGating;
+    initVerificationGating();
+})();
+
+
+// ==========================================================================
+// Document Preview Modal & Lightbox
+// Opens attached verification documents (images, PDFs) directly in an
+// accessible interactive lightbox without full-page navigation.
+// ==========================================================================
+(function () {
+    'use strict';
+
+    function initDocPreviewModal() {
+        var modal = document.getElementById('docPreviewModal');
+        if (!modal) return;
+
+        var titleEl = document.getElementById('docModalTitle');
+        var typeBadgeEl = document.getElementById('docModalTypeBadge');
+        var statusBadgeEl = document.getElementById('docModalStatusBadge');
+        var ownerEl = document.getElementById('docModalOwner');
+        var fileInfoEl = document.getElementById('docModalFileInfo');
+        var dateEl = document.getElementById('docModalDate');
+        var zoomToolbar = document.getElementById('docModalZoomControls');
+        var zoomLevelEl = document.getElementById('docZoomLevel');
+        var zoomInBtn = document.getElementById('docZoomInBtn');
+        var zoomOutBtn = document.getElementById('docZoomOutBtn');
+        var zoomResetBtn = document.getElementById('docZoomResetBtn');
+        var externalLink = document.getElementById('docModalExternalLink');
+        var downloadBtn = document.getElementById('docModalDownloadBtn');
+        var closeBtn = document.getElementById('docModalCloseBtn');
+
+        var loader = document.getElementById('docModalLoader');
+        var imageWrap = document.getElementById('docModalImageWrap');
+        var imageStage = document.getElementById('docModalImageStage');
+        var imgEl = document.getElementById('docModalImg');
+        var pdfWrap = document.getElementById('docModalPdfWrap');
+        var pdfFrame = document.getElementById('docModalPdfFrame');
+        var unsupportedWrap = document.getElementById('docModalUnsupported');
+        var errorWrap = document.getElementById('docModalError');
+        var errorRetryBtn = document.getElementById('docErrorRetryBtn');
+        var errorDownloadBtn = document.getElementById('docErrorDownloadBtn');
+        var unsupportedDownload = document.getElementById('docUnsupportedDownload');
+
+        var currentZoom = 1.0;
+        var lastTrigger = null;
+        var currentData = null;
+
+        function updateZoom(newZoom) {
+            currentZoom = Math.min(Math.max(0.3, newZoom), 3.5);
+            if (imageStage) {
+                imageStage.style.transform = 'scale(' + currentZoom + ')';
+            }
+            if (zoomLevelEl) {
+                zoomLevelEl.textContent = Math.round(currentZoom * 100) + '%';
+            }
+        }
+
+        function resetZoom() {
+            updateZoom(1.0);
+        }
+
+        function showState(state) {
+            if (loader) loader.style.display = state === 'loading' ? 'flex' : 'none';
+            if (imageWrap) imageWrap.style.display = state === 'image' ? 'flex' : 'none';
+            if (pdfWrap) pdfWrap.style.display = state === 'pdf' ? 'block' : 'none';
+            if (unsupportedWrap) unsupportedWrap.style.display = state === 'unsupported' ? 'flex' : 'none';
+            if (errorWrap) errorWrap.style.display = state === 'error' ? 'flex' : 'none';
+            if (zoomToolbar) zoomToolbar.style.display = state === 'image' ? 'inline-flex' : 'none';
+        }
+
+        function setStatusBadge(status) {
+            if (!statusBadgeEl) return;
+            var s = (status || 'pending').toLowerCase();
+            statusBadgeEl.className = 'doc-status-pill';
+            if (s === 'approved' || s === 'verified') {
+                statusBadgeEl.classList.add('pill-approved');
+                statusBadgeEl.textContent = '✓ Verified';
+            } else if (s === 'rejected') {
+                statusBadgeEl.classList.add('pill-cancelled');
+                statusBadgeEl.textContent = '⚠️ Rejected';
+            } else {
+                statusBadgeEl.classList.add('pill-pending');
+                statusBadgeEl.textContent = '⏳ Under review';
+            }
+        }
+
+        function openModal() {
+            modal.style.display = 'flex';
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+            resetZoom();
+            if (closeBtn) {
+                closeBtn.focus();
+            }
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+            if (imgEl) imgEl.src = '';
+            if (pdfFrame) pdfFrame.src = 'about:blank';
+            if (lastTrigger && typeof lastTrigger.focus === 'function') {
+                lastTrigger.focus();
+            }
+            lastTrigger = null;
+            currentData = null;
+        }
+
+        // Close handlers
+        modal.addEventListener('click', function (e) {
+            if (e.target.hasAttribute('data-doc-close')) {
+                closeModal();
+            }
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (modal.style.display === 'flex' && e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // Zoom controls
+        if (zoomInBtn) {
+            zoomInBtn.addEventListener('click', function () {
+                updateZoom(currentZoom + 0.25);
+            });
+        }
+        if (zoomOutBtn) {
+            zoomOutBtn.addEventListener('click', function () {
+                updateZoom(currentZoom - 0.25);
+            });
+        }
+        if (zoomResetBtn) {
+            zoomResetBtn.addEventListener('click', resetZoom);
+        }
+
+        // Mouse wheel zoom over image stage
+        if (imageWrap) {
+            imageWrap.addEventListener('wheel', function (e) {
+                if (imageWrap.style.display !== 'none') {
+                    e.preventDefault();
+                    var delta = e.deltaY < 0 ? 0.15 : -0.15;
+                    updateZoom(currentZoom + delta);
+                }
+            }, { passive: false });
+        }
+
+        // Image load & error events
+        if (imgEl) {
+            imgEl.addEventListener('load', function () {
+                showState('image');
+                resetZoom();
+            });
+            imgEl.addEventListener('error', function () {
+                showState('error');
+            });
+        }
+
+        // PDF load & error events
+        if (pdfFrame) {
+            pdfFrame.addEventListener('load', function () {
+                if (pdfFrame.src && pdfFrame.src !== 'about:blank') {
+                    showState('pdf');
+                }
+            });
+        }
+
+        // Retry handler
+        if (errorRetryBtn) {
+            errorRetryBtn.addEventListener('click', function () {
+                if (currentData) {
+                    loadDocumentData(currentData);
+                }
+            });
+        }
+
+        function loadDocumentData(data) {
+            currentData = data;
+            showState('loading');
+            resetZoom();
+
+            var label = data.label || 'Document';
+            if (titleEl) titleEl.textContent = label;
+            if (typeBadgeEl) typeBadgeEl.textContent = data.doc_type_label || 'Verification Document';
+            setStatusBadge(data.status);
+
+            if (ownerEl) {
+                ownerEl.textContent = data.owner_name ? 'Submitted by ' + data.owner_name : '';
+                ownerEl.style.display = data.owner_name ? 'inline' : 'none';
+            }
+            if (fileInfoEl) {
+                var info = (data.ext ? data.ext.toUpperCase() : '') + (data.file_size_formatted ? ' · ' + data.file_size_formatted : '');
+                fileInfoEl.textContent = info || 'Attached file';
+            }
+            if (dateEl) {
+                dateEl.textContent = data.created_at_formatted ? 'Uploaded ' + data.created_at_formatted : '';
+                dateEl.style.display = data.created_at_formatted ? 'inline' : 'none';
+            }
+
+            var fileUrl = data.file_url || data.raw_url;
+            var dlUrl = data.download_url || fileUrl;
+
+            if (externalLink) externalLink.href = fileUrl;
+            if (downloadBtn) downloadBtn.href = dlUrl;
+            if (errorDownloadBtn) errorDownloadBtn.href = dlUrl;
+            if (unsupportedDownload) unsupportedDownload.href = dlUrl;
+
+            if (!data.file_exists && data.file_exists !== undefined) {
+                var msgEl = document.getElementById('docErrorMessage');
+                if (msgEl) msgEl.textContent = 'The document record exists, but the file was not found on the server disk.';
+                showState('error');
+                return;
+            }
+
+            if (data.is_image) {
+                imgEl.src = fileUrl;
+            } else if (data.is_pdf) {
+                pdfFrame.src = fileUrl;
+            } else {
+                showState('unsupported');
+            }
+        }
+
+        function previewDocument(trigger) {
+            lastTrigger = trigger;
+            openModal();
+            showState('loading');
+
+            var docId = trigger.getAttribute('data-doc-id');
+            var docUrl = trigger.getAttribute('data-doc-url') || trigger.getAttribute('href');
+            var docLabel = trigger.getAttribute('data-doc-label') || trigger.innerText.replace(/^[📎\s]+/, '').replace(/[\s↗]+$/, '').trim();
+            var docType = trigger.getAttribute('data-doc-type') || 'Document';
+            var docStatus = trigger.getAttribute('data-doc-status') || 'pending';
+            var docOwner = trigger.getAttribute('data-doc-owner') || '';
+
+            // Set preliminary display while fetching
+            if (titleEl) titleEl.textContent = docLabel || 'Document Preview';
+            if (typeBadgeEl) typeBadgeEl.textContent = docType;
+            setStatusBadge(docStatus);
+            if (ownerEl) {
+                ownerEl.textContent = docOwner ? 'Submitted by ' + docOwner : '';
+                ownerEl.style.display = docOwner ? 'inline' : 'none';
+            }
+
+            if (externalLink) externalLink.href = docUrl;
+            if (downloadBtn) downloadBtn.href = docId ? '/documents/download/' + docId : docUrl;
+
+            // If we have a docId, fetch authoritative metadata from controller
+            if (docId && parseInt(docId, 10) > 0) {
+                fetch('/documents/' + docId + '?json=1', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
+                .then(function (json) {
+                    loadDocumentData(json);
+                })
+                .catch(function () {
+                    // Fallback to client-side heuristics if JSON endpoint unreachable
+                    fallbackClientPreview(docUrl, docLabel, docType, docStatus, docOwner, docId);
+                });
+            } else {
+                fallbackClientPreview(docUrl, docLabel, docType, docStatus, docOwner, docId);
+            }
+        }
+
+        function fallbackClientPreview(docUrl, docLabel, docType, docStatus, docOwner, docId) {
+            var extMatch = (docUrl || '').split('?')[0].match(/\.([a-zA-Z0-9]+)$/);
+            var ext = extMatch ? extMatch[1].toLowerCase() : '';
+            var isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].indexOf(ext) !== -1;
+            var isPdf = ext === 'pdf';
+
+            loadDocumentData({
+                id: docId || 0,
+                label: docLabel || 'Document',
+                doc_type_label: docType || 'Verification Document',
+                status: docStatus || 'pending',
+                owner_name: docOwner || '',
+                ext: ext,
+                is_image: isImage,
+                is_pdf: isPdf,
+                file_exists: true,
+                file_url: docUrl,
+                download_url: docId ? '/documents/download/' + docId : docUrl
+            });
+        }
+
+        // Global click delegator for document links
+        document.addEventListener('click', function (e) {
+            var target = e.target;
+            var trigger = target.closest('[data-doc-preview="1"], a.doc-link, a.admin-doc-link');
+
+            if (!trigger) {
+                // Also check if an anchor points to /documents/file/ or uploads/guide-docs/
+                var a = target.closest('a');
+                if (a && a.href) {
+                    var h = a.href;
+                    if (h.indexOf('/documents/file/') !== -1 || (h.indexOf('/uploads/guide-docs/') !== -1 && h.indexOf('/download') === -1)) {
+                        trigger = a;
+                    }
+                }
+            }
+
+            if (!trigger) return;
+
+            // Don't intercept explicit download triggers
+            if (trigger.getAttribute('download') !== null || (trigger.href && trigger.href.indexOf('/download') !== -1)) {
+                return;
+            }
+
+            // Don't intercept if user held modifier keys (Ctrl/Cmd/Shift)
+            if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            previewDocument(trigger);
+        }, true);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDocPreviewModal);
+    } else {
+        initDocPreviewModal();
+    }
 })();

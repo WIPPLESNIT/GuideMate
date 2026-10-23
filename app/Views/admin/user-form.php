@@ -178,8 +178,20 @@ $verifyBadge = [
                                         <span class="admin-doc-type" style="background:#e2ede6;color:#1e3a2b;font-weight:700;font-size:0.88rem;padding:6px 14px;border-radius:999px;line-height:1.2;display:inline-flex;align-items:center;">
                                             <?= e(\App\Models\GuideDocument::typeLabel($d['doc_type'])) ?>
                                         </span>
-                                        <a href="<?= e(url($d['file_path'])) ?>" target="_blank" rel="noopener" class="admin-doc-link" style="color:#0b7843;font-weight:700;font-size:0.95rem;text-decoration:none;word-break:break-all;display:inline-flex;align-items:center;gap:4px;">
-                                            📎 <?= e($d['label'] ?: basename($d['file_path'])) ?> ↗
+                                        <?php
+                                        $hasFile = !empty($d['file_path']);
+                                        $docUrl = $hasFile ? url($d['file_path']) : url('/documents/' . (int) $d['id']);
+                                        $docLabel = !empty($d['label']) ? $d['label'] : ($hasFile ? basename($d['file_path']) : 'Document #' . $d['id']);
+                                        ?>
+                                        <a href="<?= e($docUrl) ?>" target="_blank" rel="noopener" class="admin-doc-link" style="color:#0b7843;font-weight:700;font-size:0.95rem;text-decoration:none;word-break:break-all;display:inline-flex;align-items:center;gap:4px;"
+                                           data-doc-preview="1"
+                                           data-doc-id="<?= (int) $d['id'] ?>"
+                                           data-doc-url="<?= e($docUrl) ?>"
+                                           data-doc-label="<?= e($docLabel) ?>"
+                                           data-doc-type="<?= e(\App\Models\GuideDocument::typeLabel($d['doc_type'])) ?>"
+                                           data-doc-status="<?= e($guideStatus) ?>"
+                                           data-doc-owner="<?= e($user['name'] ?? '') ?>">
+                                            📎 <?= e($docLabel) ?>
                                         </a>
                                         <?php if ($guideStatus === 'approved'): ?>
                                             <span class="admin-doc-status" style="background:#dbf1e5;color:#0b7843;font-weight:700;font-size:0.85rem;padding:6px 14px;border-radius:999px;line-height:1.2;display:inline-flex;align-items:center;">✓ Verified</span>
