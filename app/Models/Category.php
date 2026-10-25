@@ -41,6 +41,19 @@ final class Category
     }
 
     /**
+     * Categories available for tour guides (excludes hotels and hidden categories).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function forGuides(): array
+    {
+        return array_values(array_filter(
+            self::publicAll(),
+            static fn (array $row): bool => ($row['slug'] ?? '') !== 'hotels'
+        ));
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public static function findBySlug(string $slug): ?array

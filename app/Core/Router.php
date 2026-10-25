@@ -171,6 +171,12 @@ final class Router
                         abort(403, 'Listing providers only.');
                     }
                     break;
+                case 'hotel_admin':
+                case 'hotel_partner':
+                    if (!Auth::hasRole('hotel_admin') && !Auth::hasRole('admin')) {
+                        abort(403, 'Hotel partners only.');
+                    }
+                    break;
                 case 'rental_provider':
                 case 'rental_admin': // backward-compatibility
                     if (!Auth::hasRole('rental_provider') && !Auth::hasRole('rental_admin')) {

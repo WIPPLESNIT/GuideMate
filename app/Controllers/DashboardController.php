@@ -80,7 +80,7 @@ final class DashboardController extends Controller
             'isFirstLogin' => User::isFirstLogin($user),
             'rooms' => HotelRoom::forOwner($uid),
             'reservations' => Booking::forGuide($uid),
-            'listings' => Listing::forOwner($uid),
+            'listings' => Listing::forHotelOwner($uid),
             'inquiries' => array_slice(Message::conversations($uid), 0, 6),
             'unread' => Message::unreadCount($uid),
             'reviewStats' => [
@@ -172,7 +172,7 @@ final class DashboardController extends Controller
         Booking::reconcileOrphanRefunds();
         Auth::refreshUser();
         $user = Auth::user() ?? $user;
-        $listings = Listing::forOwner((int) $user['id']);
+        $listings = Listing::forGuideOwner((int) $user['id']);
         $this->view('dashboard/guide', [
             'title' => 'Guide Dashboard',
             'user' => $user,

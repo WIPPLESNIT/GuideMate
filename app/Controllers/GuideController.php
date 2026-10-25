@@ -24,12 +24,17 @@ final class GuideController extends Controller
 
     public function listings(): void
     {
+        if (Auth::hasRole('hotel_admin')) {
+            redirect('/dashboard/hotels');
+            return;
+        }
+
         $user = Auth::user();
         $this->view('guide/listings', [
             'title' => 'My Listings',
-            'listings' => Listing::forOwner((int) Auth::id()),
+            'listings' => Listing::forGuideOwner((int) Auth::id()),
             // For the inline "Add New Listing" pop-up modal.
-            'categories' => Category::publicAll(),
+            'categories' => Category::forGuides(),
             'canCreate' => (string) ($user['guide_status'] ?? 'none') === 'approved',
             'errors' => errors(),
         ]);
@@ -37,13 +42,18 @@ final class GuideController extends Controller
 
     public function create(): void
     {
+        if (Auth::hasRole('hotel_admin')) {
+            redirect('/dashboard/hotels?create=1');
+            return;
+        }
+
         if (!$this->ensureApproved()) {
             return;
         }
         $this->view('guide/form', [
             'title' => 'Create Listing',
             'listing' => null,
-            'categories' => Category::publicAll(),
+            'categories' => Category::forGuides(),
             'errors' => errors(),
         ]);
     }
@@ -55,6 +65,9 @@ final class GuideController extends Controller
         }
         $this->verifyCsrf();
         $data = $this->validateListing();
+        if ($data === []) {
+            return;
+        }
 
         // An uploaded photo always wins over a pasted URL.
         $cover = $this->uploadedCover() ?? $data['cover_image'];
@@ -88,14 +101,31 @@ final class GuideController extends Controller
 
     public function edit(string $id): void
     {
+        if (Auth::hasRole('hotel_admin')) {
+            redirect('/dashboard/hotels');
+            return;
+        }
+
         if (!$this->ensureApproved()) {
             return;
         }
         $listing = $this->ownedListing((int) $id);
+        if (($listing['category_slug'] ?? '') === 'hotels') {
+            flash('error', 'Hotel listings are managed from My Hotels.');
+            redirect('/dashboard/hotels');
+            return;
+        }
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'listing' => $listing,
+            ]);
+            return;
+        }
         $this->view('guide/form', [
             'title' => 'Edit Listing',
             'listing' => $listing,
-            'categories' => Category::publicAll(),
+            'categories' => Category::forGuides(),
             'errors' => errors(),
         ]);
     }
@@ -108,6 +138,13 @@ final class GuideController extends Controller
         $this->verifyCsrf();
         $listing = $this->ownedListing((int) $id);
         $data = $this->validateListing();
+        if ($data === []) {
+            if ($this->isJson()) {
+                $this->json(['error' => 'Please fill in all required fields.', 'errors' => errors()], 422);
+                return;
+            }
+            return;
+        }
 
         // Keep the existing photo unless the guide uploaded a new one.
         $cover = $this->uploadedCover() ?? (string) ($listing['cover_image'] ?? '') ?: null;
@@ -126,6 +163,15 @@ final class GuideController extends Controller
             'not_included' => $data['not_included'],
             'cover_image' => $cover,
         ]);
+
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => 'Listing updated.',
+                'listing' => Listing::find((int) $listing['id']),
+            ]);
+            return;
+        }
 
         flash('success', 'Listing updated.');
         redirect('/dashboard/listings');
@@ -395,10 +441,22 @@ final class GuideController extends Controller
     {
         $this->rejectHotelPaidTools();
         $listing = $this->ownedListing((int) $id);
+        $schedules = ListingSchedule::forListing((int) $listing['id']);
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'listing' => [
+                    'id' => (int) $listing['id'],
+                    'title' => (string) $listing['title'],
+                ],
+                'schedule' => $schedules,
+            ]);
+            return;
+        }
         $this->view('guide/schedule', [
             'title' => 'Schedule',
             'listing' => $listing,
-            'schedule' => ListingSchedule::forListing((int) $listing['id']),
+            'schedule' => $schedules,
         ]);
     }
 
@@ -409,19 +467,124 @@ final class GuideController extends Controller
         $listing = $this->ownedListing((int) $id);
         $date = (string) $this->input('schedule_date', '');
         if ($date === '' || strtotime($date) === false) {
-            flash('error', 'Choose a valid date for your schedule.');
+            $err = 'Choose a valid date for your schedule.';
+            if ($this->isJson()) {
+                $this->json(['error' => $err], 422);
+                return;
+            }
+            flash('error', $err);
             redirect('/dashboard/listings/' . $listing['id'] . '/schedule');
         }
+        $startTime = trim((string) $this->input('start_time', ''));
+        $endTime = trim((string) $this->input('end_time', ''));
+
+        if ($startTime !== '' && $endTime !== '') {
+            if (strtotime($endTime) <= strtotime($startTime)) {
+                $err = 'End time must be later than the start time.';
+                if ($this->isJson()) {
+                    $this->json(['error' => $err], 422);
+                    return;
+                }
+                flash('error', $err);
+                redirect('/dashboard/listings/' . $listing['id'] . '/schedule');
+            }
+        }
+
         $capacityRaw = trim((string) $this->input('capacity', ''));
         $capacity = $capacityRaw !== '' ? max(0, (int) $capacityRaw) : null;
-        ListingSchedule::add(
+        $note = (string) $this->input('note', '');
+
+        $scheduleId = (int) $this->input('schedule_id', 0);
+        if ($scheduleId > 0) {
+            ListingSchedule::update(
+                (int) $listing['id'],
+                $scheduleId,
+                $date,
+                $startTime !== '' ? $startTime : null,
+                $endTime !== '' ? $endTime : null,
+                $capacity,
+                $note
+            );
+            $msg = 'Schedule updated.';
+        } else {
+            ListingSchedule::add(
+                (int) $listing['id'],
+                $date,
+                $startTime !== '' ? $startTime : null,
+                $endTime !== '' ? $endTime : null,
+                $capacity,
+                $note
+            );
+            $msg = 'Schedule added.';
+        }
+
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => $msg,
+                'schedule' => ListingSchedule::forListing((int) $listing['id']),
+            ]);
+            return;
+        }
+
+        flash('success', $msg);
+        redirect('/dashboard/listings/' . $listing['id'] . '/schedule');
+    }
+
+    public function updateSchedule(string $id, string $scheduleId): void
+    {
+        $this->rejectHotelPaidTools();
+        $this->verifyCsrf();
+        $listing = $this->ownedListing((int) $id);
+        $date = (string) $this->input('schedule_date', '');
+        if ($date === '' || strtotime($date) === false) {
+            $err = 'Choose a valid date for your schedule.';
+            if ($this->isJson()) {
+                $this->json(['error' => $err], 422);
+                return;
+            }
+            flash('error', $err);
+            redirect('/dashboard/listings/' . $listing['id'] . '/schedule');
+        }
+        $startTime = trim((string) $this->input('start_time', ''));
+        $endTime = trim((string) $this->input('end_time', ''));
+
+        if ($startTime !== '' && $endTime !== '') {
+            if (strtotime($endTime) <= strtotime($startTime)) {
+                $err = 'End time must be later than the start time.';
+                if ($this->isJson()) {
+                    $this->json(['error' => $err], 422);
+                    return;
+                }
+                flash('error', $err);
+                redirect('/dashboard/listings/' . $listing['id'] . '/schedule');
+            }
+        }
+
+        $capacityRaw = trim((string) $this->input('capacity', ''));
+        $capacity = $capacityRaw !== '' ? max(0, (int) $capacityRaw) : null;
+        $note = (string) $this->input('note', '');
+
+        ListingSchedule::update(
             (int) $listing['id'],
+            (int) $scheduleId,
             $date,
-            (string) $this->input('start_time', ''),
+            $startTime !== '' ? $startTime : null,
+            $endTime !== '' ? $endTime : null,
             $capacity,
-            (string) $this->input('note', '')
+            $note
         );
-        flash('success', 'Schedule added.');
+
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => 'Schedule updated.',
+                'schedule' => ListingSchedule::forListing((int) $listing['id']),
+            ]);
+            return;
+        }
+
+        flash('success', 'Schedule updated.');
         redirect('/dashboard/listings/' . $listing['id'] . '/schedule');
     }
 
@@ -430,7 +593,18 @@ final class GuideController extends Controller
         $this->rejectHotelPaidTools();
         $this->verifyCsrf();
         $listing = $this->ownedListing((int) $id);
-        ListingSchedule::remove((int) $listing['id'], (int) $this->input('schedule_id', 0));
+        $scheduleId = (int) $this->input('schedule_id', 0);
+        ListingSchedule::remove((int) $listing['id'], $scheduleId);
+
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => 'Schedule entry removed.',
+                'schedule' => ListingSchedule::forListing((int) $listing['id']),
+            ]);
+            return;
+        }
+
         flash('info', 'Schedule entry removed.');
         redirect('/dashboard/listings/' . $listing['id'] . '/schedule');
     }
@@ -445,8 +619,8 @@ final class GuideController extends Controller
         $errors = $this->requireFields(['title', 'description', 'area', 'price']);
         $categoryId = (int) $this->input('category_id', 0);
         $category = Category::find($categoryId);
-        if ($category === null || Category::isHiddenSlug((string) ($category['slug'] ?? ''))) {
-            $errors['category_id'] = 'Please choose a category.';
+        if ($category === null || Category::isHiddenSlug((string) ($category['slug'] ?? '')) || ($category['slug'] ?? '') === 'hotels') {
+            $errors['category_id'] = 'Please choose a valid guide experience category.';
         }
         $price = (float) $this->input('price', 0);
         if ($price < 0) {
@@ -458,6 +632,14 @@ final class GuideController extends Controller
         }
 
         if ($errors !== []) {
+            if ($this->isJson()) {
+                $this->json([
+                    'success' => false,
+                    'error' => implode(' ', $errors),
+                    'errors' => $errors,
+                ], 422);
+                return [];
+            }
             // New listings use the pop-up modal on the My Listings page, so send
             // errors there; edits still go back to the full edit page.
             $back = $this->input('listing_id') ? '/dashboard/listings/' . $this->input('listing_id') . '/edit' : '/dashboard/listings';
@@ -506,7 +688,7 @@ final class GuideController extends Controller
     private function ownedListing(int $id): array
     {
         $listing = Listing::find($id);
-        if ($listing === null || (int) $listing['user_id'] !== (int) Auth::id()) {
+        if ($listing === null || ((int) $listing['user_id'] !== (int) Auth::id() && !Auth::hasRole('admin'))) {
             abort(404, 'Listing not found.');
         }
         return $listing;

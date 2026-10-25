@@ -123,6 +123,28 @@ final class Listing
     }
 
     /**
+     * Hotel listings owned by a specific hotel partner.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function forHotelOwner(int $userId): array
+    {
+        $sql = self::SELECT . ' WHERE l.user_id = ? AND c.slug = "hotels" GROUP BY l.id ORDER BY l.created_at DESC';
+        return Database::all($sql, [$userId]);
+    }
+
+    /**
+     * Guide tour and experience listings owned by a guide (excludes hotels).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function forGuideOwner(int $userId): array
+    {
+        $sql = self::SELECT . ' WHERE l.user_id = ? AND c.slug != "hotels" GROUP BY l.id ORDER BY l.created_at DESC';
+        return Database::all($sql, [$userId]);
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public static function gallery(int $listingId): array

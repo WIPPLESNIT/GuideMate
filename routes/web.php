@@ -130,12 +130,21 @@ $router->post('/dashboard/listings/{id}/availability/block', [GuideController::c
 $router->post('/dashboard/listings/{id}/availability/unblock', [GuideController::class, 'unblockDate'], ['listing_provider']);
 $router->get('/dashboard/listings/{id}/schedule', [GuideController::class, 'schedule'], ['listing_provider']);
 $router->post('/dashboard/listings/{id}/schedule/add', [GuideController::class, 'addSchedule'], ['listing_provider']);
+$router->post('/dashboard/listings/{id}/schedule/{scheduleId}/update', [GuideController::class, 'updateSchedule'], ['listing_provider']);
+$router->post('/dashboard/listings/{id}/schedule/{scheduleId}/edit', [GuideController::class, 'updateSchedule'], ['listing_provider']);
 $router->post('/dashboard/listings/{id}/schedule/remove', [GuideController::class, 'removeSchedule'], ['listing_provider']);
 
-// ---- Hotel partner room inventory & reservations ----------------------------
+// ---- Hotel partner property management, room inventory & reservations -------
+$router->get('/dashboard/hotels', [HotelController::class, 'hotels'], ['hotel_admin']);
+$router->post('/dashboard/hotels', [HotelController::class, 'storeHotel'], ['hotel_admin']);
+$router->get('/dashboard/hotels/{id}', [HotelController::class, 'getHotel'], ['hotel_admin']);
+$router->post('/dashboard/hotels/{id}', [HotelController::class, 'updateHotel'], ['hotel_admin']);
+$router->post('/dashboard/hotels/{id}/delete', [HotelController::class, 'destroyHotel'], ['hotel_admin']);
+$router->get('/dashboard/hotels/{id}/rooms', [HotelController::class, 'propertyRooms'], ['hotel_admin']);
 $router->post('/dashboard/hotel/rooms/create', [HotelController::class, 'createRoom'], ['auth']);
 $router->post('/dashboard/hotel/rooms/{id}/edit', [HotelController::class, 'updateRoom'], ['auth']);
 $router->post('/dashboard/hotel/rooms/{id}/status', [HotelController::class, 'updateRoomStatus'], ['auth']);
+$router->post('/dashboard/hotel/rooms/{id}/delete', [HotelController::class, 'destroyRoom'], ['auth']);
 $router->post('/dashboard/hotel/bookings/{id}/status', [HotelController::class, 'updateReservationStatus'], ['auth']);
 
 // ---- Rental partner management (relocated from the admin portal) -----------

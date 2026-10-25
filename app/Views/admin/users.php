@@ -299,7 +299,7 @@ foreach ($users as $u) {
 </div>
 
 <div class="panel">
-    <div class="panel-body" style="padding:0;overflow-x:auto;">
+    <div class="panel-body users-table-wrap" style="padding:0;">
         <table class="table table-users">
             <thead>
                 <tr>
@@ -323,13 +323,13 @@ foreach ($users as $u) {
                     data-email="<?= e($u['email']) ?>"
                     data-role-label="<?= e($roleLabels[$role] ?? $role) ?>"
                     data-created="<?= strtotime((string) $u['created_at']) ?>">
-                    <td class="col-name">
+                    <td class="col-name" data-label="Full Name">
                         <div class="table-user-cell">
                             <img src="<?= e(img_src($u['avatar'] ?? null, 'avatar' . $u['id'])) ?>" alt="">
                             <span class="table-user-name" title="<?= e($u['name']) ?>"><?= e($u['name']) ?></span>
                         </div>
                     </td>
-                    <td class="col-email">
+                    <td class="col-email" data-label="Email">
                         <?php if (!empty($u['oauth_provider'])): ?>
                             <?php $prov = $u['oauth_provider'] === 'facebook' ? 'Facebook' : 'Google'; ?>
                             <span class="table-user-email" title="Signed in with <?= e($prov) ?> — email kept private">🔒 <?= e($prov) ?> account (private)</span>
@@ -337,7 +337,7 @@ foreach ($users as $u) {
                             <span class="table-user-email" title="<?= e($u['email']) ?>"><?= e($u['email']) ?></span>
                         <?php endif; ?>
                     </td>
-                    <td class="col-status">
+                    <td class="col-status" data-label="Status">
                         <?php if ($isWarned): ?>
                             <span class="pill pill-disputed">Restricted</span>
                         <?php elseif ((int) $u['is_active']): ?>
@@ -349,13 +349,13 @@ foreach ($users as $u) {
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
-                    <td class="col-role">
+                    <td class="col-role" data-label="Role">
                         <span class="pill <?= e($rolePillMap[$role] ?? 'pending') ?>">
                             <?= e($roleLabels[$role] ?? ucfirst($role)) ?>
                         </span>
                     </td>
-                    <td class="col-joined"><?= e(date('M j, Y', strtotime($u['created_at']))) ?></td>
-                    <td class="col-actions">
+                    <td class="col-joined" data-label="Joined Date"><?= e(date('M j, Y', strtotime($u['created_at']))) ?></td>
+                    <td class="col-actions" data-label="Actions">
                         <div class="user-action-menu-wrap">
                             <button type="button"
                                     class="btn-user-menu-trigger"

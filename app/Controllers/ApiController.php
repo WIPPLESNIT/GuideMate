@@ -2691,7 +2691,17 @@ final class ApiController extends Controller
             'payment_stage' => (string) ($booking['payment_stage'] ?? 'full'),
             'hotel_status' => (string) ($booking['hotel_status'] ?? ''),
             'status' => $status,
-            'status_label' => match ($status) {
+            'status_label' => !empty($booking['hotel_status']) ? match ($booking['hotel_status']) {
+                'pending' => 'Pending Review',
+                'accepted' => 'Accepted',
+                'deposit_paid' => 'Deposit Paid',
+                'confirmed' => 'Confirmed',
+                'checked_in' => 'Checked In',
+                'completed' => 'Completed',
+                'cancelled' => 'Cancelled',
+                'no_show' => 'No-Show',
+                default => ucfirst($booking['hotel_status']),
+            } : match ($status) {
                 'pending' => 'Awaiting confirmation',
                 'confirmed' => 'Approved',
                 'completed' => 'Completed',

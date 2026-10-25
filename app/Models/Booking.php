@@ -163,11 +163,13 @@ final class Booking
     {
         return Database::all(
             'SELECT b.*, l.title AS listing_title, l.slug AS listing_slug, l.cover_image, l.area,
+                    hr.name AS room_name,
                     (SELECT status FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_status,
                     (SELECT id FROM disputes WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS dispute_id,
                     (SELECT status FROM disputes WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS dispute_status
              FROM bookings b
              LEFT JOIN listings l ON l.id = b.listing_id
+             LEFT JOIN hotel_rooms hr ON hr.id = b.room_id
              WHERE b.user_id = ? ORDER BY b.created_at DESC',
             [$userId]
         );

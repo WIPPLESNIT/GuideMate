@@ -53,15 +53,150 @@
     }
 
     // Dismiss flash messages
-    document.querySelectorAll('.flash-close').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var flash = btn.closest('.flash');
-            if (flash) { flash.remove(); }
+    // Hotel Reservations Action Dropdown (vertical 3-dot menu)
+    var activeResDropdown = null;
+    var activeResBtn = null;
+    var activeResRow = null;
+
+    function closeResMenu() {
+        if (activeResDropdown) {
+            activeResDropdown.classList.remove('open', 'drop-up');
+            activeResDropdown.style.top = '';
+            activeResDropdown.style.bottom = '';
+            activeResDropdown.style.left = '';
+            activeResDropdown.style.right = '';
+        }
+        if (activeResBtn) {
+            activeResBtn.setAttribute('aria-expanded', 'false');
+        }
+        if (activeResRow) {
+            activeResRow.classList.remove('is-menu-open');
+        }
+        activeResDropdown = null;
+        activeResBtn = null;
+        activeResRow = null;
+    }
+
+    function positionResMenu(trigger, menu) {
+        var btnRect = trigger.getBoundingClientRect();
+        var menuWidth = menu.offsetWidth || 180;
+
+        menu.style.visibility = 'hidden';
+        menu.classList.add('open');
+        var menuHeight = menu.offsetHeight || 170;
+        menu.style.visibility = '';
+
+        var spaceBelow = window.innerHeight - btnRect.bottom;
+        var spaceAbove = btnRect.top;
+
+        // Open upward if space below is less than menuHeight + 15 AND space above is greater than space below
+        var openUpward = (spaceBelow < (menuHeight + 15)) && (spaceAbove > spaceBelow);
+
+        // Position horizontally - align with right edge of button, keeping within window boundaries
+        var rightEdge = window.innerWidth - btnRect.right;
+        if (rightEdge < 10) {
+            rightEdge = 10;
+        }
+        if ((window.innerWidth - rightEdge - menuWidth) < 10) {
+            menu.style.right = 'auto';
+            menu.style.left = '10px';
+        } else {
+            menu.style.left = 'auto';
+            menu.style.right = rightEdge + 'px';
+        }
+
+        if (openUpward) {
+            menu.classList.add('drop-up');
+            menu.style.top = 'auto';
+            menu.style.bottom = Math.max(10, (window.innerHeight - btnRect.top + 4)) + 'px';
+        } else {
+            menu.classList.remove('drop-up');
+            menu.style.bottom = 'auto';
+            menu.style.top = Math.max(10, (btnRect.bottom + 4)) + 'px';
+        }
+    }
+
+    document.addEventListener('click', function (e) {
+        var trigger = e.target.closest ? e.target.closest('.btn-res-action-trigger') : null;
+        if (trigger) {
+            e.stopPropagation();
+            var menuId = trigger.getAttribute('aria-controls');
+            var menu = menuId ? document.getElementById(menuId) : (trigger.parentElement ? trigger.parentElement.querySelector('.res-action-dropdown') : null);
+            if (!menu) return;
+
+            if (menu === activeResDropdown) {
+                closeResMenu();
+                return;
+            }
+
+            closeResMenu();
+
+            positionResMenu(trigger, menu);
+
+            menu.classList.add('open');
+            trigger.setAttribute('aria-expanded', 'true');
+            var row = trigger.closest ? trigger.closest('tr') : null;
+            if (row) {
+                row.classList.add('is-menu-open');
+                activeResRow = row;
+            }
+            activeResDropdown = menu;
+            activeResBtn = trigger;
+            return;
+        }
+
+        if (activeResDropdown && !activeResDropdown.contains(e.target)) {
+            closeResMenu();
+        }
+    });
+
+    window.addEventListener('scroll', closeResMenu, true);
+    window.addEventListener('resize', closeResMenu, true);
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && activeResDropdown) {
+            var b = activeResBtn;
+            closeResMenu();
+            if (b) { b.focus(); }
+        }
+    });
+
+    // Dismiss flash messages & prevent duplicate display
+    var seenFlashes = new Set();
+    document.querySelectorAll('.flash').forEach(function (flash) {
+        var text = (flash.textContent || '').trim();
+        if (seenFlashes.has(text)) {
+            flash.remove();
+            return;
+        }
+        seenFlashes.add(text);
+
+        var closeBtn = flash.querySelector('.flash-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                flash.remove();
+            });
+        }
+        setTimeout(function () {
+            flash.style.transition = 'opacity .4s ease, transform .4s ease';
+            flash.style.opacity = '0';
+            flash.style.transform = 'translateY(-6px)';
+            setTimeout(function () { flash.remove(); }, 400);
+        }, 5000);
+    });
+
+    // Prevent notifications from being captured in bfcache or replayed on back/forward
+    window.addEventListener('pagehide', function () {
+        document.querySelectorAll('.flash, #gm-dynamic-toast').forEach(function (el) {
+            el.remove();
         });
     });
-    document.querySelectorAll('.flash').forEach(function (flash) {
-        setTimeout(function () { flash.style.transition = 'opacity .4s'; flash.style.opacity = '0';
-            setTimeout(function () { flash.remove(); }, 400); }, 5000);
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) {
+            document.querySelectorAll('.flash, #gm-dynamic-toast').forEach(function (el) {
+                el.remove();
+            });
+        }
     });
 
     // Favorite toggle (AJAX)
@@ -537,10 +672,21 @@
     }
 
     // Scroll-reveal animations (staggered) — applied automatically to common
-    // building blocks so we get motion site-wide without markup changes.
+    // public browse and landing building blocks.
+    // Operational workspaces (such as the hotel overview, room inventory,
+    // reservations, and admin control panels) must always render immediately on initial
+    // load, tab activation, or refresh without requiring any scrolling or intersection triggers.
     var revealSelector = '.listing-card, .cat-card, .stat, .panel, .review, .card-soft, .cta-band, .section-head, .review-summary';
     var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var revealEls = Array.prototype.slice.call(document.querySelectorAll(revealSelector));
+    var isDashboardWorkspace = document.body && (
+        document.body.classList.contains('page-dashboard') ||
+        document.body.classList.contains('admin-body') ||
+        document.querySelector('.dash-layout') !== null
+    );
+
+    var revealEls = isDashboardWorkspace ? [] : Array.prototype.slice.call(document.querySelectorAll(revealSelector)).filter(function (el) {
+        return !el.closest('.dash-layout, .dash-main, .page-dashboard, .admin-body, #inventory, #reservations');
+    });
 
     if (revealEls.length && 'IntersectionObserver' in window && !prefersReduced) {
         revealEls.forEach(function (el) { el.classList.add('reveal'); });
@@ -561,6 +707,27 @@
         }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
         revealEls.forEach(function (el) { io.observe(el); });
     }
+
+    // Ensure all dashboard and overview content is immediately visible without scrolling
+    var ensureOverviewVisible = function () {
+        var dashEls = document.querySelectorAll('.dash-layout .panel, .dash-layout .stat, .dash-layout .section-head, #inventory, #reservations, .page-dashboard .panel, .page-dashboard .stat');
+        dashEls.forEach(function (el) {
+            el.classList.remove('reveal');
+            el.classList.add('is-in');
+            el.style.opacity = '1';
+            el.style.transform = 'none';
+            el.style.visibility = 'visible';
+        });
+    };
+    ensureOverviewVisible();
+
+    // Re-verify immediate visibility whenever the Overview tab or dashboard navigation is activated
+    document.querySelectorAll('.dash-nav a').forEach(function (link) {
+        link.addEventListener('click', function () {
+            ensureOverviewVisible();
+        });
+    });
+    window.addEventListener('hashchange', ensureOverviewVisible);
 
     // Profile photo: live preview of the selected image before saving
     var avatarInput = document.getElementById('avatar');
@@ -624,8 +791,9 @@
                 alert('Your account has an active administrator warning. Booking actions are restricted until an admin clears it.');
                 return;
             }
-            var select = form.querySelector('.guide-status-select');
-            if (!select || select.value !== 'cancelled') {
+            var select = form.querySelector('.guide-status-select, [name="status"]');
+            var statusVal = select ? select.value : (form.getAttribute('data-action') || '');
+            if (statusVal !== 'cancelled') {
                 return;
             }
             if (form.getAttribute('data-paid') !== '1') {
@@ -992,7 +1160,28 @@
                 if (data.is_verified || data.guide_status === 'approved') {
                     setUserVerified(true, 'approved');
                     showState('approved');
-                    if (proceedBtn) proceedBtn.focus();
+                    if (proceedBtn) {
+                        var isRoomTrigger = lastTrigger && (
+                            lastTrigger.dataset.action === 'add-room' ||
+                            lastTrigger.dataset.openRoomModal !== undefined ||
+                            lastTrigger.id === 'btnAddRoomType' ||
+                            (lastTrigger.textContent || '').toLowerCase().indexOf('room') !== -1
+                        );
+                        var isHotelTrigger = lastTrigger && (
+                            lastTrigger.dataset.action === 'new-hotel' ||
+                            lastTrigger.dataset.openNewHotel !== undefined ||
+                            (lastTrigger.href && lastTrigger.href.indexOf('/dashboard/hotels') !== -1) ||
+                            (lastTrigger.textContent || '').toLowerCase().indexOf('hotel') !== -1
+                        );
+                        if (isRoomTrigger) {
+                            proceedBtn.textContent = 'Continue to Add Room Type →';
+                        } else if (isHotelTrigger) {
+                            proceedBtn.textContent = 'Continue to My Hotels →';
+                        } else {
+                            proceedBtn.textContent = 'Continue to New Listing →';
+                        }
+                        proceedBtn.focus();
+                    }
                 } else {
                     setUserVerified(false, data.guide_status || 'none');
                     updateUnverifiedContent(data);
@@ -1062,6 +1251,33 @@
             proceedBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 closeModal();
+                var isRoomTrigger = lastTrigger && (
+                    lastTrigger.dataset.action === 'add-room' ||
+                    lastTrigger.dataset.openRoomModal !== undefined ||
+                    lastTrigger.id === 'btnAddRoomType' ||
+                    (lastTrigger.textContent || '').toLowerCase().indexOf('room') !== -1
+                );
+                if (isRoomTrigger) {
+                    var roomModal = document.getElementById('modal-add-room');
+                    if (roomModal) {
+                        roomModal.style.display = 'flex';
+                        var firstRoomInput = roomModal.querySelector('input, select, textarea');
+                        if (firstRoomInput) {
+                            try { firstRoomInput.focus(); } catch (err) {}
+                        }
+                        return;
+                    }
+                }
+                var isHotelTrigger = lastTrigger && (
+                    lastTrigger.dataset.action === 'new-hotel' ||
+                    lastTrigger.dataset.openNewHotel !== undefined ||
+                    (lastTrigger.href && lastTrigger.href.indexOf('/dashboard/hotels') !== -1) ||
+                    (lastTrigger.textContent || '').toLowerCase().indexOf('new hotel') !== -1
+                );
+                if (isHotelTrigger) {
+                    window.location.href = '/dashboard/hotels?create=1';
+                    return;
+                }
                 var newListingModal = document.getElementById('newListingModal');
                 if (newListingModal) {
                     newListingModal.hidden = false;
@@ -1072,7 +1288,7 @@
                 } else if (lastTrigger && lastTrigger.href) {
                     window.location.href = lastTrigger.href;
                 } else {
-                    window.location.href = '/dashboard/listings/create';
+                    window.location.href = '/dashboard/listings?create=1';
                 }
             });
         }
@@ -1109,16 +1325,16 @@
             }
         });
 
-        // Global click interceptor for all listing creation entry points
+        // Global click interceptor for listing and hotel inventory entry points
         document.addEventListener('click', function (e) {
             var target = e.target;
-            var trigger = target.closest('[data-open-new-listing], [data-action="new-listing"], a[href*="/dashboard/listings/create"], a[href*="/dashboard/vehicles/create"]');
+            var trigger = target.closest('[data-open-new-listing], [data-action="new-listing"], [data-open-new-hotel], [data-action="new-hotel"], [data-action="add-room"], [data-open-room-modal], #btnAddRoomType, a[href*="/dashboard/listings/create"], a[href*="/dashboard/vehicles/create"], a[href*="/dashboard/hotels?create=1"], a[href*="/dashboard/listings?create=1"]');
 
             if (!trigger) {
                 var btn = target.closest('a.btn, button.btn');
-                if (btn && btn.closest('.dash-layout, .section-head, .empty-state')) {
+                if (btn && btn.closest('.dash-layout, .section-head, .empty-state, .panel, .panel-head')) {
                     var txt = (btn.textContent || '').trim().toLowerCase();
-                    if (txt.indexOf('new listing') !== -1 || txt.indexOf('add listing') !== -1 || txt.indexOf('create listing') !== -1 || txt.indexOf('list a vehicle') !== -1 || txt.indexOf('new hotel listing') !== -1) {
+                    if (txt.indexOf('new listing') !== -1 || txt.indexOf('add listing') !== -1 || txt.indexOf('create listing') !== -1 || txt.indexOf('list a vehicle') !== -1 || txt.indexOf('new hotel') !== -1 || txt.indexOf('add room') !== -1) {
                         trigger = btn;
                     }
                 }
@@ -1133,9 +1349,12 @@
                 return;
             }
 
-            // Gated! Prevent accessing listing form and display pop-up modal
+            // Gated! Prevent accessing listing form / room modal and display pop-up modal
             e.preventDefault();
             e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
             lastTrigger = trigger;
             openModal();
         }, true);

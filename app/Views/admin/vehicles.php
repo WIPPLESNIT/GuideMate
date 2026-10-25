@@ -22,7 +22,7 @@
 </div>
 
 <div class="panel">
-    <div class="panel-body" style="padding:0;overflow-x:auto;">
+    <div class="panel-body vehicles-table-wrap" style="padding:0;">
         <?php if ($vehicles === []): ?>
             <div class="empty-state" style="padding:3rem 1rem;">
                 <div class="big">🚗</div>
@@ -34,10 +34,10 @@
                 <thead>
                     <tr>
                         <th class="col-vehicle">Vehicle</th>
-                        <th>Partner</th>
-                        <th>Type / Rate</th>
-                        <th>Status</th>
-                        <th>Dates / Audit</th>
+                        <th class="col-partner">Partner</th>
+                        <th class="col-type">Type / Rate</th>
+                        <th class="col-status">Status</th>
+                        <th class="col-audit">Dates / Audit</th>
                         <th class="col-actions" style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
@@ -47,7 +47,7 @@
                     $specs = \App\Models\Vehicle::parseSpecs($v['specs'] ?? null);
                 ?>
                     <tr>
-                        <td class="vehicle-cell">
+                        <td class="vehicle-cell col-vehicle" data-label="Vehicle">
                             <div class="vehicle-meta-wrap">
                                 <img src="<?= e(img_src($v['image'] ?? null, 'vehicle-' . $v['id'])) ?>" alt="" class="vehicle-thumb" style="width:64px;height:48px;">
                                 <div class="vehicle-info">
@@ -89,20 +89,20 @@
                                 </div>
                             </div>
                         </td>
-                        <td>
+                        <td class="col-partner" data-label="Partner">
                             <strong><?= e($v['provider_name']) ?></strong>
-                            <div class="hint" style="font-size:0.8rem;"><?= e($v['provider_email']) ?></div>
+                            <div class="hint" style="font-size:0.8rem;word-break:break-all;"><?= e($v['provider_email']) ?></div>
                         </td>
-                        <td>
+                        <td class="col-type" data-label="Type / Rate">
                             <div><?= e($v['type']) ?></div>
                             <strong><?= money((float) $v['price_per_day']) ?></strong> <small class="hint">/ day</small>
                         </td>
-                        <td>
+                        <td class="col-status" data-label="Status">
                             <span class="pill <?= e(\App\Models\Vehicle::statusPillClass($vStatus)) ?>">
                                 <?= e(\App\Models\Vehicle::statusLabel($vStatus)) ?>
                             </span>
                         </td>
-                        <td style="font-size:0.8rem;">
+                        <td class="col-audit" data-label="Dates / Audit" style="font-size:0.8rem;">
                             <?php if (!empty($v['submitted_at'])): ?>
                                 <div><span class="hint">Submitted:</span> <?= e(date('M j, Y g:ia', strtotime((string) $v['submitted_at']))) ?></div>
                             <?php endif; ?>
@@ -113,7 +113,7 @@
                                 <?php endif; ?>
                             <?php endif; ?>
                         </td>
-                        <td class="vehicle-actions-cell" style="white-space:nowrap;text-align:right;vertical-align:middle;">
+                        <td class="vehicle-actions-cell col-actions" data-label="Actions" style="text-align:right;vertical-align:middle;">
                             <div class="vehicle-actions-vertical">
                                 <a href="<?= e(url('/admin/vehicles/' . (int) $v['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical">Inspect</a>
 
