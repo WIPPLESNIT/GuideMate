@@ -15,12 +15,11 @@
                     <h1 class="mb-0">My Vehicles</h1>
                     <p class="hint mb-0">Manage your rental fleet and track approval statuses.</p>
                 </div>
-                <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
-                    <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary" data-action="new-listing" data-open-new-listing>+ List a Vehicle</a>
-                    <?php if (!$isVerified): ?>
+                <?php if (!$isVerified): ?>
+                    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
                         <a href="<?= e(url('/documents')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?> Complete Verification</a>
-                    <?php endif; ?>
-                </div>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <?php if (!$isVerified): ?>
@@ -48,35 +47,12 @@
                 </div>
             <?php endif; ?>
 
-            <div class="stat-grid" style="margin-bottom:1.5rem;">
-                <div class="stat stat-ico-card">
-                    <span class="stat-ico"><?= admin_icon('listings', 18) ?></span>
-                    <div class="label">Total Vehicles</div>
-                    <div class="value"><?= (int) ($stats['total'] ?? 0) ?></div>
-                </div>
-                <div class="stat stat-ico-card">
-                    <span class="stat-ico"><?= admin_icon('check-circle', 18) ?></span>
-                    <div class="label">Approved &amp; Available</div>
-                    <div class="value"><?= (int) ($stats['approved'] ?? 0) ?></div>
-                </div>
-                <div class="stat stat-ico-card">
-                    <span class="stat-ico"><?= admin_icon('clock', 18) ?></span>
-                    <div class="label">Pending Approval</div>
-                    <div class="value"><?= (int) ($stats['pending'] ?? 0) ?></div>
-                </div>
-                <div class="stat stat-ico-card <?= ($stats['rejected'] ?? 0) > 0 ? 'stat-alert' : '' ?>">
-                    <span class="stat-ico"><?= admin_icon('disputes', 18) ?></span>
-                    <div class="label">Action Needed</div>
-                    <div class="value"><?= (int) ($stats['rejected'] ?? 0) ?></div>
-                </div>
-            </div>
-
             <div class="panel">
                 <div class="panel-head">
                     <h3>Vehicle Inventory (<?= count($vehicles) ?>)</h3>
                     <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm" data-action="new-listing" data-open-new-listing>+ List Vehicle</a>
                 </div>
-                <div class="panel-body" style="padding:0;overflow-x:auto;">
+                <div class="panel-body rental-inventory-wrap" style="padding:0;">
                     <?php if ($vehicles === []): ?>
                         <div class="empty-state" style="padding:3rem 1rem;">
                             <div class="big">🚗</div>
@@ -85,15 +61,15 @@
                             <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary mt-2" data-action="new-listing" data-open-new-listing>+ List your first vehicle</a>
                         </div>
                     <?php else: ?>
-                        <table class="table table-vehicles">
+                        <table class="table rental-inventory-table">
                             <thead>
                                 <tr>
                                     <th class="col-vehicle">Vehicle</th>
-                                    <th>Type</th>
-                                    <th>Daily Rate</th>
-                                    <th>Status</th>
-                                    <th>Availability</th>
-                                    <th style="text-align:right;">Actions</th>
+                                    <th class="col-type">Type</th>
+                                    <th class="col-rate">Daily Rate</th>
+                                    <th class="col-status">Status</th>
+                                    <th class="col-availability">Availability</th>
+                                    <th class="col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -103,12 +79,15 @@
                                 $canToggle = in_array($vStatus, ['approved', 'unavailable'], true);
                             ?>
                                 <tr>
-                                    <td class="vehicle-cell">
-                                        <div class="vehicle-meta-wrap">
-                                            <img src="<?= e(img_src($v['image'] ?? null, 'vehicle-' . $v['id'])) ?>" alt="" class="vehicle-thumb">
-                                            <div class="vehicle-info">
-                                                <strong class="vehicle-title"><?= e($v['name']) ?></strong>
-                                                <div class="hint vehicle-sub"><?= e($v['location']) ?> · <?= (int) $v['year'] ?> <?= e($v['make']) ?></div>
+                                    <td class="col-vehicle">
+                                        <div style="display:flex;align-items:center;gap:0.75rem;">
+                                            <img src="<?= e(img_src($v['image'] ?? null, 'vehicle-' . $v['id'])) ?>" alt=""
+                                                 style="width:52px;height:52px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f1f5f9;">
+                                            <div style="min-width:0;flex:1 1 auto;">
+                                                <strong style="display:block;font-weight:700;color:var(--text, #0f172a);line-height:1.35;word-break:break-word;"><?= e($v['name']) ?></strong>
+                                                <div class="hint" style="font-size:0.8rem;margin-top:0.15rem;word-break:break-word;">
+                                                    <?= e($v['location']) ?> · <?= (int) $v['year'] ?> <?= e($v['make']) ?>
+                                                </div>
                                                 <?php if ($vStatus === 'rejected' && !empty($v['rejection_reason'])):
                                                     $reasonText = (string) $v['rejection_reason'];
                                                     $lineCount = substr_count(trim($reasonText), "\n") + 1;
@@ -140,41 +119,86 @@
                                             </div>
                                         </div>
                                     </td>
-                                    <td><?= e($v['type']) ?></td>
-                                    <td><strong><?= money((float) $v['price_per_day']) ?></strong> <small class="hint">/ day</small></td>
-                                    <td>
+                                    <td class="col-type"><?= e($v['type']) ?></td>
+                                    <td class="col-rate">
+                                        <strong style="color:var(--brand, #059669);font-weight:700;"><?= money((float) $v['price_per_day']) ?></strong>
+                                        <small class="hint">/ day</small>
+                                    </td>
+                                    <td class="col-status">
                                         <span class="pill <?= e(\App\Models\Vehicle::statusPillClass($vStatus)) ?>">
                                             <?= e(\App\Models\Vehicle::statusLabel($vStatus)) ?>
                                         </span>
                                     </td>
-                                    <td>
+                                    <td class="col-availability">
                                         <?php if ($canToggle): ?>
-                                            <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/toggle-availability')) ?>" style="display:inline;">
-                                                <?= csrf_field() ?>
-                                                <button type="submit" class="btn btn-xs <?= $isAvail ? 'btn-ghost' : 'btn-primary' ?>" title="Click to toggle availability">
-                                                    <?= $isAvail ? '🟢 Available' : '⏸️ Unavailable' ?>
-                                                </button>
-                                            </form>
+                                            <span class="pill <?= $isAvail ? 'pill-available' : 'pill-unavailable' ?>" style="font-size:0.75rem;padding:3px 10px;">
+                                                <?= $isAvail ? '● Available' : '● Unavailable' ?>
+                                            </span>
                                         <?php elseif ($vStatus === 'pending'): ?>
-                                            <span class="hint" style="font-size:0.8rem;">🔒 Pending Admin Approval</span>
+                                            <span class="hint" style="font-size:0.8rem;white-space:nowrap;">Pending Approval</span>
                                         <?php elseif ($vStatus === 'rejected'): ?>
-                                            <span class="hint" style="font-size:0.8rem;color:var(--coral-600);">Requires revision</span>
+                                            <span class="hint" style="font-size:0.8rem;color:var(--coral-600);white-space:nowrap;">Requires revision</span>
                                         <?php else: ?>
-                                            <span class="hint" style="font-size:0.8rem;">Draft (Unsubmitted)</span>
+                                            <span class="hint" style="font-size:0.8rem;white-space:nowrap;">Draft</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td style="white-space:nowrap;text-align:right;">
-                                        <a href="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/edit')) ?>" class="btn btn-ghost btn-sm">Edit</a>
-                                        <?php if (in_array($vStatus, ['rejected', 'draft'], true)): ?>
-                                            <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/resubmit')) ?>" style="display:inline;" onsubmit="return confirm('Submit this vehicle for administrator review?');">
-                                                <?= csrf_field() ?>
-                                                <button type="submit" class="btn btn-primary btn-sm">Submit</button>
-                                            </form>
-                                        <?php endif; ?>
-                                        <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/delete')) ?>" style="display:inline;" onsubmit="return confirm('Delete this vehicle listing? This action cannot be undone.');">
-                                            <?= csrf_field() ?>
-                                            <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--coral-600);">Delete</button>
-                                        </form>
+                                    <td class="col-actions">
+                                        <div style="display:inline-flex;align-items:center;justify-content:flex-end;">
+                                            <div class="res-action-wrap">
+                                                <button type="button"
+                                                        class="btn-res-action-trigger"
+                                                        id="vehicleActionBtn_<?= (int) $v['id'] ?>"
+                                                        aria-haspopup="true"
+                                                        aria-expanded="false"
+                                                        aria-controls="vehicleActionMenu_<?= (int) $v['id'] ?>"
+                                                        title="Actions for <?= e($v['name']) ?>"
+                                                        aria-label="Actions for <?= e($v['name']) ?>">
+                                                    <?= admin_icon('more-vertical', 16) ?>
+                                                </button>
+                                                <div class="res-action-dropdown"
+                                                     id="vehicleActionMenu_<?= (int) $v['id'] ?>"
+                                                     role="menu"
+                                                     aria-labelledby="vehicleActionBtn_<?= (int) $v['id'] ?>">
+                                                    <a href="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/edit')) ?>" class="res-action-item" role="menuitem">
+                                                        <?= admin_icon('edit', 14) ?> Edit Vehicle
+                                                    </a>
+                                                    <?php if ($canToggle): ?>
+                                                        <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/toggle-availability')) ?>" class="res-action-form">
+                                                            <?= csrf_field() ?>
+                                                            <?php if ($isAvail): ?>
+                                                                <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                    <?= admin_icon('x-circle', 14) ?> Mark as Unavailable
+                                                                </button>
+                                                            <?php else: ?>
+                                                                <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                    <?= admin_icon('check-circle', 14) ?> Mark as Available
+                                                                </button>
+                                                            <?php endif; ?>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                    <?php if (in_array($vStatus, ['rejected', 'draft'], true)): ?>
+                                                        <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/resubmit')) ?>" class="res-action-form" onsubmit="return confirm('Submit this vehicle for administrator review?');">
+                                                            <?= csrf_field() ?>
+                                                            <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                <?= admin_icon('check-circle', 14) ?> Submit for Review
+                                                            </button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                    <?php if ($vStatus === 'approved'): ?>
+                                                        <a href="<?= e(url('/rentals/' . ($v['slug'] ?? $v['id']))) ?>" target="_blank" class="res-action-item" role="menuitem">
+                                                            <?= admin_icon('eye', 14) ?> View Live Listing
+                                                        </a>
+                                                    <?php endif; ?>
+                                                    <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                    <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/delete')) ?>" class="res-action-form" onsubmit="return confirm('Delete this vehicle listing? This action cannot be undone.');">
+                                                        <?= csrf_field() ?>
+                                                        <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                            <?= admin_icon('trash', 14) ?> Delete Vehicle
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

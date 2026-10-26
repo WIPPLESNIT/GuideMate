@@ -22,112 +22,197 @@
                 </div>
             <?php else: ?>
                 <div class="panel">
-                    <div class="panel-body" style="padding:0;overflow-x:auto;">
-                        <table class="table">
+                    <div class="panel-body rental-requests-wrap" style="padding:0;">
+                        <table class="table rental-requests-table">
                             <thead>
                                 <tr>
-                                    <th>#</th>
-                                    <th>Vehicle</th>
-                                    <th>Customer</th>
-                                    <th>Pickup</th>
-                                    <th>Payment</th>
-                                    <th>Verification&nbsp;ID</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
+                                    <th class="col-vehicle">Vehicle</th>
+                                    <th class="col-customer">Customer</th>
+                                    <th class="col-pickup">Pickup</th>
+                                    <th class="col-payment">Payment</th>
+                                    <th class="col-id-doc">Verification ID</th>
+                                    <th class="col-status">Status</th>
+                                    <th class="col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                            <?php foreach ($requests as $r): ?>
-                                <?php
-                                    $paymentStatus = (string) ($r['payment_status'] ?? 'unpaid');
-                                    $reportStatus = (string) ($r['report_status'] ?? 'none');
-                                ?>
-                                <tr<?= (string) $r['status'] === 'pending' ? ' style="background:#FEF3C7;"' : '' ?>>
-                                    <td><?= (int) $r['id'] ?></td>
-                                    <td>
-                                        <strong><?= e($r['vehicle_name']) ?></strong><br>
-                                        <small class="hint"><?= e($r['vehicle_type']) ?> · <?= e($r['shop_name']) ?></small>
+                            <?php foreach ($requests as $r):
+                                $paymentStatus = (string) ($r['payment_status'] ?? 'unpaid');
+                                $reportStatus = (string) ($r['report_status'] ?? 'none');
+                                $reqStatus = (string) ($r['status'] ?? 'pending');
+                                $isPending = $reqStatus === 'pending';
+                            ?>
+                                <tr<?= $isPending ? ' style="background:#FEF3C7;"' : '' ?>>
+                                    <td class="col-vehicle">
+                                        <strong class="vehicle-title"><?= e($r['vehicle_name']) ?></strong>
+                                        <div class="hint" style="font-size:0.8rem;margin-top:2px;">
+                                            <?= e($r['vehicle_type']) ?> · <?= e($r['shop_name']) ?>
+                                        </div>
                                     </td>
-                                    <td>
-                                        <?= e($r['customer_name']) ?><br>
-                                        <small class="hint"><?= e($r['customer_email']) ?></small><br>
-                                        <small class="hint"><?= e((string) ($r['customer_phone'] ?? '')) ?></small>
-                                    </td>
-                                    <td>
-                                        <?= e(date('M j, Y', strtotime((string) $r['pickup_date']))) ?><br>
-                                        <small class="hint"><?= (int) $r['rental_days'] ?> day(s)</small>
-                                    </td>
-                                    <td>
-                                        <strong><?= money((float) $r['total_amount']) ?></strong><br>
-                                        <?php if ($paymentStatus === 'paid'): ?>
-                                            <span class="pill pill-approved">Paid</span>
-                                            <small class="hint d-block"><?= e(ucfirst((string) ($r['payment_method'] ?? ''))) ?></small>
-                                        <?php elseif ($paymentStatus === 'refunded'): ?>
-                                            <span class="pill pill-cancelled">Refunded</span>
-                                        <?php else: ?>
-                                            <span class="pill pill-pending">Unpaid</span>
+                                    <td class="col-customer">
+                                        <strong class="customer-name"><?= e($r['customer_name']) ?></strong>
+                                        <div class="customer-email"><?= e($r['customer_email']) ?></div>
+                                        <?php if (!empty($r['customer_phone'])): ?>
+                                            <div class="hint" style="font-size:0.78rem;"><?= e((string) $r['customer_phone']) ?></div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($r['notes'])): ?>
+                                            <div class="hint" style="font-size:0.75rem;margin-top:3px;color:#0369a1;" title="Customer note: <?= e($r['notes']) ?>">
+                                                💬 <?= e(mb_strimwidth((string)$r['notes'], 0, 32, '...')) ?>
+                                            </div>
                                         <?php endif; ?>
                                     </td>
-                                    <td>
+                                    <td class="col-pickup">
+                                        <strong style="display:block;font-size:0.88rem;"><?= e(date('M j, Y', strtotime((string) $r['pickup_date']))) ?></strong>
+                                        <small class="hint"><?= (int) $r['rental_days'] ?> day(s)</small>
+                                    </td>
+                                    <td class="col-payment">
+                                        <strong style="color:var(--brand, #059669);display:block;"><?= money((float) $r['total_amount']) ?></strong>
+                                        <div style="margin-top:2px;">
+                                            <?php if ($paymentStatus === 'paid'): ?>
+                                                <span class="pill pill-approved" style="font-size:0.72rem;padding:2px 8px;">Paid</span>
+                                                <small class="hint d-block" style="font-size:0.72rem;margin-top:2px;"><?= e(ucfirst((string) ($r['payment_method'] ?? ''))) ?></small>
+                                            <?php elseif ($paymentStatus === 'refunded'): ?>
+                                                <span class="pill pill-cancelled" style="font-size:0.72rem;padding:2px 8px;">Refunded</span>
+                                            <?php else: ?>
+                                                <span class="pill pill-pending" style="font-size:0.72rem;padding:2px 8px;">Unpaid</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td class="col-id-doc">
                                         <?php if (!empty($r['id_document'])): ?>
-                                            <a href="<?= e(url($r['id_document'])) ?>" target="_blank" rel="noopener" class="doc-link">
+                                            <a href="<?= e(url($r['id_document'])) ?>" target="_blank" rel="noopener" class="doc-link" style="font-weight:600;font-size:0.84rem;">
                                                 📎 <?= e((string) ($r['id_type'] ?? 'ID')) ?> ↗
                                             </a>
                                             <?php if (!empty($r['id_number'])): ?>
-                                                <br><small class="hint">No. <?= e((string) $r['id_number']) ?></small>
+                                                <div class="hint" style="font-size:0.76rem;">No. <?= e((string) $r['id_number']) ?></div>
                                             <?php endif; ?>
-                                            <br><small class="hint">Held until unit is returned</small>
+                                            <div class="hint" style="font-size:0.72rem;color:var(--ink-300);">Held until return</div>
                                         <?php else: ?>
                                             <small class="hint">—</small>
                                         <?php endif; ?>
                                     </td>
-                                    <td><span class="pill pill-<?= e($r['status']) ?>"><?= e(\App\Models\RentalRequest::statusLabel((string) $r['status'])) ?></span></td>
-                                    <td>
+                                    <td class="col-status">
+                                        <span class="pill pill-<?= e($reqStatus) ?>" style="font-size:0.75rem;padding:3px 10px;">
+                                            <?= e(\App\Models\RentalRequest::statusLabel($reqStatus)) ?>
+                                        </span>
                                         <?php if ($reportStatus === 'open'): ?>
-                                            <div class="panel" style="border-color:#ef4444;margin-bottom:.5rem;">
-                                                <div class="panel-body" style="padding:.6rem .75rem;">
-                                                    <strong style="color:#ef4444;">⚠ Problem reported</strong><br>
-                                                    <small class="hint"><?= e(\App\Models\RentalRequest::reportTypeLabel((string) ($r['report_type'] ?? ''))) ?></small>
-                                                    <p class="hint" style="max-width:16rem;margin:.35rem 0 0;"><?= e((string) ($r['report_message'] ?? '')) ?></p>
+                                            <div style="margin-top:4px;">
+                                                <span class="pill pill-cancelled" style="font-size:0.7rem;padding:2px 6px;" title="<?= e((string) ($r['report_message'] ?? '')) ?>">
+                                                    ⚠ Problem Reported
+                                                </span>
+                                            </div>
+                                        <?php elseif ($reportStatus === 'refunded'): ?>
+                                            <div style="margin-top:4px;">
+                                                <span class="pill pill-cancelled" style="font-size:0.7rem;padding:2px 6px;">Refunded after report</span>
+                                            </div>
+                                        <?php elseif ($reportStatus === 'rejected'): ?>
+                                            <div style="margin-top:4px;">
+                                                <span class="pill pill-pending" style="font-size:0.7rem;padding:2px 6px;">Report dismissed</span>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="col-actions">
+                                        <div class="res-action-wrap">
+                                            <button type="button"
+                                                        class="btn-res-action-trigger"
+                                                        id="rentalReqBtn_<?= (int) $r['id'] ?>"
+                                                        aria-haspopup="true"
+                                                        aria-expanded="false"
+                                                        aria-controls="rentalReqMenu_<?= (int) $r['id'] ?>"
+                                                        title="Actions for request #<?= (int) $r['id'] ?>"
+                                                        aria-label="Actions for request #<?= (int) $r['id'] ?>">
+                                                    <?= admin_icon('more-vertical', 16) ?>
+                                                </button>
+                                                <div class="res-action-dropdown"
+                                                     id="rentalReqMenu_<?= (int) $r['id'] ?>"
+                                                     role="menu"
+                                                     aria-labelledby="rentalReqBtn_<?= (int) $r['id'] ?>">
+                                                    
+                                                    <?php if ($reportStatus === 'open'): ?>
+                                                        <div style="padding:6px 10px 4px;font-size:0.72rem;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:0.04em;">
+                                                            Problem Reported
+                                                        </div>
+                                                        <?php if (!empty($r['report_message'])): ?>
+                                                            <div style="padding:0 10px 6px;font-size:0.78rem;color:#475569;line-height:1.35;max-width:240px;word-break:break-word;">
+                                                                "<?= e((string)$r['report_message']) ?>"
+                                                            </div>
+                                                        <?php endif; ?>
+                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="res-action-form" onsubmit="return confirm('Refund full payment of <?= money((float) $r['total_amount']) ?> to the customer?');">
+                                                            <?= csrf_field() ?>
+                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                <?= admin_icon('revenue', 14) ?> Refund Customer
+                                                            </button>
+                                                        </form>
+                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>" class="res-action-form" onsubmit="return confirm('Dismiss this problem report?');">
+                                                            <?= csrf_field() ?>
+                                                            <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                <?= admin_icon('check-circle', 14) ?> Dismiss Report
+                                                            </button>
+                                                        </form>
+                                                        <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($isPending): ?>
+                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Confirm and approve this rental booking?');">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="status" value="approved">
+                                                            <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                <?= admin_icon('check-circle', 14) ?> Confirm Booking
+                                                            </button>
+                                                        </form>
+                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Decline this booking? Any payment made will be refunded.');">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="status" value="cancelled">
+                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> Decline Booking
+                                                            </button>
+                                                        </form>
+                                                    <?php else: ?>
+                                                        <?php if ($reqStatus !== 'completed' && $reqStatus !== 'cancelled'): ?>
+                                                            <?php if ($reqStatus !== 'contacted'): ?>
+                                                                <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form">
+                                                                    <?= csrf_field() ?>
+                                                                    <input type="hidden" name="status" value="contacted">
+                                                                    <button type="submit" class="res-action-item action-confirm" role="menuitem">
+                                                                        <?= admin_icon('messages', 14) ?> Mark Contacted
+                                                                    </button>
+                                                                </form>
+                                                            <?php endif; ?>
+                                                            <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Mark this rental as completed?');">
+                                                                <?= csrf_field() ?>
+                                                                <input type="hidden" name="status" value="completed">
+                                                                <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                <?= admin_icon('check-circle', 14) ?> Complete Rental
+                                                                </button>
+                                                            </form>
+                                                            <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Cancel this reservation?');">
+                                                                <?= csrf_field() ?>
+                                                                <input type="hidden" name="status" value="cancelled">
+                                                                <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                    <?= admin_icon('x-circle', 14) ?> Cancel Rental
+                                                                </button>
+                                                            </form>
+                                                        <?php endif; ?>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
+                                                        <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="res-action-form" onsubmit="return confirm('Refund the full payment of <?= money((float) $r['total_amount']) ?> for this reservation?');">
+                                                            <?= csrf_field() ?>
+                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                <?= admin_icon('revenue', 14) ?> Refund Payment
+                                                            </button>
+                                                        </form>
+                                                    <?php endif; ?>
+
+                                                    <?php if (!empty($r['id_document'])): ?>
+                                                        <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                        <a href="<?= e(url($r['id_document'])) ?>" target="_blank" rel="noopener" class="res-action-item" role="menuitem">
+                                                            <?= admin_icon('documents', 14) ?> View Verification ID
+                                                        </a>
+                                                    <?php endif; ?>
                                                 </div>
                                             </div>
-                                            <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="dispute-btns">
-                                                <?= csrf_field() ?>
-                                                <input class="input" type="text" name="owner_note" placeholder="Note to customer (optional)">
-                                                <button class="btn btn-primary btn-sm" type="submit" onclick="return confirm('Refund the full payment for this reservation?')">Refund customer</button>
-                                            </form>
-                                            <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>" style="margin-top:.35rem;">
-                                                <?= csrf_field() ?>
-                                                <button class="btn btn-ghost btn-sm" type="submit">Dismiss report</button>
-                                            </form>
-                                        <?php else: ?>
-                                            <?php if ($reportStatus === 'refunded'): ?>
-                                                <span class="pill pill-cancelled">Refunded after report</span><br>
-                                            <?php elseif ($reportStatus === 'rejected'): ?>
-                                                <span class="pill pill-pending">Report dismissed</span><br>
-                                            <?php endif; ?>
-                                            <?php if (!empty($r['notes'])): ?>
-                                                <p class="hint" style="max-width:14rem;"><?= e($r['notes']) ?></p>
-                                            <?php endif; ?>
-                                            <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="dispute-btns" style="margin-top:.5rem;">
-                                                <?= csrf_field() ?>
-                                                <input class="input" type="text" name="admin_note" placeholder="Note to yourself" value="<?= e((string) ($r['admin_note'] ?? '')) ?>">
-                                                <?php if ((string) $r['status'] === 'pending'): ?>
-                                                    <button class="btn btn-primary btn-sm" type="submit" name="status" value="approved">Confirm booking</button>
-                                                    <button class="btn btn-ghost btn-sm" type="submit" name="status" value="cancelled">Decline</button>
-                                                <?php else: ?>
-                                                    <button class="btn btn-ghost btn-sm" type="submit" name="status" value="contacted">Mark contacted</button>
-                                                    <button class="btn btn-ghost btn-sm" type="submit" name="status" value="completed">Complete</button>
-                                                    <button class="btn btn-ghost btn-sm" type="submit" name="status" value="cancelled">Cancel</button>
-                                                <?php endif; ?>
-                                            </form>
-                                            <?php if ($paymentStatus === 'paid' && $r['status'] !== 'refunded'): ?>
-                                                <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" style="margin-top:.35rem;">
-                                                    <?= csrf_field() ?>
-                                                    <button class="btn btn-ghost btn-sm" type="submit" onclick="return confirm('Refund the full payment for this reservation?')">Refund</button>
-                                                </form>
-                                            <?php endif; ?>
-                                        <?php endif; ?>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

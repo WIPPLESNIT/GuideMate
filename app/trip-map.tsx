@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { EmptyState } from '../components/ui';
-import { getTripMap, isUnauthorized, TripPin } from '../services/api';
 import { useTheme } from '../lib/theme';
+import { getTripMap, isUnauthorized, TripPin } from '../services/api';
 
 type ActivePin = { id: number; lat: number; lng: number; title: string } | null;
 
@@ -465,13 +465,15 @@ export default function TripMapScreen() {
       ) : (
         <WebView
           ref={webRef}
-          originWhitelist={['*']}
-          source={{ html }}
+          originWhitelist={['https://*', 'http://*', 'about:blank']}
+          source={{ html, baseUrl: 'https://api.mapbox.com' }}
           style={styles.web}
           javaScriptEnabled
           domStorageEnabled
           geolocationEnabled
           allowsInlineMediaPlayback
+          androidLayerType="hardware"
+          mixedContentMode="always"
           onMessage={(e) => onMessage(e.nativeEvent.data)}
           startInLoadingState
           renderLoading={() => (

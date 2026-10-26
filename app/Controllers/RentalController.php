@@ -8,6 +8,7 @@ use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Upload;
 use App\Models\RentalRequest;
+use App\Models\RentalReview;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\NotificationService;
@@ -70,12 +71,16 @@ final class RentalController extends Controller
         }
 
         $gallery = Vehicle::gallery((int) $vehicle['id']);
+        $reviews = RentalReview::forVehicle((int) $vehicle['id']);
+        $reviewStats = RentalReview::vehicleStats((string) $vehicle['id']);
 
         $this->view('rental/show', [
             'title' => (string) $vehicle['name'],
             'vehicle' => $vehicle,
             'gallery' => $gallery,
             'specs' => Vehicle::parseSpecs($vehicle['specs'] ?? null),
+            'reviews' => $reviews,
+            'reviewStats' => $reviewStats,
             'isPreview' => !$isPubliclyAvailable,
             'isOwner' => $isOwner,
             'activeCategory' => 'rentals',

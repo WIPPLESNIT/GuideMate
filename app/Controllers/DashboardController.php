@@ -12,6 +12,7 @@ use App\Models\HotelRoom;
 use App\Models\Listing;
 use App\Models\Message;
 use App\Models\RentalRequest;
+use App\Models\RentalReview;
 use App\Models\Review;
 use App\Models\ReviewImage;
 use App\Models\User;
@@ -45,21 +46,32 @@ final class DashboardController extends Controller
             abort(403, 'Service providers only.');
         }
 
-        $reviews = Review::forOwner((int) $user['id']);
-        foreach ($reviews as &$review) {
-            $review['images'] = ReviewImage::forReview((int) $review['id']);
-        }
-        unset($review);
+        if (($user['role'] ?? '') === 'rental_provider') {
+            $reviews = RentalReview::forProvider((int) $user['id']);
+            $stats = RentalReview::providerStats((int) $user['id']);
+            $summary = [
+                'avg' => (float) ($stats['rating'] ?? 0),
+                'count' => (int) ($stats['reviews_count'] ?? 0),
+            ];
+        } else {
+            $reviews = Review::forOwner((int) $user['id']);
+            foreach ($reviews as &$review) {
+                $review['images'] = ReviewImage::forReview((int) $review['id']);
+            }
+            unset($review);
 
-        $stats = Booking::guideRatingStats((int) $user['id']);
+            $stats = Booking::guideRatingStats((int) $user['id']);
+            $summary = [
+                'avg' => (float) ($stats['avg_rating'] ?? 0),
+                'count' => (int) ($stats['review_count'] ?? 0),
+            ];
+        }
+
         $this->view('dashboard/reviews', [
             'title' => 'Reviews',
             'user' => $user,
             'reviews' => $reviews,
-            'summary' => [
-                'avg' => (float) ($stats['avg_rating'] ?? 0),
-                'count' => (int) ($stats['review_count'] ?? 0),
-            ],
+            'summary' => $summary,
         ]);
     }
 

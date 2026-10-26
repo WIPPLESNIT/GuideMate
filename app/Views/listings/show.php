@@ -54,7 +54,11 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
                     <span class="count">(<?= $summary['count'] ?> reviews)</span></span>
                 <span>📍 <?= e($listing['area']) ?></span>
                 <?php if (!empty($listing['duration'])): ?><span>⏱️ <?= e($listing['duration']) ?></span><?php endif; ?>
-                <?php if (!empty($guideBadge)): ?><span class="chip"><?= e($guideBadge) ?> <?= e($host['badge']) ?></span><?php endif; ?>
+                <?php if ($isHotel): ?>
+                    <span class="chip" style="background:#E0F2FE;color:#0369A1;font-weight:600;font-size:0.85rem;">🏨 <?= e($host['badge'] ?? 'Hotel Partner') ?></span>
+                <?php elseif (!empty($guideBadge)): ?>
+                    <span class="chip"><?= e($guideBadge) ?> <?= e($host['badge']) ?></span>
+                <?php endif; ?>
             </div>
 
             <?php if (!empty($weather)): ?>
@@ -76,7 +80,7 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
                     <span class="presence-dot <?= $isHostOnline ? 'online' : 'offline' ?>"></span>
                     Hosted by <?= e($listing['owner_name']) ?> · <span class="presence-text"><?= $isHostOnline ? 'Online' : 'Offline' ?></span>
                 </span>
-                <?php if ($canSeeMapLocation && !empty($listing['address'])): ?><span class="chip">🗺️ <?= e($listing['address']) ?></span><?php endif; ?>
+                <?php if (($isHotel || $canSeeMapLocation) && !empty($listing['address'])): ?><span class="chip">🗺️ <?= e($listing['address']) ?></span><?php endif; ?>
             </div>
 
             <!-- ── DEDICATED AVAILABLE ROOMS SECTION (FOR HOTELS) ── -->
@@ -303,18 +307,19 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
         <!-- ── BOOKING SIDEBAR ── -->
         <aside>
             <div class="booking-box" id="bookingBox">
-                <div class="price"><?= money($displayPrice ?? $listing['price']) ?>
+                <div class="price">
+                    <span><?= money($displayPrice ?? $listing['price']) ?></span>
                     <?php if (isset($displayPrice) && (float) $displayPrice < (float) $listing['price']): ?>
                         <s style="font-size:.85rem;color:var(--ink-300);"><?= money($listing['price']) ?></s>
                     <?php endif; ?>
-                    <span style="font-size:.9rem;color:var(--ink-300);font-weight:600;">/ <?= e($listing['price_unit']) ?></span>
+                    <span class="price-unit">/ <?= e($listing['price_unit']) ?></span>
                 </div>
 
                 <div class="guide-mini">
-                    <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" alt="">
-                    <div>
-                        <small class="hint"><?= e($host['sidebar']) ?></small><br>
-                        <strong><?= e($listing['owner_name']) ?></strong>
+                    <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" alt="<?= e($listing['owner_name']) ?>" class="guide-mini-avatar">
+                    <div class="guide-mini-meta">
+                        <span class="guide-mini-label"><?= e($host['sidebar']) ?></span>
+                        <strong class="guide-mini-name"><?= e($listing['owner_name']) ?></strong>
                     </div>
                 </div>
 
@@ -324,9 +329,9 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
 
                 <?php elseif ($isHotel): ?>
                     <!-- HOTEL BOOKING WIDGET WITH PARTIAL DEPOSIT -->
-                    <div class="policy-note" style="background:#F0FDF4;border-color:#BBF7D0;">
-                        <strong style="color:#166534;">🏨 Verified Hotel Reservation</strong>
-                        <p class="mb-0" style="color:#15803D;">Pay a partial deposit online to secure your room. The remaining balance is paid upon check-in at the hotel.</p>
+                    <div class="policy-note">
+                        <strong>🏨 Verified Hotel Reservation</strong>
+                        <p class="mb-0">Pay a partial deposit online to secure your room. The remaining balance is paid upon check-in at the hotel.</p>
                     </div>
 
                     <form method="post" action="<?= e(url('/listing/' . $listing['id'] . '/book')) ?>" id="hotelBookingForm">
@@ -371,17 +376,17 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
                         </div>
 
                         <!-- Real-time calculation summary -->
-                        <div class="card-soft mb-3" style="background:#F8FAFC;border:1px solid #E2E8F0;padding:0.75rem 1rem;">
-                            <div class="result-bar" style="margin:0;"><span id="hotelNightsLabel">Total Stay (2 nights)</span><strong id="hotelTotalStay">₱0.00</strong></div>
-                            <div class="result-bar" style="margin:4px 0 0;color:#059669;"><span>Deposit Due Today (<span id="hotelDepositPctLabel">20</span>%)</span><strong id="hotelDepositNow" style="font-size:1.15rem;color:#059669;">₱0.00</strong></div>
-                            <div class="result-bar" style="margin:4px 0 0;color:#D97706;"><span>Balance at Check-in</span><strong id="hotelBalanceAtDesk" style="color:#D97706;">₱0.00</strong></div>
+                        <div class="calculation-card">
+                            <div class="calculation-row total-stay"><span id="hotelNightsLabel">Total Stay (2 nights)</span><strong id="hotelTotalStay">₱0.00</strong></div>
+                            <div class="calculation-row deposit-due"><span>Deposit Due Today (<span id="hotelDepositPctLabel">20</span>%)</span><strong id="hotelDepositNow">₱0.00</strong></div>
+                            <div class="calculation-row balance-due"><span>Balance at Check-in</span><strong id="hotelBalanceAtDesk">₱0.00</strong></div>
                         </div>
 
                         <button class="btn btn-primary btn-block btn-lg" type="submit" id="hotelSubmitBtn">
                             <?= $user ? 'Reserve Room (Pay Deposit)' : 'Log in to Reserve' ?>
                         </button>
-                        <p class="hint mt-2 mb-0" style="font-size:0.8rem;text-align:center;">
-                            🔒 Free cancellation up to 48 hours before check-in.
+                        <p class="cancellation-note">
+                            🔒 Free cancellation up to 48 hours <span style="white-space:nowrap;">before check&#8209;in.</span>
                         </p>
                     </form>
 
@@ -471,6 +476,21 @@ function recalculateHotelTotal() {
     var inDate = document.getElementById('check_in_date');
     var outDate = document.getElementById('check_out_date');
     if (!roomSelect || !inDate || !outDate) return;
+
+    if (inDate.value) {
+        var dInParts = inDate.value.split('-');
+        if (dInParts.length === 3) {
+            var nextD = new Date(parseInt(dInParts[0], 10), parseInt(dInParts[1], 10) - 1, parseInt(dInParts[2], 10) + 1);
+            var yyyy = nextD.getFullYear();
+            var mm = String(nextD.getMonth() + 1).padStart(2, '0');
+            var dd = String(nextD.getDate()).padStart(2, '0');
+            var minOut = yyyy + '-' + mm + '-' + dd;
+            outDate.min = minOut;
+            if (!outDate.value || outDate.value <= inDate.value) {
+                outDate.value = minOut;
+            }
+        }
+    }
 
     var selectedOpt = roomSelect.options[roomSelect.selectedIndex];
     if (!selectedOpt) return;

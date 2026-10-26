@@ -123,24 +123,65 @@ final class RentalReview
     /**
      * Calculate dynamic stats for a specific vehicle.
      *
-     * @return array{rating: float, reviews_count: int}
+     * @return array{rating: float, reviews_count: int, breakdown: array<int, int>}
      */
     public static function vehicleStats(string $vehicleId): array
     {
         $row = Database::first(
-            'SELECT AVG(rating) AS avg_rating, COUNT(*) AS count_reviews
-             FROM rental_reviews
-             WHERE vehicle_id = ?',
-            [$vehicleId]
+            'SELECT AVG(rv.rating) AS avg_rating, COUNT(*) AS count_reviews
+             FROM rental_reviews rv
+             WHERE CAST(rv.vehicle_id AS CHAR) = ?
+                OR rv.rental_id IN (SELECT id FROM rental_requests WHERE CAST(vehicle_id AS CHAR) = ?)',
+            [$vehicleId, $vehicleId]
         );
 
         $count = (int) ($row['count_reviews'] ?? 0);
         $avg = $count > 0 ? round((float) ($row['avg_rating'] ?? 0.0), 1) : 0.0;
 
+        $breakdown = [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
+        $breakdownRows = Database::all(
+            'SELECT rv.rating, COUNT(*) AS cnt
+             FROM rental_reviews rv
+             WHERE CAST(rv.vehicle_id AS CHAR) = ?
+                OR rv.rental_id IN (SELECT id FROM rental_requests WHERE CAST(vehicle_id AS CHAR) = ?)
+             GROUP BY rv.rating',
+            [$vehicleId, $vehicleId]
+        );
+        foreach ($breakdownRows as $bRow) {
+            $star = (int) ($bRow['rating'] ?? 0);
+            if (isset($breakdown[$star])) {
+                $breakdown[$star] = (int) ($bRow['cnt'] ?? 0);
+            }
+        }
+
         return [
             'rating' => $avg,
             'reviews_count' => $count,
+            'breakdown' => $breakdown,
         ];
+    }
+
+    /**
+     * Reviews left for a specific vehicle.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function forVehicle(int|string $vehicleId, int $limit = 30): array
+    {
+        $vId = (string) $vehicleId;
+        return Database::all(
+            'SELECT rv.*, rv.feedback AS comment, u.name AS reviewer_name, u.avatar AS reviewer_avatar,
+                    u.name AS user_name, u.avatar AS user_avatar, u.id AS user_id,
+                    v.name AS vehicle_name, v.slug AS vehicle_slug
+             FROM rental_reviews rv
+             JOIN users u ON u.id = rv.reviewer_id
+             LEFT JOIN vehicles v ON CAST(v.id AS CHAR) = CAST(rv.vehicle_id AS CHAR)
+             WHERE CAST(rv.vehicle_id AS CHAR) = ?
+                OR rv.rental_id IN (SELECT id FROM rental_requests WHERE CAST(vehicle_id AS CHAR) = ?)
+             ORDER BY rv.created_at DESC
+             LIMIT ' . (int) $limit,
+            [$vId, $vId]
+        );
     }
 
     /**
@@ -151,11 +192,14 @@ final class RentalReview
     public static function forProvider(int $providerId, int $limit = 20): array
     {
         return Database::all(
-            'SELECT rv.*, u.name AS reviewer_name, u.avatar AS reviewer_avatar,
-                    rr.vehicle_name, rr.pickup_date
+            'SELECT rv.*, rv.feedback AS comment, u.name AS reviewer_name, u.avatar AS reviewer_avatar,
+                    u.name AS user_name, u.avatar AS user_avatar, u.id AS user_id,
+                    rr.vehicle_name, rr.vehicle_name AS listing_title, rr.pickup_date,
+                    v.slug AS vehicle_slug, v.slug AS listing_slug
              FROM rental_reviews rv
              JOIN users u ON u.id = rv.reviewer_id
              JOIN rental_requests rr ON rr.id = rv.rental_id
+             LEFT JOIN vehicles v ON CAST(v.id AS CHAR) = CAST(rv.vehicle_id AS CHAR)
              WHERE rv.provider_id = ?
              ORDER BY rv.created_at DESC
              LIMIT ' . (int) $limit,

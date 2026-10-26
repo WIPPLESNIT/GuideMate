@@ -36,21 +36,34 @@ $summary = $summary ?? ['avg' => 0.0, 'count' => 0];
                     </div>
                 </div>
             <?php else: ?>
-                <?php foreach ($reviews as $r): ?>
+                <?php foreach ($reviews as $r):
+                    $reviewerName = (string) ($r['reviewer_name'] ?? $r['user_name'] ?? 'Tourist');
+                    $reviewerAvatar = $r['reviewer_avatar'] ?? $r['user_avatar'] ?? null;
+                    $reviewerId = (int) ($r['reviewer_id'] ?? $r['user_id'] ?? 0);
+                    $targetTitle = (string) ($r['vehicle_name'] ?? $r['listing_title'] ?? '');
+                    $targetUrl = !empty($r['vehicle_slug'])
+                        ? url('/rentals/' . $r['vehicle_slug'])
+                        : (!empty($r['listing_slug']) ? url('/listing/' . $r['listing_slug']) : '');
+                    $feedbackText = (string) ($r['feedback'] ?? $r['comment'] ?? '');
+                ?>
                     <div class="review">
                         <div class="review-head">
-                            <img src="<?= e(img_src($r['user_avatar'] ?? null, 'avatar' . $r['user_id'])) ?>" alt="">
+                            <img src="<?= e(img_src($reviewerAvatar, 'avatar' . $reviewerId)) ?>" alt="">
                             <div class="meta">
-                                <strong><?= e($r['user_name']) ?></strong><br>
+                                <strong><?= e($reviewerName) ?></strong><br>
                                 <small>
                                     <?= e(time_ago((string) $r['created_at'])) ?>
-                                    · <a href="<?= e(url('/listing/' . $r['listing_slug'])) ?>"><?= e($r['listing_title']) ?></a>
+                                    <?php if ($targetTitle !== '' && $targetUrl !== ''): ?>
+                                        · <a href="<?= e($targetUrl) ?>" target="_blank" rel="noopener"><?= e($targetTitle) ?></a>
+                                    <?php elseif ($targetTitle !== ''): ?>
+                                        · <?= e($targetTitle) ?>
+                                    <?php endif; ?>
                                 </small>
                             </div>
                             <span class="rating" style="margin-left:auto;"><?= e(stars((float) $r['rating'])) ?></span>
                         </div>
                         <?php if (!empty($r['title'])): ?><strong><?= e($r['title']) ?></strong><?php endif; ?>
-                        <p class="mb-0"><?= nl2br(e((string) $r['comment'])) ?></p>
+                        <p class="mb-0"><?= nl2br(e($feedbackText)) ?></p>
                         <?php if (!empty($r['images'])): ?>
                             <div class="review-photos" style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;">
                                 <?php foreach ($r['images'] as $img): ?>
