@@ -85,7 +85,6 @@ $guideStats = $guideStats ?? [];
                 <div class="panel-head">
                     <h3>My Vehicle Listings</h3>
                     <div>
-                        <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm" data-action="new-listing" data-open-new-listing>+ List Vehicle</a>
                         <a href="<?= e(url('/dashboard/vehicles')) ?>" class="btn btn-ghost btn-sm">View All</a>
                     </div>
                 </div>

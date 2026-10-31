@@ -115,7 +115,8 @@ final class HotelController extends Controller
             'included' => $data['included'],
             'not_included' => $data['not_included'],
             'cover_image' => $cover,
-            'status' => 'approved',
+            'status' => 'pending',
+            'submitted_at' => date('Y-m-d H:i:s'),
         ]);
 
         if ($cover !== null && $cover !== '') {
@@ -126,14 +127,14 @@ final class HotelController extends Controller
             unset($_SESSION['_flash']['success']);
             $this->json([
                 'success' => true,
-                'message' => "Hotel property \"{$data['title']}\" created successfully!",
+                'message' => "Hotel property \"{$data['title']}\" submitted successfully and is now pending administrator review.",
                 'listing_id' => $listingId,
                 'redirect' => url('/dashboard/hotels'),
             ]);
             return;
         }
 
-        flash('success', "Hotel property \"{$data['title']}\" created successfully!");
+        flash('success', "Hotel property \"{$data['title']}\" submitted successfully and is now pending administrator review.");
         redirect('/dashboard/hotels');
     }
 
@@ -181,6 +182,10 @@ final class HotelController extends Controller
             'cover_image' => $cover,
         ]);
 
+        if (($hotel['status'] ?? '') === 'rejected') {
+            Listing::resubmitHotel($listingId);
+        }
+
         if ($this->isJson()) {
             unset($_SESSION['_flash']['success']);
             $this->json([
@@ -192,6 +197,23 @@ final class HotelController extends Controller
         }
 
         flash('success', "Hotel property \"{$data['title']}\" updated successfully!");
+        redirect('/dashboard/hotels');
+    }
+
+    /**
+     * Resubmit a rejected hotel listing for administrator review.
+     */
+    public function resubmitHotel(string $id): void
+    {
+        $this->verifyCsrf();
+        $this->ensureHotelPartner();
+        $hotel = $this->ownedHotelListing((int) $id);
+        if ($hotel === []) {
+            return;
+        }
+
+        Listing::resubmitHotel((int) $id);
+        flash('success', "Hotel property \"{$hotel['title']}\" resubmitted for administrator review.");
         redirect('/dashboard/hotels');
     }
 
@@ -304,6 +326,20 @@ final class HotelController extends Controller
         $listing = Listing::find($listingId);
         if ($listing === null || (int) $listing['user_id'] !== (int) Auth::id()) {
             abort(403, 'Unauthorized.');
+        }
+
+        // Requirement 6: Rooms can only be added to approved hotels
+        if (($listing['status'] ?? '') !== 'approved') {
+            $statusLabel = Listing::hotelStatusLabel((string) ($listing['status'] ?? 'pending'));
+            $errMsg = "Rooms can only be added after this hotel property has been approved by an administrator. This property is currently {$statusLabel}.";
+            if ($this->isJson()) {
+                $this->json(['error' => $errMsg], 403);
+                return;
+            }
+            flash('error', $errMsg);
+            $fallback = '/dashboard/hotels/' . $listingId . '/rooms';
+            redirect($this->safeRedirectUrl((string) $this->input('redirect_to', ''), $fallback));
+            return;
         }
 
         $name = trim((string) $this->input('name', ''));
@@ -547,7 +583,7 @@ final class HotelController extends Controller
     private function ensureHotelPartner(): void
     {
         $user = Auth::user();
-        if ($user === null || !in_array((string) ($user['role'] ?? ''), ['hotel_admin', 'admin'], true)) {
+        if ($user === null || !in_array((string) ($user['role'] ?? ''), ['hotel_provider', 'hotel_admin', 'admin'], true)) {
             abort(403, 'Hotel partners only.');
         }
     }

@@ -24,7 +24,7 @@ final class GuideController extends Controller
 
     public function listings(): void
     {
-        if (Auth::hasRole('hotel_admin')) {
+        if (Auth::hasRole('hotel_provider') || Auth::hasRole('hotel_admin')) {
             redirect('/dashboard/hotels');
             return;
         }
@@ -42,7 +42,7 @@ final class GuideController extends Controller
 
     public function create(): void
     {
-        if (Auth::hasRole('hotel_admin')) {
+        if (Auth::hasRole('hotel_provider') || Auth::hasRole('hotel_admin')) {
             redirect('/dashboard/hotels?create=1');
             return;
         }
@@ -101,7 +101,7 @@ final class GuideController extends Controller
 
     public function edit(string $id): void
     {
-        if (Auth::hasRole('hotel_admin')) {
+        if (Auth::hasRole('hotel_provider') || Auth::hasRole('hotel_admin')) {
             redirect('/dashboard/hotels');
             return;
         }
@@ -282,7 +282,7 @@ final class GuideController extends Controller
         Booking::reconcileOrphanRefunds();
         Auth::refreshUser();
         $user = Auth::user();
-        $isHotel = ($user['role'] ?? '') === 'hotel_admin';
+        $isHotel = in_array($user['role'] ?? '', ['hotel_provider', 'hotel_admin'], true);
         $this->view('guide/bookings', [
             'title' => $isHotel ? 'Hotel Reservations' : 'Bookings Received',
             'bookings' => Booking::forGuide((int) Auth::id()),

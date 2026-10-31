@@ -108,8 +108,8 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
                                 <h2 class="mb-0" style="font-size:1.35rem;line-height:1.2;font-weight:800;color:var(--ink-500, #0f172a);">
                                     <?= e($hotel['title'] ?? 'Property Rooms') ?>
                                 </h2>
-                                <span class="pill pill-<?= e($hotelStatus) ?>" style="font-size:0.75rem;">
-                                    <?= e(status_label($hotelStatus)) ?>
+                                <span class="pill <?= e(\App\Models\Listing::hotelStatusPillClass($hotelStatus)) ?>" style="font-size:0.75rem;">
+                                    <?= e(\App\Models\Listing::hotelStatusLabel($hotelStatus)) ?>
                                 </span>
                             </div>
                             <div class="hint" style="font-size:0.85rem;margin-top:0.35rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
@@ -122,6 +122,25 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
                 </div>
             </div>
 
+            <?php if ($hotelStatus !== 'approved'): ?>
+                <div class="status-banner <?= $hotelStatus === 'rejected' ? 'banner-red' : 'banner-amber' ?>" style="margin-bottom:1.5rem;">
+                    <span class="status-icon"><?= $hotelStatus === 'rejected' ? admin_icon('disputes', 24) : admin_icon('clock', 24) ?></span>
+                    <div>
+                        <strong><?= $hotelStatus === 'rejected' ? 'Hotel Listing Needs Revision' : 'Hotel Listing Pending Administrator Review' ?></strong>
+                        <p style="margin:0.25rem 0 0;font-size:0.92rem;">
+                            <?= $hotelStatus === 'rejected'
+                                ? 'This property was not approved during review' . (!empty($hotel['rejection_reason']) ? ': "' . e($hotel['rejection_reason']) . '".' : '.') . ' Room configuration is only available for approved properties. Please update your hotel details and resubmit for approval.'
+                                : 'This hotel property is currently under administrative review. Room types and inventory configuration will be unlocked once an administrator reviews and approves the property listing.' ?>
+                        </p>
+                        <?php if ($hotelStatus === 'rejected'): ?>
+                            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center;">
+                                <a href="<?= e(url('/dashboard/hotels')) ?>" class="btn btn-sm btn-ghost" style="border:1px solid currentColor;">← Back to My Hotels to Edit &amp; Resubmit</a>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <!-- ── ROOMS TABLE PANEL ── -->
             <div class="panel room-types-panel">
                 <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
@@ -129,10 +148,16 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
                         <h3 class="mb-0">Configured Room Types (<?= count($rooms) ?>)</h3>
                         <p class="hint mb-0" style="font-size:0.82rem;">Manage room pricing, bed layouts, deposit requirements, and real-time availability for this property.</p>
                     </div>
-                    <?php if ($isVerified): ?>
-                        <button type="button" class="btn btn-primary btn-sm" onclick="openAddPropertyRoomModal()">+ Add Room Type</button>
+                    <?php if ($hotelStatus === 'approved'): ?>
+                        <?php if ($isVerified): ?>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="openAddPropertyRoomModal()">+ Add Room Type</button>
+                        <?php else: ?>
+                            <button type="button" class="btn btn-primary btn-sm" data-action="add-room" data-open-room-modal onclick="openAddPropertyRoomModal()">+ Add Room Type</button>
+                        <?php endif; ?>
                     <?php else: ?>
-                        <button type="button" class="btn btn-primary btn-sm" data-action="add-room" data-open-room-modal onclick="openAddPropertyRoomModal()">+ Add Room Type</button>
+                        <button type="button" class="btn btn-ghost btn-sm" style="border:1px dashed var(--line);color:var(--text-light,#64748b);background:#f8fafc;cursor:not-allowed;" title="Property must be approved by an administrator before configuring rooms." disabled>
+                            🔒 + Add Room Type (Approval Required)
+                        </button>
                     <?php endif; ?>
                 </div>
                 <div class="panel-body room-types-wrap" style="padding:0;">
@@ -143,10 +168,17 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
                             <p class="hint" style="max-width:440px;margin:0 auto 1.25rem;">
                                 Add room types for <?= e($hotel['title'] ?? 'this property') ?> (e.g. Deluxe Suite, Standard Queen, Ocean Villa) so travelers can view specifications and make reservations.
                             </p>
-                            <?php if ($isVerified): ?>
-                                <button type="button" class="btn btn-primary" onclick="openAddPropertyRoomModal()">+ Add Room Type</button>
+                            <?php if ($hotelStatus === 'approved'): ?>
+                                <?php if ($isVerified): ?>
+                                    <button type="button" class="btn btn-primary" onclick="openAddPropertyRoomModal()">+ Add Room Type</button>
+                                <?php else: ?>
+                                    <button type="button" class="btn btn-primary" data-action="add-room" data-open-room-modal onclick="openAddPropertyRoomModal()">+ Add Room Type</button>
+                                <?php endif; ?>
                             <?php else: ?>
-                                <button type="button" class="btn btn-primary" data-action="add-room" data-open-room-modal onclick="openAddPropertyRoomModal()">+ Add Room Type</button>
+                                <div style="margin-top:1rem;">
+                                    <p class="hint" style="color:var(--coral-600);font-weight:600;margin-bottom:0.75rem;">Room types cannot be created until this property is approved by an administrator.</p>
+                                    <a href="<?= e(url('/dashboard/hotels')) ?>" class="btn btn-ghost btn-sm">← Back to My Hotels</a>
+                                </div>
                             <?php endif; ?>
                         </div>
                     <?php else: ?>

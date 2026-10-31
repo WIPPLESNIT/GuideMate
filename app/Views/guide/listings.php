@@ -8,7 +8,7 @@
 $categories = $categories ?? [];
 $canCreate = $canCreate ?? false;
 $errors = $errors ?? [];
-$isHotel = ((auth_user() ?? [])['role'] ?? '') === 'hotel_admin';
+$isHotel = in_array(((auth_user() ?? [])['role'] ?? ''), ['hotel_provider', 'hotel_admin'], true);
 // Reopen the modal automatically if a create attempt came back with errors.
 $openModal = $errors !== [];
 $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-new-listing data-action="new-listing"';

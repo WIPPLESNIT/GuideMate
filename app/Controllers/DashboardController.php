@@ -29,7 +29,7 @@ final class DashboardController extends Controller
         // through the public user session.
         match ($role) {
             'guide' => $this->guide($user),
-            'hotel_admin' => $this->hotelAdmin($user),
+            'hotel_provider', 'hotel_admin' => $this->hotelProvider($user),
             'rental_provider', 'rental_admin' => $this->rentalProvider($user),
             default => $this->tourist($user),
         };
@@ -77,6 +77,16 @@ final class DashboardController extends Controller
 
     /**
      * Hotel Partner dashboard — listings, room inventory, reservations, and guest inquiries.
+     *
+     * @param array<string, mixed> $user
+     */
+    public function hotelProvider(array $user): void
+    {
+        $this->hotelAdmin($user);
+    }
+
+    /**
+     * Backward-compatibility alias for legacy callers.
      *
      * @param array<string, mixed> $user
      */

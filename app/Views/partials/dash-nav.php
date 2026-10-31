@@ -11,7 +11,7 @@ $role = $user['role'] ?? 'tourist';
         <a href="<?= e(url('/dashboard/reviews')) ?>" class="<?= active_when('/dashboard/reviews') ?>"><?= admin_icon('feedback') ?><span class="nav-label"><?= e(__('d_stat_reviews', 'Reviews')) ?></span></a>
         <a href="<?= e(url('/dashboard/transactions')) ?>" class="<?= active_when('/dashboard/transactions') ?>"><?= admin_icon('transactions') ?><span class="nav-label"><?= e(__('d_transactions', 'Transactions')) ?></span></a>
     <?php endif; ?>
-    <?php if ($role === 'hotel_admin'): ?>
+    <?php if ($role === 'hotel_provider' || $role === 'hotel_admin'): ?>
         <a href="<?= e(url('/dashboard/hotels')) ?>" class="<?= active_when('/dashboard/hotels') ?>"><?= admin_icon('listings') ?><span class="nav-label">My Hotels</span></a>
         <a href="<?= e(url('/dashboard/bookings')) ?>" class="<?= active_when('/dashboard/bookings') ?>"><?= admin_icon('bookings') ?><span class="nav-label">Hotel Reservations</span></a>
         <a href="<?= e(url('/dashboard/reviews')) ?>" class="<?= active_when('/dashboard/reviews') ?>"><?= admin_icon('feedback') ?><span class="nav-label">Reviews</span></a>

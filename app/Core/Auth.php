@@ -123,6 +123,12 @@ final class Auth
         if ($role === 'rental_provider' && $userRole === 'rental_admin') {
             return true;
         }
+        if ($role === 'hotel_admin' && $userRole === 'hotel_provider') {
+            return true;
+        }
+        if ($role === 'hotel_provider' && $userRole === 'hotel_admin') {
+            return true;
+        }
         return $userRole === $role;
     }
 
@@ -148,7 +154,7 @@ final class Auth
     public static function managesListings(): bool
     {
         $user = self::user();
-        return $user !== null && in_array($user['role'] ?? '', ['guide', 'hotel_admin'], true);
+        return $user !== null && in_array($user['role'] ?? '', ['guide', 'hotel_provider', 'hotel_admin'], true);
     }
 
     /**

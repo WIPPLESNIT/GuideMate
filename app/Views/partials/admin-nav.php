@@ -1,6 +1,7 @@
 <?php
 $pendingGuides = \App\Models\User::countProvidersByStatus('pending');
 $pendingVehicles = \App\Models\Vehicle::pendingCount();
+$pendingHotels = \App\Models\Listing::pendingHotelsCount();
 $openDisputes = \App\Models\Dispute::countOpen();
 $newFeedback = \App\Models\Feedback::countNew();
 $adminAcct = \App\Models\User::adminAccount();
@@ -10,6 +11,7 @@ $warnedProviders = \App\Models\User::countWarnedProviders();
 <nav class="dash-nav">
     <a href="<?= e(url('/admin')) ?>" class="<?= active_when('/admin') ?>"><?= admin_icon('overview') ?><span class="nav-label">Overview</span></a>
     <a href="<?= e(url('/admin/listings')) ?>" class="<?= active_when('/admin/listings') ?>"><?= admin_icon('listings') ?><span class="nav-label">Listings</span></a>
+    <a href="<?= e(url('/admin/hotels')) ?>" class="<?= active_when('/admin/hotels') ?>"><?= admin_icon('hotels') ?><span class="nav-label">Hotels</span><?php if ($pendingHotels > 0): ?><span class="badge"><?= (int) $pendingHotels ?></span><?php endif; ?></a>
     <a href="<?= e(url('/admin/vehicles')) ?>" class="<?= active_when('/admin/vehicles') ?>"><?= admin_icon('rentals') ?><span class="nav-label">Vehicles</span><?php if ($pendingVehicles > 0): ?><span class="badge"><?= (int) $pendingVehicles ?></span><?php endif; ?></a>
     <a href="<?= e(url('/admin/guides')) ?>" class="<?= active_when('/admin/guides') ?>"><?= admin_icon('guides') ?><span class="nav-label">Partners</span><?php if ($pendingGuides > 0): ?><span class="badge"><?= (int) $pendingGuides ?></span><?php endif; ?></a>
     <a href="<?= e(url('/admin/disputes')) ?>" class="<?= active_when('/admin/disputes') ?>"><?= admin_icon('disputes') ?><span class="nav-label">Disputes</span><?php if ($openDisputes > 0): ?><span class="badge"><?= (int) $openDisputes ?></span><?php endif; ?></a>

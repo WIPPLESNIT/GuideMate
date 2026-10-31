@@ -99,6 +99,34 @@ $errors = $errors ?? [];
                                                     <div class="hint" style="font-size:0.8rem;margin-top:0.15rem;">
                                                         <?= e($h['area']) ?><?php if (!empty($h['address'])): ?> · <?= e($h['address']) ?><?php endif; ?>
                                                     </div>
+                                                    <?php if ($hStatus === 'rejected' && !empty($h['rejection_reason'])):
+                                                        $reasonText = (string) $h['rejection_reason'];
+                                                        $lineCount = substr_count(trim($reasonText), "\n") + 1;
+                                                        $charCount = mb_strlen(trim($reasonText));
+                                                        $isLong = $lineCount >= 3 || $charCount > 90;
+                                                    ?>
+                                                        <div class="admin-note-card <?= $isLong ? 'is-long' : '' ?>" style="margin-top:0.4rem;">
+                                                            <div class="admin-note-header">
+                                                                <span class="admin-note-label">
+                                                                    <svg class="admin-note-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                                        <circle cx="12" cy="12" r="10"></circle>
+                                                                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                                                                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                                                    </svg>
+                                                                    Admin Note:
+                                                                </span>
+                                                                <?php if ($isLong): ?>
+                                                                    <button type="button" class="admin-note-toggle" aria-expanded="false" title="Expand or collapse admin note">
+                                                                        <span class="toggle-text">Read more</span>
+                                                                        <svg class="toggle-arrow" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                                                        </svg>
+                                                                    </button>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                            <div class="admin-note-body <?= $isLong ? 'is-clamped' : '' ?>" tabindex="0"><?= nl2br(e($reasonText)) ?></div>
+                                                        </div>
+                                                    <?php endif; ?>
                                                 </div>
                                             </div>
                                         </td>
@@ -112,15 +140,21 @@ $errors = $errors ?? [];
                                             </span>
                                         </td>
                                         <td>
-                                            <span class="pill pill-<?= e($hStatus) ?>">
-                                                <?= e(status_label($hStatus)) ?>
+                                            <span class="pill <?= e(\App\Models\Listing::hotelStatusPillClass($hStatus)) ?>">
+                                                <?= e(\App\Models\Listing::hotelStatusLabel($hStatus)) ?>
                                             </span>
                                         </td>
                                         <td style="text-align:right;white-space:nowrap;">
                                             <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:6px;">
-                                                <a href="<?= e(url('/dashboard/hotels/' . (int) $h['id'] . '/rooms')) ?>" class="btn btn-ghost btn-sm" style="padding:5px 12px;font-size:0.82rem;border:1px solid var(--line);border-radius:6px;display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--brand, #059669);background:#fff;" title="View and manage rooms">
-                                                    <?= admin_icon('listings', 14) ?> Room
-                                                </a>
+                                                <?php if ($hStatus === 'approved'): ?>
+                                                    <a href="<?= e(url('/dashboard/hotels/' . (int) $h['id'] . '/rooms')) ?>" class="btn btn-ghost btn-sm" style="padding:5px 12px;font-size:0.82rem;border:1px solid var(--line);border-radius:6px;display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--brand, #059669);background:#fff;" title="View and manage rooms">
+                                                        <?= admin_icon('listings', 14) ?> Room
+                                                    </a>
+                                                <?php else: ?>
+                                                    <button type="button" class="btn btn-ghost btn-sm" style="padding:5px 12px;font-size:0.82rem;border:1px dashed var(--line);border-radius:6px;display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--text-light, #64748b);background:#f8fafc;cursor:not-allowed;" title="Room configuration is unlocked after this property is approved by an administrator." disabled>
+                                                        🔒 Room (<?= e(\App\Models\Listing::hotelStatusLabel($hStatus)) ?>)
+                                                    </button>
+                                                <?php endif; ?>
                                                 <div class="res-action-wrap">
                                                     <button type="button"
                                                             class="btn-res-action-trigger"
@@ -136,12 +170,26 @@ $errors = $errors ?? [];
                                                          id="hotelActionMenu_<?= (int) $h['id'] ?>"
                                                          role="menu"
                                                          aria-labelledby="hotelActionBtn_<?= (int) $h['id'] ?>">
-                                                        <a href="<?= e(url('/dashboard/hotels/' . (int) $h['id'] . '/rooms')) ?>" class="res-action-item" role="menuitem">
-                                                            <?= admin_icon('listings', 14) ?> Manage Rooms
-                                                        </a>
+                                                        <?php if ($hStatus === 'approved'): ?>
+                                                            <a href="<?= e(url('/dashboard/hotels/' . (int) $h['id'] . '/rooms')) ?>" class="res-action-item" role="menuitem">
+                                                                <?= admin_icon('listings', 14) ?> Manage Rooms
+                                                            </a>
+                                                        <?php else: ?>
+                                                            <span class="res-action-item" style="color:var(--text-light, #94a3b8);cursor:not-allowed;" title="Room configuration is locked until approved.">
+                                                                🔒 Rooms (Locked until Approved)
+                                                            </span>
+                                                        <?php endif; ?>
                                                         <button type="button" class="res-action-item" onclick='openEditHotelModal(<?= htmlspecialchars(json_encode($h, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, "UTF-8") ?>)' role="menuitem">
                                                             <?= admin_icon('edit', 14) ?> Edit Property
                                                         </button>
+                                                        <?php if ($hStatus === 'rejected'): ?>
+                                                            <form method="post" action="<?= e(url('/dashboard/hotels/' . (int) $h['id'] . '/resubmit')) ?>" class="res-action-form" onsubmit="return confirm('Resubmit this hotel listing for administrator review?');">
+                                                                <?= csrf_field() ?>
+                                                                <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                    <?= admin_icon('check-circle', 14) ?> Resubmit for Review
+                                                                </button>
+                                                            </form>
+                                                        <?php endif; ?>
                                                         <a href="<?= e(url('/listing/' . ($h['slug'] ?? $h['id']))) ?>" target="_blank" class="res-action-item" role="menuitem">
                                                             <?= admin_icon('eye', 14) ?> View Live Listing
                                                         </a>
@@ -436,5 +484,26 @@ $errors = $errors ?? [];
             window.history.replaceState({}, document.title, window.location.pathname + cleanSearch + window.location.hash);
         }
     } catch (err) {}
+    // Toggle admin note expand/collapse
+    document.querySelectorAll('.admin-note-toggle').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var card = this.closest('.admin-note-card');
+            var body = card ? card.querySelector('.admin-note-body') : null;
+            var text = this.querySelector('.toggle-text');
+            if (!card || !body) return;
+            var expanded = this.getAttribute('aria-expanded') === 'true';
+            this.setAttribute('aria-expanded', !expanded);
+            if (expanded) {
+                body.classList.add('is-clamped');
+                card.classList.remove('is-expanded');
+                if (text) text.textContent = 'Read more';
+            } else {
+                body.classList.remove('is-clamped');
+                card.classList.add('is-expanded');
+                if (text) text.textContent = 'Show less';
+            }
+        });
+    });
 })();
 </script>

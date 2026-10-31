@@ -307,6 +307,7 @@ final class Vehicle
 
     public static function delete(int $id): void
     {
+        Database::run('DELETE FROM vehicle_images WHERE vehicle_id = ?', [$id]);
         Database::run('DELETE FROM vehicles WHERE id = ?', [$id]);
     }
 

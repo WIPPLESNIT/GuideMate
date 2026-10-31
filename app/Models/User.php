@@ -12,7 +12,7 @@ final class User
      * Roles that offer services and go through the verification workflow
      * (document upload + admin approval via the `guide_status` column).
      */
-    public const PROVIDER_ROLES = ['guide', 'rental_provider', 'hotel_admin'];
+    public const PROVIDER_ROLES = ['guide', 'rental_provider', 'hotel_provider'];
 
     /**
      * Human-readable labels for the provider roles.
@@ -20,12 +20,15 @@ final class User
     public const PROVIDER_LABELS = [
         'guide' => 'Tour Guide',
         'rental_provider' => 'Rental Partner',
+        'hotel_provider' => 'Hotel Partner',
+        // Backward-compatibility aliases for legacy templates/tests
         'hotel_admin' => 'Hotel Partner',
+        'rental_admin' => 'Rental Partner',
     ];
 
     public static function isProviderRole(string $role): bool
     {
-        return in_array($role, self::PROVIDER_ROLES, true) || $role === 'rental_admin';
+        return in_array($role, self::PROVIDER_ROLES, true) || $role === 'rental_admin' || $role === 'hotel_admin';
     }
 
     /**
@@ -60,9 +63,12 @@ final class User
      */
     public static function create(string $name, string $email, string $password, string $role): int
     {
-        // Backward-compatibility: normalize legacy rental_admin to rental_provider
+        // Backward-compatibility: normalize legacy rental_admin and hotel_admin
         if ($role === 'rental_admin') {
             $role = 'rental_provider';
+        }
+        if ($role === 'hotel_admin') {
+            $role = 'hotel_provider';
         }
         $guideStatus = self::isProviderRole($role) ? 'pending' : 'none';
         return Database::insert(
@@ -391,7 +397,7 @@ final class User
     {
         $row = Database::first(
             'SELECT COUNT(*) AS c FROM users
-             WHERE role IN ("guide","rental_provider","hotel_admin") AND guide_warned = 1'
+             WHERE role IN ("guide","rental_provider","hotel_provider","hotel_admin") AND guide_warned = 1'
         );
         return (int) ($row['c'] ?? 0);
     }
@@ -468,14 +474,14 @@ final class User
         if ($status !== null) {
             return Database::all(
                 'SELECT * FROM users
-                 WHERE role IN ("guide","rental_provider","hotel_admin") AND guide_status = ?
+                 WHERE role IN ("guide","rental_provider","hotel_provider","hotel_admin") AND guide_status = ?
                  ORDER BY created_at DESC',
                 [$status]
             );
         }
         return Database::all(
             'SELECT * FROM users
-             WHERE role IN ("guide","rental_provider","hotel_admin")
+             WHERE role IN ("guide","rental_provider","hotel_provider","hotel_admin")
              ORDER BY FIELD(guide_status, "pending", "rejected", "approved", "none"), created_at DESC'
         );
     }
@@ -484,7 +490,7 @@ final class User
     {
         $row = Database::first(
             'SELECT COUNT(*) AS c FROM users
-             WHERE role IN ("guide","rental_provider","hotel_admin") AND guide_status = ?',
+             WHERE role IN ("guide","rental_provider","hotel_provider","hotel_admin") AND guide_status = ?',
             [$status]
         );
         return (int) ($row['c'] ?? 0);

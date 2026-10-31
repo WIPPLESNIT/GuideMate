@@ -37,6 +37,33 @@ final class Router
      * @param array{0:class-string,1:string} $handler
      * @param array<int,string> $guards
      */
+    public function delete(string $pattern, array $handler, array $guards = []): void
+    {
+        $this->add('DELETE', $pattern, $handler, $guards);
+    }
+
+    /**
+     * @param array{0:class-string,1:string} $handler
+     * @param array<int,string> $guards
+     */
+    public function put(string $pattern, array $handler, array $guards = []): void
+    {
+        $this->add('PUT', $pattern, $handler, $guards);
+    }
+
+    /**
+     * @param array{0:class-string,1:string} $handler
+     * @param array<int,string> $guards
+     */
+    public function patch(string $pattern, array $handler, array $guards = []): void
+    {
+        $this->add('PATCH', $pattern, $handler, $guards);
+    }
+
+    /**
+     * @param array{0:class-string,1:string} $handler
+     * @param array<int,string> $guards
+     */
     private function add(string $method, string $pattern, array $handler, array $guards): void
     {
         $this->routes[] = [
@@ -171,9 +198,10 @@ final class Router
                         abort(403, 'Listing providers only.');
                     }
                     break;
+                case 'hotel_provider':
                 case 'hotel_admin':
                 case 'hotel_partner':
-                    if (!Auth::hasRole('hotel_admin') && !Auth::hasRole('admin')) {
+                    if (!Auth::hasRole('hotel_provider') && !Auth::hasRole('hotel_admin') && !Auth::hasRole('admin')) {
                         abort(403, 'Hotel partners only.');
                     }
                     break;

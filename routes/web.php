@@ -135,12 +135,13 @@ $router->post('/dashboard/listings/{id}/schedule/{scheduleId}/edit', [GuideContr
 $router->post('/dashboard/listings/{id}/schedule/remove', [GuideController::class, 'removeSchedule'], ['listing_provider']);
 
 // ---- Hotel partner property management, room inventory & reservations -------
-$router->get('/dashboard/hotels', [HotelController::class, 'hotels'], ['hotel_admin']);
-$router->post('/dashboard/hotels', [HotelController::class, 'storeHotel'], ['hotel_admin']);
-$router->get('/dashboard/hotels/{id}', [HotelController::class, 'getHotel'], ['hotel_admin']);
-$router->post('/dashboard/hotels/{id}', [HotelController::class, 'updateHotel'], ['hotel_admin']);
-$router->post('/dashboard/hotels/{id}/delete', [HotelController::class, 'destroyHotel'], ['hotel_admin']);
-$router->get('/dashboard/hotels/{id}/rooms', [HotelController::class, 'propertyRooms'], ['hotel_admin']);
+$router->get('/dashboard/hotels', [HotelController::class, 'hotels'], ['hotel_provider']);
+$router->post('/dashboard/hotels', [HotelController::class, 'storeHotel'], ['hotel_provider']);
+$router->get('/dashboard/hotels/{id}', [HotelController::class, 'getHotel'], ['hotel_provider']);
+$router->post('/dashboard/hotels/{id}', [HotelController::class, 'updateHotel'], ['hotel_provider']);
+$router->post('/dashboard/hotels/{id}/resubmit', [HotelController::class, 'resubmitHotel'], ['hotel_provider']);
+$router->post('/dashboard/hotels/{id}/delete', [HotelController::class, 'destroyHotel'], ['hotel_provider']);
+$router->get('/dashboard/hotels/{id}/rooms', [HotelController::class, 'propertyRooms'], ['hotel_provider']);
 $router->post('/dashboard/hotel/rooms/create', [HotelController::class, 'createRoom'], ['auth']);
 $router->post('/dashboard/hotel/rooms/{id}/edit', [HotelController::class, 'updateRoom'], ['auth']);
 $router->post('/dashboard/hotel/rooms/{id}/status', [HotelController::class, 'updateRoomStatus'], ['auth']);
@@ -186,10 +187,18 @@ $router->post('/admin/security/disable', [AdminAuthController::class, 'disableTw
 $router->get('/admin/listings', [AdminController::class, 'listings'], ['admin']);
 $router->post('/admin/listings/{id}/status', [AdminController::class, 'updateListingStatus'], ['admin']);
 $router->post('/admin/listings/{id}/feature', [AdminController::class, 'toggleFeatured'], ['admin']);
+$router->get('/admin/hotels', [AdminController::class, 'hotels'], ['admin']);
+$router->get('/admin/hotels/{id}', [AdminController::class, 'showHotel'], ['admin']);
+$router->post('/admin/hotels/{id}/approve', [AdminController::class, 'approveHotel'], ['admin']);
+$router->post('/admin/hotels/{id}/reject', [AdminController::class, 'rejectHotel'], ['admin']);
+$router->post('/admin/hotels/{id}/delete', [AdminController::class, 'deleteHotel'], ['admin']);
+$router->delete('/admin/hotels/{id}', [AdminController::class, 'deleteHotel'], ['admin']);
 $router->get('/admin/vehicles', [AdminController::class, 'vehicles'], ['admin']);
 $router->get('/admin/vehicles/{id}', [AdminController::class, 'showVehicle'], ['admin']);
 $router->post('/admin/vehicles/{id}/approve', [AdminController::class, 'approveVehicle'], ['admin']);
 $router->post('/admin/vehicles/{id}/reject', [AdminController::class, 'rejectVehicle'], ['admin']);
+$router->post('/admin/vehicles/{id}/delete', [AdminController::class, 'deleteVehicle'], ['admin']);
+$router->delete('/admin/vehicles/{id}', [AdminController::class, 'deleteVehicle'], ['admin']);
 $router->get('/admin/users', [AdminController::class, 'users'], ['admin']);
 $router->get('/admin/users/create', [AdminController::class, 'createUser'], ['admin']);
 $router->post('/admin/users', [AdminController::class, 'storeUser'], ['admin']);

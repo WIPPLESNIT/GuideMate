@@ -7,6 +7,7 @@ $pendingAppeals = $pendingAppeals ?? [];
 $roleLabels = [
     'tourist' => 'Tourist',
     'guide' => 'Tour Guide',
+    'hotel_provider' => 'Hotel Partner',
     'hotel_admin' => 'Hotel Partner',
     'rental_provider' => 'Rental Partner',
     'rental_admin' => 'Rental Partner',
@@ -15,6 +16,7 @@ $roleLabels = [
 $rolePillMap = [
     'admin' => 'completed',
     'guide' => 'confirmed',
+    'hotel_provider' => 'refunded',
     'hotel_admin' => 'refunded',
     'rental_provider' => 'resolved_warning',
     'rental_admin' => 'resolved_warning',
@@ -29,6 +31,13 @@ foreach (array_keys($roleLabels) as $rk) {
 }
 foreach ($users as $u) {
     $r = (string) ($u['role'] ?? 'tourist');
+    if ($r === 'hotel_admin') {
+        $roleCounts['hotel_admin'] = ($roleCounts['hotel_admin'] ?? 0) + 1;
+        $r = 'hotel_provider';
+    } elseif ($r === 'rental_admin') {
+        $roleCounts['rental_admin'] = ($roleCounts['rental_admin'] ?? 0) + 1;
+        $r = 'rental_provider';
+    }
     if (!isset($roleCounts[$r])) {
         $roleCounts[$r] = 0;
     }
@@ -123,10 +132,10 @@ foreach ($users as $u) {
                         <span class="filter-item-text">Tour Guides</span>
                         <span class="filter-item-count"><?= (int) ($roleCounts['guide'] ?? 0) ?></span>
                     </div>
-                    <div class="filter-popover-item" role="option" aria-selected="false" data-value="hotel_admin" tabindex="-1">
+                    <div class="filter-popover-item" role="option" aria-selected="false" data-value="hotel_provider" tabindex="-1">
                         <span class="filter-item-indicator" aria-hidden="true"></span>
                         <span class="filter-item-text">Hotel Partners</span>
-                        <span class="filter-item-count"><?= (int) ($roleCounts['hotel_admin'] ?? 0) ?></span>
+                        <span class="filter-item-count"><?= (int) ($roleCounts['hotel_provider'] ?? 0) ?></span>
                     </div>
                     <div class="filter-popover-item" role="option" aria-selected="false" data-value="rental_provider" tabindex="-1">
                         <span class="filter-item-indicator" aria-hidden="true"></span>
@@ -152,7 +161,7 @@ foreach ($users as $u) {
                 <option value="all" selected>Role</option>
                 <option value="tourist">Tourists</option>
                 <option value="guide">Tour Guides</option>
-                <option value="hotel_admin">Hotel Partners</option>
+                <option value="hotel_provider">Hotel Partners</option>
                 <option value="rental_provider">Rental Partners</option>
                 <option value="admin">Admins</option>
                 <?php if ($warnedCount > 0): ?>
@@ -545,7 +554,9 @@ foreach ($users as $u) {
             var isWarned = row.getAttribute('data-warned') === '1';
             var matchesRole = selectedRole === 'all'
                 || (selectedRole === 'warned' && isWarned)
-                || role === selectedRole;
+                || role === selectedRole
+                || ((selectedRole === 'hotel_provider' || selectedRole === 'hotel_admin') && (role === 'hotel_provider' || role === 'hotel_admin'))
+                || ((selectedRole === 'rental_provider' || selectedRole === 'rental_admin') && (role === 'rental_provider' || role === 'rental_admin'));
 
             if (!matchesRole) {
                 row.hidden = true;

@@ -143,60 +143,58 @@
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-actions">
-                                        <div style="display:inline-flex;align-items:center;justify-content:flex-end;">
-                                            <div class="res-action-wrap">
-                                                <button type="button"
-                                                        class="btn-res-action-trigger"
-                                                        id="vehicleActionBtn_<?= (int) $v['id'] ?>"
-                                                        aria-haspopup="true"
-                                                        aria-expanded="false"
-                                                        aria-controls="vehicleActionMenu_<?= (int) $v['id'] ?>"
-                                                        title="Actions for <?= e($v['name']) ?>"
-                                                        aria-label="Actions for <?= e($v['name']) ?>">
-                                                    <?= admin_icon('more-vertical', 16) ?>
-                                                </button>
-                                                <div class="res-action-dropdown"
-                                                     id="vehicleActionMenu_<?= (int) $v['id'] ?>"
-                                                     role="menu"
-                                                     aria-labelledby="vehicleActionBtn_<?= (int) $v['id'] ?>">
-                                                    <a href="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/edit')) ?>" class="res-action-item" role="menuitem">
-                                                        <?= admin_icon('edit', 14) ?> Edit Vehicle
-                                                    </a>
-                                                    <?php if ($canToggle): ?>
-                                                        <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/toggle-availability')) ?>" class="res-action-form">
-                                                            <?= csrf_field() ?>
-                                                            <?php if ($isAvail): ?>
-                                                                <button type="submit" class="res-action-item action-cancel" role="menuitem">
-                                                                    <?= admin_icon('x-circle', 14) ?> Mark as Unavailable
-                                                                </button>
-                                                            <?php else: ?>
-                                                                <button type="submit" class="res-action-item action-accept" role="menuitem">
-                                                                    <?= admin_icon('check-circle', 14) ?> Mark as Available
-                                                                </button>
-                                                            <?php endif; ?>
-                                                        </form>
-                                                    <?php endif; ?>
-                                                    <?php if (in_array($vStatus, ['rejected', 'draft'], true)): ?>
-                                                        <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/resubmit')) ?>" class="res-action-form" onsubmit="return confirm('Submit this vehicle for administrator review?');">
-                                                            <?= csrf_field() ?>
-                                                            <button type="submit" class="res-action-item action-accept" role="menuitem">
-                                                                <?= admin_icon('check-circle', 14) ?> Submit for Review
-                                                            </button>
-                                                        </form>
-                                                    <?php endif; ?>
-                                                    <?php if ($vStatus === 'approved'): ?>
-                                                        <a href="<?= e(url('/rentals/' . ($v['slug'] ?? $v['id']))) ?>" target="_blank" class="res-action-item" role="menuitem">
-                                                            <?= admin_icon('eye', 14) ?> View Live Listing
-                                                        </a>
-                                                    <?php endif; ?>
-                                                    <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
-                                                    <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/delete')) ?>" class="res-action-form" onsubmit="return confirm('Delete this vehicle listing? This action cannot be undone.');">
+                                        <div class="res-action-wrap">
+                                            <button type="button"
+                                                    class="btn-res-action-trigger"
+                                                    id="vehicleActionBtn_<?= (int) $v['id'] ?>"
+                                                    aria-haspopup="true"
+                                                    aria-expanded="false"
+                                                    aria-controls="vehicleActionMenu_<?= (int) $v['id'] ?>"
+                                                    title="Actions for <?= e($v['name']) ?>"
+                                                    aria-label="Actions for <?= e($v['name']) ?>">
+                                                <?= admin_icon('more-vertical', 16) ?>
+                                            </button>
+                                            <div class="res-action-dropdown"
+                                                 id="vehicleActionMenu_<?= (int) $v['id'] ?>"
+                                                 role="menu"
+                                                 aria-labelledby="vehicleActionBtn_<?= (int) $v['id'] ?>">
+                                                <a href="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/edit')) ?>" class="res-action-item" role="menuitem">
+                                                    <?= admin_icon('edit', 14) ?> Edit Vehicle
+                                                </a>
+                                                <?php if ($canToggle): ?>
+                                                    <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/toggle-availability')) ?>" class="res-action-form">
                                                         <?= csrf_field() ?>
-                                                        <button type="submit" class="res-action-item action-cancel" role="menuitem">
-                                                            <?= admin_icon('trash', 14) ?> Delete Vehicle
+                                                        <?php if ($isAvail): ?>
+                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> Mark as Unavailable
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                <?= admin_icon('check-circle', 14) ?> Mark as Available
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </form>
+                                                <?php endif; ?>
+                                                <?php if (in_array($vStatus, ['rejected', 'draft'], true)): ?>
+                                                    <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/resubmit')) ?>" class="res-action-form" onsubmit="return confirm('Submit this vehicle for administrator review?');">
+                                                        <?= csrf_field() ?>
+                                                        <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                            <?= admin_icon('check-circle', 14) ?> Submit for Review
                                                         </button>
                                                     </form>
-                                                </div>
+                                                <?php endif; ?>
+                                                <?php if ($vStatus === 'approved'): ?>
+                                                    <a href="<?= e(url('/rentals/' . ($v['slug'] ?? $v['id']))) ?>" target="_blank" class="res-action-item" role="menuitem">
+                                                        <?= admin_icon('eye', 14) ?> View Live Listing
+                                                    </a>
+                                                <?php endif; ?>
+                                                <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                <form method="post" action="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/delete')) ?>" class="res-action-form" onsubmit="return confirm('Delete this vehicle listing? This action cannot be undone.');">
+                                                    <?= csrf_field() ?>
+                                                    <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                        <?= admin_icon('trash', 14) ?> Delete Vehicle
+                                                    </button>
+                                                </form>
                                             </div>
                                         </div>
                                     </td>

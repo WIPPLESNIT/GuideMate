@@ -118,7 +118,7 @@ final class BookingController extends Controller
     {
         $user = Auth::user();
         $role = (string) ($user['role'] ?? 'tourist');
-        if ($role === 'hotel_admin') {
+        if ($role === 'hotel_provider' || $role === 'hotel_admin') {
             redirect('/dashboard/bookings');
         } elseif ($role === 'guide') {
             redirect('/dashboard/bookings');

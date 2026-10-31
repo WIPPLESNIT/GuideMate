@@ -29,7 +29,8 @@ $providerLabels = User::PROVIDER_LABELS;
             <span class="input-ic">🧭</span>
             <select class="input has-ic" id="role" name="role">
                 <?php foreach ($providerLabels as $key => $label): ?>
-                    <option value="<?= e($key) ?>" <?= $selectedRole === $key ? 'selected' : '' ?>><?= e($label) ?></option>
+                    <?php if ($key === 'hotel_admin' || $key === 'rental_admin') { continue; } ?>
+                    <option value="<?= e($key) ?>" <?= ($selectedRole === $key || ($key === 'hotel_provider' && $selectedRole === 'hotel_admin')) ? 'selected' : '' ?>><?= e($label) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -169,6 +170,7 @@ $providerLabels = User::PROVIDER_LABELS;
         guide: 'Lead tours and manage your own experience listings and bookings.',
         rental_provider: 'List rental vehicles and handle incoming rental requests.',
         rental_admin: 'List rental vehicles and handle incoming rental requests.',
+        hotel_provider: 'List your hotel / accommodation and reply to guest inquiries.',
         hotel_admin: 'List your hotel / accommodation and reply to guest inquiries.'
     };
     var select = document.getElementById('role');

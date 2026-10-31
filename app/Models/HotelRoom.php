@@ -119,6 +119,12 @@ final class HotelRoom
         return true;
     }
 
+    public static function deleteForListing(int $listingId): bool
+    {
+        Database::run("DELETE FROM hotel_rooms WHERE listing_id = ?", [$listingId]);
+        return true;
+    }
+
     /**
      * Check if a room is available for a specified date range.
      * Prevents overlapping active reservations on the same room.

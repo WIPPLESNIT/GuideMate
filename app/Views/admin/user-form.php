@@ -10,6 +10,9 @@ $role = (string) old('role', $user['role'] ?? 'tourist');
 if ($role === 'rental_admin') {
     $role = 'rental_provider';
 }
+if ($role === 'hotel_admin') {
+    $role = 'hotel_provider';
+}
 $isActive = (int) old('is_active', (string) ($user['is_active'] ?? 1));
 $guideStatus = (string) old('guide_status', $user['guide_status'] ?? 'none');
 $isProvider = \App\Models\User::isProviderRole($role);
@@ -19,7 +22,7 @@ $latestAppeal = $latestAppeal ?? null;
 $roleOptions = [
     'tourist' => 'Tourist',
     'guide' => 'Tour Guide',
-    'hotel_admin' => 'Hotel Partner',
+    'hotel_provider' => 'Hotel Partner',
     'rental_provider' => 'Rental Partner',
     'admin' => 'Administrator',
 ];

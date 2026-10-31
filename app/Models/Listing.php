@@ -167,13 +167,14 @@ final class Listing
         );
         $data['latitude'] = $coords['latitude'] ?? null;
         $data['longitude'] = $coords['longitude'] ?? null;
+        $data['submitted_at'] = $data['submitted_at'] ?? date('Y-m-d H:i:s');
 
         return Database::insert(
             'INSERT INTO listings
                 (user_id, category_id, title, slug, summary, description, area, address, latitude, longitude,
-                 price, price_unit, duration, included, not_included, cover_image, status)
+                 price, price_unit, duration, included, not_included, cover_image, status, submitted_at)
              VALUES (:user_id, :category_id, :title, :slug, :summary, :description, :area, :address, :latitude, :longitude,
-                     :price, :price_unit, :duration, :included, :not_included, :cover_image, :status)',
+                     :price, :price_unit, :duration, :included, :not_included, :cover_image, :status, :submitted_at)',
             $data
         );
     }
@@ -336,6 +337,8 @@ final class Listing
 
     public static function delete(int $id): void
     {
+        Database::run('DELETE FROM hotel_rooms WHERE listing_id = ?', [$id]);
+        Database::run('DELETE FROM listing_images WHERE listing_id = ?', [$id]);
         Database::run('DELETE FROM listings WHERE id = ?', [$id]);
     }
 
@@ -401,5 +404,95 @@ final class Listing
              ORDER BY booking_count DESC, revenue DESC
              LIMIT ' . (int) $limit
         );
+    }
+
+    /**
+     * All hotel property listings for administrator review.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function allHotelsForAdmin(?string $status = null): array
+    {
+        $params = [];
+        $where = ['c.slug = "hotels"'];
+        if ($status !== null && $status !== '' && $status !== 'all') {
+            $where[] = 'l.status = ?';
+            $params[] = $status;
+        }
+
+        $sql = 'SELECT l.*, c.name AS category_name, c.slug AS category_slug,
+                       u.name AS provider_name, u.email AS provider_email,
+                       r.name AS reviewer_name,
+                       (SELECT COUNT(*) FROM hotel_rooms hr WHERE hr.listing_id = l.id) AS room_count
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                JOIN users u ON u.id = l.user_id
+                LEFT JOIN users r ON r.id = l.reviewed_by
+                WHERE ' . implode(' AND ', $where) . '
+                ORDER BY CASE WHEN l.status = "pending" THEN 0 ELSE 1 END, COALESCE(l.submitted_at, l.created_at) DESC';
+
+        return Database::all($sql, $params);
+    }
+
+    public static function pendingHotelsCount(): int
+    {
+        $res = Database::first(
+            'SELECT COUNT(*) AS cnt FROM listings l
+             JOIN categories c ON c.id = l.category_id
+             WHERE c.slug = "hotels" AND l.status = "pending"'
+        );
+        return (int) ($res['cnt'] ?? 0);
+    }
+
+    public static function approveHotel(int $id, int $reviewerId): void
+    {
+        Database::run(
+            "UPDATE listings
+             SET status = 'approved',
+                 reviewed_at = NOW(), reviewed_by = ?, rejection_reason = NULL
+             WHERE id = ?",
+            [$reviewerId, $id]
+        );
+    }
+
+    public static function rejectHotel(int $id, int $reviewerId, ?string $reason = null): void
+    {
+        Database::run(
+            "UPDATE listings
+             SET status = 'rejected',
+                 reviewed_at = NOW(), reviewed_by = ?, rejection_reason = ?
+             WHERE id = ?",
+            [$reviewerId, $reason, $id]
+        );
+    }
+
+    public static function resubmitHotel(int $id): void
+    {
+        Database::run(
+            "UPDATE listings
+             SET status = 'pending', submitted_at = NOW()
+             WHERE id = ?",
+            [$id]
+        );
+    }
+
+    public static function hotelStatusPillClass(string $status): string
+    {
+        return match ($status) {
+            'approved' => 'pill-approved',
+            'pending' => 'pill-pending',
+            'rejected' => 'pill-cancelled',
+            default => 'pill-secondary',
+        };
+    }
+
+    public static function hotelStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'approved' => 'Approved',
+            'pending' => 'Pending Approval',
+            'rejected' => 'Rejected',
+            default => ucfirst($status),
+        };
     }
 }

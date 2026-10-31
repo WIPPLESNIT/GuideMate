@@ -3,7 +3,7 @@
 $isWarned = $isWarned ?? false;
 $warningNote = $warningNote ?? '';
 $currentUser = auth_user();
-$isHotel = $isHotel ?? (($currentUser['role'] ?? '') === 'hotel_admin');
+$isHotel = $isHotel ?? in_array(($currentUser['role'] ?? ''), ['hotel_provider', 'hotel_admin'], true);
 $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookings received'));
 ?>
 <div class="container">

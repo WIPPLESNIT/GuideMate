@@ -195,6 +195,25 @@ HTML;
         self::send($email, 'Vehicle listing update — ' . $vehicleName, $body);
     }
 
+    public static function hotelApproved(string $email, string $hotelTitle): void
+    {
+        self::send(
+            $email,
+            'Hotel listing approved — ' . $hotelTitle,
+            "Great news! Your hotel property listing for {$hotelTitle} has been approved by the administrator and is now published and available for travelers. You can now configure room types and inventory from your dashboard."
+        );
+    }
+
+    public static function hotelRejected(string $email, string $hotelTitle, string $reason = ''): void
+    {
+        $body = "Your hotel property listing for {$hotelTitle} was not approved by the administrator.";
+        if ($reason !== '') {
+            $body .= "\n\nReason: {$reason}";
+        }
+        $body .= "\n\nYou can review the feedback, update your property details or amenities, and resubmit it for approval from your dashboard.";
+        self::send($email, 'Hotel listing update — ' . $hotelTitle, $body);
+    }
+
     private static function send(string $to, string $subject, string $body, ?string $htmlBody = null): bool
     {
         $mailOk = Mailer::send($to, $subject, $body, $htmlBody);

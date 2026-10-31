@@ -176,6 +176,143 @@ final class AdminController extends Controller
         redirect('/admin/listings');
     }
 
+    public function hotels(): void
+    {
+        $status = (string) $this->input('status', 'all');
+        $this->view('admin/hotels', [
+            'title' => 'Hotel Listings Review',
+            'hotels' => Listing::allHotelsForAdmin($status),
+            'status' => $status,
+            'pendingCount' => Listing::pendingHotelsCount(),
+        ], 'admin');
+    }
+
+    public function showHotel(string $id): void
+    {
+        $hotel = Listing::find((int) $id);
+        if ($hotel === null) {
+            abort(404, 'Hotel listing not found.');
+        }
+
+        $provider = User::find((int) $hotel['user_id']);
+        $reviewer = !empty($hotel['reviewed_by']) ? User::find((int) $hotel['reviewed_by']) : null;
+        $rooms = \App\Models\HotelRoom::forListing((int) $hotel['id']);
+
+        $this->view('admin/hotel-show', [
+            'title' => 'Review Hotel: ' . $hotel['title'],
+            'hotel' => $hotel,
+            'provider' => $provider,
+            'reviewer' => $reviewer,
+            'rooms' => $rooms,
+            'gallery' => Listing::gallery((int) $hotel['id']),
+        ], 'admin');
+    }
+
+    public function approveHotel(string $id): void
+    {
+        $this->verifyCsrf();
+        $hotel = Listing::find((int) $id);
+        if ($hotel === null) {
+            flash('error', 'Hotel not found.');
+            redirect('/admin/hotels');
+        }
+
+        $adminId = (int) AdminAuth::id();
+        Listing::approveHotel((int) $id, $adminId);
+
+        AuditLog::recordAction('hotel.approve', 'listing', (int) $id, [
+            'hotel_title' => $hotel['title'],
+            'provider_id' => $hotel['user_id'],
+        ]);
+
+        $provider = User::find((int) $hotel['user_id']);
+        if ($provider !== null && !empty($provider['email'])) {
+            NotificationService::hotelApproved((string) $provider['email'], (string) $hotel['title']);
+        }
+
+        flash('success', "Hotel '{$hotel['title']}' has been approved and published.");
+        redirect('/admin/hotels');
+    }
+
+    public function rejectHotel(string $id): void
+    {
+        $this->verifyCsrf();
+        $hotel = Listing::find((int) $id);
+        if ($hotel === null) {
+            flash('error', 'Hotel not found.');
+            redirect('/admin/hotels');
+        }
+
+        $reason = trim((string) $this->input('reason', ''));
+        $adminId = (int) AdminAuth::id();
+        Listing::rejectHotel((int) $id, $adminId, $reason !== '' ? $reason : null);
+
+        AuditLog::recordAction('hotel.reject', 'listing', (int) $id, [
+            'hotel_title' => $hotel['title'],
+            'provider_id' => $hotel['user_id'],
+            'reason' => $reason,
+        ]);
+
+        $provider = User::find((int) $hotel['user_id']);
+        if ($provider !== null && !empty($provider['email'])) {
+            NotificationService::hotelRejected((string) $provider['email'], (string) $hotel['title'], $reason);
+        }
+
+        flash('info', "Hotel '{$hotel['title']}' has been rejected.");
+        redirect('/admin/hotels');
+    }
+
+    public function deleteHotel(string $id): void
+    {
+        $this->verifyCsrf();
+        $hotel = Listing::find((int) $id);
+        if ($hotel === null) {
+            if ($this->isJson()) {
+                $this->json(['success' => false, 'message' => 'Hotel listing not found.'], 404);
+                return;
+            }
+            flash('error', 'Hotel listing not found.');
+            redirect('/admin/hotels');
+            return;
+        }
+
+        // Deletion is strictly permitted only for rejected listings
+        $status = (string) ($hotel['status'] ?? '');
+        if ($status !== 'rejected') {
+            if ($this->isJson()) {
+                $this->json(['success' => false, 'message' => 'Only rejected hotel listings can be permanently deleted.'], 400);
+                return;
+            }
+            flash('error', 'Only rejected hotel listings can be permanently deleted.');
+            redirect('/admin/hotels');
+            return;
+        }
+
+        $hotelId = (int) $hotel['id'];
+        $hotelTitle = (string) $hotel['title'];
+        $providerId = (int) ($hotel['user_id'] ?? 0);
+
+        Listing::delete($hotelId);
+
+        AuditLog::recordAction('hotel.delete', 'listing', $hotelId, [
+            'hotel_title' => $hotelTitle,
+            'provider_id' => $providerId,
+            'deleted_by' => AdminAuth::id(),
+        ]);
+
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => "Rejected hotel '{$hotelTitle}' has been permanently deleted.",
+                'id' => $hotelId,
+            ]);
+            return;
+        }
+
+        flash('success', "Rejected hotel '{$hotelTitle}' has been permanently deleted.");
+        redirect('/admin/hotels');
+    }
+
     public function vehicles(): void
     {
         $status = (string) $this->input('status', 'all');
@@ -254,6 +391,57 @@ final class AdminController extends Controller
         redirect('/admin/vehicles');
     }
 
+    public function deleteVehicle(string $id): void
+    {
+        $this->verifyCsrf();
+        $vehicle = Vehicle::find((int) $id);
+        if ($vehicle === null) {
+            if ($this->isJson()) {
+                $this->json(['success' => false, 'message' => 'Vehicle listing not found.'], 404);
+                return;
+            }
+            flash('error', 'Vehicle listing not found.');
+            redirect('/admin/vehicles');
+            return;
+        }
+
+        // Deletion is strictly permitted only for rejected listings
+        $status = (string) ($vehicle['status'] ?? '');
+        if ($status !== 'rejected') {
+            if ($this->isJson()) {
+                $this->json(['success' => false, 'message' => 'Only rejected vehicle listings can be permanently deleted.'], 400);
+                return;
+            }
+            flash('error', 'Only rejected vehicle listings can be permanently deleted.');
+            redirect('/admin/vehicles');
+            return;
+        }
+
+        $vehicleId = (int) $vehicle['id'];
+        $vehicleName = (string) $vehicle['name'];
+        $providerId = (int) ($vehicle['user_id'] ?? 0);
+
+        Vehicle::delete($vehicleId);
+
+        AuditLog::recordAction('vehicle.delete', 'vehicle', $vehicleId, [
+            'vehicle_name' => $vehicleName,
+            'provider_id' => $providerId,
+            'deleted_by' => AdminAuth::id(),
+        ]);
+
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => "Rejected vehicle '{$vehicleName}' has been permanently deleted.",
+                'id' => $vehicleId,
+            ]);
+            return;
+        }
+
+        flash('success', "Rejected vehicle '{$vehicleName}' has been permanently deleted.");
+        redirect('/admin/vehicles');
+    }
+
     public function users(): void
     {
         $appeals = AccountAppeal::all();
@@ -296,7 +484,10 @@ final class AdminController extends Controller
         if ($role === 'rental_admin') {
             $role = 'rental_provider';
         }
-        $validRoles = ['tourist', 'guide', 'hotel_admin', 'rental_provider', 'admin'];
+        if ($role === 'hotel_admin') {
+            $role = 'hotel_provider';
+        }
+        $validRoles = ['tourist', 'guide', 'hotel_provider', 'hotel_admin', 'rental_provider', 'admin'];
         if (!in_array($role, $validRoles, true)) {
             $role = 'tourist';
         }
@@ -387,7 +578,10 @@ final class AdminController extends Controller
         if ($role === 'rental_admin') {
             $role = 'rental_provider';
         }
-        $validRoles = ['tourist', 'guide', 'hotel_admin', 'rental_provider', 'admin'];
+        if ($role === 'hotel_admin') {
+            $role = 'hotel_provider';
+        }
+        $validRoles = ['tourist', 'guide', 'hotel_provider', 'hotel_admin', 'rental_provider', 'admin'];
         if (!in_array($role, $validRoles, true)) {
             $role = (string) $user['role'];
         }

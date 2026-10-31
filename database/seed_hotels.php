@@ -25,7 +25,7 @@ if ($owner === null) {
             'GuideMate Stays',
             $ownerEmail,
             password_hash('Stays#' . bin2hex(random_bytes(4)), PASSWORD_DEFAULT),
-            'hotel_admin',
+            'hotel_provider',
             'approved',
             1,
             'Cebu, Philippines',
