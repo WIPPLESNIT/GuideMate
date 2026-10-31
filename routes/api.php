@@ -32,6 +32,8 @@ $router->post('/api/profile/avatar', [ApiController::class, 'uploadAvatar']);
 
 $router->get('/api/bookings', [ApiController::class, 'bookings']);
 $router->post('/api/bookings', [ApiController::class, 'createBooking']);
+$router->post('/api/bookings/{id}/pay-balance', [ApiController::class, 'payBookingBalance']);
+$router->post('/api/bookings/{id}/cancel', [ApiController::class, 'cancelBooking']);
 $router->get('/api/trip-map', [ApiController::class, 'tripMap']);
 $router->get('/api/maps', [ApiController::class, 'mapsConfig']);
 $router->get('/api/vouchers', [ApiController::class, 'vouchers']);
@@ -43,6 +45,7 @@ $router->post('/api/favorites/toggle', [ApiController::class, 'toggleFavorite'])
 $router->post('/api/reviews', [ApiController::class, 'submitReview']);
 $router->get('/api/disputes', [ApiController::class, 'myDispute']);
 $router->post('/api/disputes', [ApiController::class, 'submitDispute']);
+$router->post('/api/disputes/{id}/evidence', [ApiController::class, 'uploadDisputeEvidence']);
 
 $router->get('/api/guides', [ApiController::class, 'guides']);
 $router->get('/api/messages', [ApiController::class, 'conversations']);
@@ -57,7 +60,9 @@ $router->get('/api/rentals', [ApiController::class, 'rentalUnits']);
 $router->get('/api/rentals/mine', [ApiController::class, 'myRentals']);
 $router->get('/api/rentals/{id}', [ApiController::class, 'rentalDetail']);
 $router->post('/api/rentals', [ApiController::class, 'createRental']);
+$router->post('/api/rentals/{id}/cancel', [ApiController::class, 'cancelRental']);
 $router->post('/api/rentals/report', [ApiController::class, 'reportRental']);
+$router->post('/api/rentals/{id}/report/evidence', [ApiController::class, 'uploadRentalReportEvidence']);
 $router->post('/api/rentals/reviews', [ApiController::class, 'submitRentalReview']);
 $router->get('/api/rentals/reviews', [ApiController::class, 'getRentalReview']);
 

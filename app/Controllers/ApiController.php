@@ -25,6 +25,7 @@ use App\Models\Message;
 use App\Models\PasswordReset;
 use App\Models\Payment;
 use App\Models\PromoCode;
+use App\Models\RentalReportFile;
 use App\Models\RentalRequest;
 use App\Models\RentalReview;
 use App\Models\Review;
@@ -2134,9 +2135,9 @@ final class ApiController extends Controller
         }
 
         $body = $this->jsonBody();
-        $rentalId = (int) ($body['rental_id'] ?? 0);
-        $type = trim((string) ($body['problem_type'] ?? ''));
-        $message = trim((string) ($body['description'] ?? ''));
+        $rentalId = (int) ($_POST['rental_id'] ?? $body['rental_id'] ?? 0);
+        $type = trim((string) ($_POST['problem_type'] ?? $body['problem_type'] ?? ''));
+        $message = trim((string) ($_POST['description'] ?? $body['description'] ?? ''));
 
         $rental = $rentalId > 0 ? RentalRequest::find($rentalId) : null;
         if ($rental === null || (int) $rental['user_id'] !== $userId) {
@@ -2161,8 +2162,46 @@ final class ApiController extends Controller
         }
 
         RentalRequest::report($rentalId, $type, $message);
+
+        // Attach any photo evidence (field "evidence" or "evidence[]")
+        foreach ($this->normalizeFiles($_FILES['evidence'] ?? null) as $file) {
+            $path = Upload::image($file, 'rentals/reports');
+            if ($path !== null) {
+                RentalReportFile::add($rentalId, $path, (string) ($file['name'] ?? ''));
+            }
+        }
+
         $fresh = RentalRequest::find($rentalId);
         $this->json(['request' => $fresh !== null ? $this->rentalPayload($fresh) : null]);
+    }
+
+    /**
+     * POST /api/rentals/{id}/report/evidence - upload additional evidence photo for a rental report.
+     */
+    public function uploadRentalReportEvidence(int $id): void
+    {
+        $userId = ApiAuth::id();
+        if ($userId === null) {
+            $this->json(['error' => 'Unauthorized.'], 401);
+            return;
+        }
+
+        $rental = RentalRequest::find($id);
+        if ($rental === null || (int) $rental['user_id'] !== $userId) {
+            $this->json(['error' => 'Reservation not found.'], 404);
+            return;
+        }
+
+        $attached = 0;
+        foreach ($this->normalizeFiles($_FILES['evidence'] ?? null) as $file) {
+            $path = Upload::image($file, 'rentals/reports');
+            if ($path !== null) {
+                RentalReportFile::add($id, $path, (string) ($file['name'] ?? ''));
+                $attached++;
+            }
+        }
+
+        $this->json(['success' => true, 'files_attached' => $attached]);
     }
 
     /**
@@ -2179,6 +2218,16 @@ final class ApiController extends Controller
         $status = (string) $r['status'];
 
         $review = RentalReview::findForRental((int) $r['id']);
+        $reportFiles = RentalReportFile::forRental((int) $r['id']);
+
+        $today = date('Y-m-d');
+        $pickupDate = (string) ($r['pickup_date'] ?? '');
+        $rentalDays = max(1, (int) ($r['rental_days'] ?? 1));
+        $returnDate = $pickupDate !== '' ? date('Y-m-d', strtotime($pickupDate . " +{$rentalDays} days")) : '';
+        $isCompleted = ($status === 'completed' || $status === 'cancelled' || $status === 'rejected' || $status === 'refunded');
+        if (!$isCompleted && $returnDate !== '' && $returnDate < $today) {
+            $isCompleted = true;
+        }
 
         return [
             'id' => (int) $r['id'],
@@ -2187,11 +2236,13 @@ final class ApiController extends Controller
             'vehicle_type' => (string) $r['vehicle_type'],
             'shop_name' => (string) $r['shop_name'],
             'location' => (string) ($r['location'] ?? ''),
-            'pickup_date' => (string) $r['pickup_date'],
-            'rental_days' => (int) $r['rental_days'],
+            'pickup_date' => $pickupDate,
+            'return_date' => $returnDate,
+            'rental_days' => $rentalDays,
             'total_amount' => (float) $r['total_amount'],
             'status' => $status,
             'status_label' => RentalRequest::statusLabel($status),
+            'is_completed' => $isCompleted,
             'payment_status' => $paymentStatus,
             'payment_method' => (string) ($r['payment_method'] ?? ''),
             'notes' => (string) ($r['notes'] ?? ''),
@@ -2199,10 +2250,14 @@ final class ApiController extends Controller
             'report_type' => (string) ($r['report_type'] ?? ''),
             'report_label' => RentalRequest::reportTypeLabel($r['report_type'] ?? null),
             'report_message' => (string) ($r['report_message'] ?? ''),
+            'report_photos' => array_map(function ($f) {
+                return (string) ($f['file_path'] ?? '');
+            }, $reportFiles),
             'owner_report_note' => (string) ($r['owner_report_note'] ?? ''),
             'can_report' => $paymentStatus === 'paid' && $reportStatus === 'none' && $status !== 'refunded',
             'can_review' => $status === 'completed',
             'has_reviewed' => $review !== null,
+            'cancellation' => $this->computeCancellationPolicy($r, 'rental'),
             'review' => $review !== null ? [
                 'id' => (int) $review['id'],
                 'rating' => (int) $review['rating'],
@@ -2309,9 +2364,11 @@ final class ApiController extends Controller
 
     private function sendCors(): void
     {
-        header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type, Authorization');
+        if (!headers_sent()) {
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Authorization');
+        }
     }
 
     /**
@@ -2668,9 +2725,30 @@ final class ApiController extends Controller
         }
         $daysCount = $bookingDates !== null ? count($bookingDates) : 1;
 
+        $today = date('Y-m-d');
+        $isHotel = !empty($booking['room_id']) || !empty($booking['hotel_status']) || (!empty($booking['deposit_amount']) && (float) $booking['deposit_amount'] > 0);
+        $hotelStatus = (string) ($booking['hotel_status'] ?? '');
+        $isCompleted = ($hotelStatus === 'completed' || $status === 'completed' || $status === 'cancelled' || $status === 'refunded' || $hotelStatus === 'cancelled' || $hotelStatus === 'no_show');
+
+        if (!$isCompleted) {
+            if ($isHotel) {
+                $checkout = (string) ($booking['check_out_date'] ?? $booking['booking_date'] ?? '');
+                if ($checkout !== '' && $checkout < $today) {
+                    $isCompleted = true;
+                }
+            } else {
+                $lastVisit = $bookingDates !== null && $bookingDates !== [] ? end($bookingDates) : (string) ($booking['booking_date'] ?? '');
+                if ($lastVisit !== '' && $lastVisit < $today) {
+                    $isCompleted = true;
+                }
+            }
+        }
+
         return [
             'id' => (int) $booking['id'],
             'listing_id' => $listingId,
+            'is_hotel' => $isHotel,
+            'is_completed' => $isCompleted,
             'listing_title' => (string) ($booking['listing_title'] ?? ''),
             'listing_slug' => (string) ($booking['listing_slug'] ?? ''),
             'image' => api_img_src((string) ($booking['cover_image'] ?? ''), 'listing' . $booking['listing_id']),
@@ -2687,7 +2765,11 @@ final class ApiController extends Controller
             'check_out_date' => (string) ($booking['check_out_date'] ?? $booking['booking_date']),
             'nights' => (int) ($booking['nights'] ?? 1),
             'deposit_amount' => (float) ($booking['deposit_amount'] ?? 0),
-            'balance_amount' => (float) ($booking['balance_amount'] ?? 0),
+            'balance_amount' => ($booking['payment_stage'] ?? '') === 'settled'
+                ? 0.0
+                : ((float) ($booking['balance_amount'] ?? 0) > 0
+                    ? (float) $booking['balance_amount']
+                    : max(0.0, round((float) $booking['total_amount'] - (float) ($booking['deposit_amount'] ?? 0), 2))),
             'payment_stage' => (string) ($booking['payment_stage'] ?? 'full'),
             'hotel_status' => (string) ($booking['hotel_status'] ?? ''),
             'status' => $status,
@@ -2715,6 +2797,7 @@ final class ApiController extends Controller
             'can_review' => $canReview,
             'can_report' => $canReport,
             'dispute_status' => $disputeStatus,
+            'cancellation' => $this->computeCancellationPolicy($booking, $isHotel ? 'hotel' : 'attraction'),
         ];
     }
 
@@ -2797,10 +2880,11 @@ final class ApiController extends Controller
             return;
         }
 
-        $bookingId = (int) ($_POST['booking_id'] ?? 0);
-        $type = trim((string) ($_POST['problem_type'] ?? ''));
-        $description = trim((string) ($_POST['description'] ?? ''));
-        $amountRaw = trim((string) ($_POST['amount_requested'] ?? ''));
+        $body = $this->jsonBody();
+        $bookingId = (int) ($_POST['booking_id'] ?? $body['booking_id'] ?? 0);
+        $type = trim((string) ($_POST['problem_type'] ?? $body['problem_type'] ?? ''));
+        $description = trim((string) ($_POST['description'] ?? $body['description'] ?? ''));
+        $amountRaw = trim((string) ($_POST['amount_requested'] ?? $body['amount_requested'] ?? ''));
 
         $booking = $bookingId > 0 ? Booking::find($bookingId) : null;
         if ($booking === null || (int) $booking['user_id'] !== $userId) {
@@ -2863,11 +2947,42 @@ final class ApiController extends Controller
     }
 
     /**
+     * POST /api/disputes/{id}/evidence - upload additional photo evidence for a dispute.
+     */
+    public function uploadDisputeEvidence(int $id): void
+    {
+        $userId = ApiAuth::id();
+        if ($userId === null) {
+            $this->json(['error' => 'Unauthorized.'], 401);
+            return;
+        }
+
+        $dispute = Dispute::find($id);
+        if ($dispute === null || (int) $dispute['user_id'] !== $userId) {
+            $this->json(['error' => 'Dispute not found.'], 404);
+            return;
+        }
+
+        $attached = 0;
+        foreach ($this->normalizeFiles($_FILES['evidence'] ?? null) as $file) {
+            $path = Upload::image($file, 'disputes');
+            if ($path !== null) {
+                DisputeFile::add($id, $path, (string) ($file['name'] ?? ''));
+                $attached++;
+            }
+        }
+
+        $this->json(['success' => true, 'files_attached' => $attached]);
+    }
+
+    /**
      * @param array<string, mixed> $d
      * @return array<string, mixed>
      */
     private function disputePayload(array $d): array
     {
+        $files = DisputeFile::forDispute((int) $d['id']);
+
         return [
             'id' => (int) $d['id'],
             'booking_id' => (int) $d['booking_id'],
@@ -2879,6 +2994,9 @@ final class ApiController extends Controller
             'status_label' => Dispute::statusLabel((string) $d['status']),
             'admin_note' => (string) ($d['admin_note'] ?? ''),
             'created_at' => (string) ($d['created_at'] ?? ''),
+            'photos' => array_map(function ($f) {
+                return (string) ($f['file_path'] ?? '');
+            }, $files),
         ];
     }
 
@@ -2913,5 +3031,376 @@ final class ApiController extends Controller
             ];
         }
         return $files;
+    }
+
+    /**
+     * Settle the remaining unpaid balance for a checked-in hotel reservation.
+     */
+    public function payBookingBalance(string|int $id): void
+    {
+        $userId = ApiAuth::id();
+        if ($userId === null) {
+            $this->json(['error' => 'Unauthorized.'], 401);
+            return;
+        }
+
+        $bookingId = (int) $id;
+        $booking = Booking::find($bookingId);
+        if ($booking === null || (int) $booking['user_id'] !== $userId) {
+            $this->json(['error' => 'Reservation not found.'], 404);
+            return;
+        }
+
+        $hotelStatus = (string) ($booking['hotel_status'] ?? '');
+        $paymentStage = (string) ($booking['payment_stage'] ?? '');
+        $balance = (float) ($booking['balance_amount'] ?? 0);
+        if ($balance <= 0 && (float) ($booking['total_amount'] ?? 0) > (float) ($booking['deposit_amount'] ?? 0)) {
+            $balance = max(0.0, round((float) $booking['total_amount'] - (float) ($booking['deposit_amount'] ?? 0), 2));
+        }
+
+        if ($paymentStage === 'settled' || $balance <= 0) {
+            $this->json(['error' => 'This reservation has no outstanding balance due.'], 422);
+            return;
+        }
+
+        if ($hotelStatus !== 'checked_in') {
+            $this->json(['error' => 'Balance payment is only available once the guest has checked in at the property.'], 422);
+            return;
+        }
+
+        $body = $this->jsonBody();
+        $allowedMethods = ['gcash', 'instapay', 'card'];
+        $method = strtolower(trim((string) ($body['payment_method'] ?? 'card')));
+        if (!in_array($method, $allowedMethods, true)) {
+            $method = 'card';
+        }
+        $paymentReference = trim((string) ($body['payment_reference'] ?? ''));
+        $cardLast4 = preg_replace('/\D/', '', (string) ($body['card_last4'] ?? '')) ?? '';
+
+        if (($method === 'gcash' || $method === 'instapay') && strlen($paymentReference) < 4) {
+            $this->json(['error' => 'Please provide a valid payment reference number.'], 422);
+            return;
+        }
+
+        // Record the payment
+        $paymentId = Payment::create($bookingId, $balance, $method, 'paid');
+        $db = \App\Core\Database::connection();
+        if ($paymentReference !== '') {
+            $db->prepare("UPDATE payments SET reference = ? WHERE id = ?")->execute([$paymentReference, $paymentId]);
+        }
+
+        // Update booking state
+        $stmt = $db->prepare("UPDATE bookings SET payment_stage = 'settled', balance_amount = 0.00 WHERE id = ?");
+        $stmt->execute([$bookingId]);
+
+        // Fetch refreshed booking
+        $updatedBooking = Booking::find($bookingId);
+
+        $this->json([
+            'success' => true,
+            'message' => 'Remaining balance settled successfully.',
+            'booking' => $updatedBooking !== null ? $this->bookingPayload($updatedBooking) : null,
+            'payment_id' => $paymentId,
+            'amount_paid' => $balance,
+        ]);
+    }
+
+    /**
+     * Calculate cancellation policy metadata, deadlines, remaining time, and eligibility.
+     *
+     * Rules:
+     * - Configurable limits: 24 hours ('24h') or 72 hours ('72h').
+     * - Defaults: Hotels = 72h before check-in; Tours/Destinations = 24h before visit; Rentals = 24h before pickup.
+     * - Cancellation is allowed ONLY when eligible and not completed.
+     * - Automatically initiates refund if tourist has paid.
+     *
+     * @param array<string, mixed> $item
+     * @param string $kind 'hotel' | 'attraction' | 'rental'
+     * @return array<string, mixed>
+     */
+    private function computeCancellationPolicy(array $item, string $kind): array
+    {
+        $configuredPolicy = (string) ($item['cancellation_policy'] ?? '');
+        $policyHours = match ($configuredPolicy) {
+            '72h' => 72,
+            '24h' => 24,
+            default => ($kind === 'hotel' ? 72 : 24),
+        };
+        $policyCode = $policyHours === 72 ? '72h' : '24h';
+        $policyLabel = $policyHours === 72
+            ? 'Free cancellation up to 72 hours before check-in'
+            : ($kind === 'rental'
+                ? 'Free cancellation up to 24 hours before pickup'
+                : 'Free cancellation up to 24 hours before tour');
+
+        if ($kind === 'hotel') {
+            $startDateStr = (string) ($item['check_in_date'] ?? $item['booking_date'] ?? '');
+            $startTs = strtotime("{$startDateStr} 14:00:00") ?: time();
+        } elseif ($kind === 'rental') {
+            $startDateStr = (string) ($item['pickup_date'] ?? $item['start_date'] ?? '');
+            $startTs = strtotime("{$startDateStr} 09:00:00") ?: time();
+        } else {
+            $startDateStr = (string) ($item['booking_date'] ?? '');
+            $startTimeStr = !empty($item['booking_time']) ? (string) $item['booking_time'] : '09:00:00';
+            $startTs = strtotime("{$startDateStr} {$startTimeStr}") ?: time();
+        }
+
+        $deadlineTs = $startTs - ($policyHours * 3600);
+        $now = time();
+        $remainingSeconds = max(0, $deadlineTs - $now);
+
+        if ($now > $deadlineTs) {
+            $remainingText = 'Deadline passed';
+        } else {
+            $hoursLeft = (int) floor($remainingSeconds / 3600);
+            $minutesLeft = (int) floor(($remainingSeconds % 3600) / 60);
+            if ($hoursLeft >= 48) {
+                $days = (int) floor($hoursLeft / 24);
+                $remainingText = "{$days} days remaining";
+            } elseif ($hoursLeft > 0) {
+                $remainingText = "{$hoursLeft}h {$minutesLeft}m remaining";
+            } else {
+                $remainingText = "{$minutesLeft}m remaining";
+            }
+        }
+
+        $status = (string) ($item['status'] ?? '');
+        $hotelStatus = (string) ($item['hotel_status'] ?? '');
+        $isCancelled = ($status === 'cancelled' || $status === 'refunded' || $hotelStatus === 'cancelled' || $hotelStatus === 'refunded');
+        $isCompleted = ($status === 'completed' || $hotelStatus === 'completed');
+
+        // Check if date has passed
+        $today = date('Y-m-d');
+        $isPastDate = false;
+        if ($kind === 'hotel') {
+            $checkout = (string) ($item['check_out_date'] ?? $startDateStr);
+            if ($checkout !== '' && $checkout < $today) $isPastDate = true;
+        } elseif ($kind === 'rental') {
+            $days = max(1, (int) ($item['rental_days'] ?? 1));
+            $returnDate = $startDateStr !== '' ? date('Y-m-d', strtotime($startDateStr . " +{$days} days")) : '';
+            if ($returnDate !== '' && $returnDate < $today) $isPastDate = true;
+        } else {
+            if ($startDateStr !== '' && $startDateStr < $today) $isPastDate = true;
+        }
+
+        // Calculate paid amount / refund amount
+        $paidAmount = 0.0;
+        if ($kind === 'rental') {
+            $isPaid = ($item['payment_status'] ?? '') === 'paid';
+            $paidAmount = $isPaid ? (float) ($item['total_amount'] ?? 0) : 0.0;
+        } else {
+            $bookingId = (int) ($item['id'] ?? 0);
+            if ($bookingId > 0) {
+                $paidRow = \App\Core\Database::first(
+                    "SELECT SUM(amount) AS total_paid FROM payments WHERE booking_id = ? AND status = 'paid'",
+                    [$bookingId]
+                );
+                if ($paidRow !== null && $paidRow['total_paid'] !== null) {
+                    $paidAmount = (float) $paidRow['total_paid'];
+                }
+            }
+            if ($paidAmount <= 0.0 && !empty($item['deposit_amount'])) {
+                $paidAmount = (float) $item['deposit_amount'];
+            }
+            if ($paidAmount <= 0.0 && ($item['payment_stage'] ?? '') === 'settled') {
+                $paidAmount = (float) ($item['total_amount'] ?? 0);
+            }
+        }
+
+        $canCancel = true;
+        $ineligibleReason = null;
+
+        if ($isCompleted) {
+            $canCancel = false;
+            $ineligibleReason = 'This booking has already been completed and cannot be cancelled.';
+        } elseif ($isCancelled) {
+            $canCancel = false;
+            $ineligibleReason = ($status === 'refunded' || $hotelStatus === 'refunded')
+                ? 'This reservation was already refunded.'
+                : 'This reservation is already cancelled.';
+        } elseif ($hotelStatus === 'checked_in') {
+            $canCancel = false;
+            $ineligibleReason = 'You are already checked in. Cancellations must be arranged directly with the front desk.';
+        } elseif ($isPastDate) {
+            $canCancel = false;
+            $ineligibleReason = 'The scheduled date for this booking has already passed.';
+        } elseif ($now > $deadlineTs) {
+            $canCancel = false;
+            $ineligibleReason = "The cancellation deadline for this {$policyCode} policy passed on " . date('M j, Y, g:i A', $deadlineTs) . '.';
+        }
+
+        return [
+            'policy' => $policyCode,
+            'policy_hours' => $policyHours,
+            'policy_label' => $policyLabel,
+            'deadline' => date('Y-m-d H:i:s', $deadlineTs),
+            'deadline_formatted' => date('M j, Y, g:i A', $deadlineTs),
+            'deadline_timestamp' => $deadlineTs,
+            'remaining_seconds' => $remainingSeconds,
+            'remaining_text' => $remainingText,
+            'can_cancel' => $canCancel,
+            'ineligible_reason' => $ineligibleReason,
+            'refund_amount' => !empty($item['refund_amount']) && (float) $item['refund_amount'] > 0 ? (float) $item['refund_amount'] : $paidAmount,
+            'refund_status' => (string) ($item['refund_status'] ?? ($paidAmount > 0 ? 'eligible' : 'none')),
+            'processing_time' => '1–3 business days via original payment method',
+            'cancelled_at' => (string) ($item['cancelled_at'] ?? ''),
+            'cancellation_reason' => (string) ($item['cancellation_reason'] ?? ''),
+        ];
+    }
+
+    /**
+     * POST /api/bookings/{id}/cancel
+     * Tourist-initiated cancellation for Hotel or Attraction bookings.
+     */
+    public function cancelBooking(string|int $id): void
+    {
+        $userId = ApiAuth::id();
+        if ($userId === null) {
+            $this->json(['error' => 'Unauthorized.'], 401);
+            return;
+        }
+
+        $bookingId = (int) $id;
+        $booking = Booking::find($bookingId);
+        if ($booking === null || (int) $booking['user_id'] !== $userId) {
+            $this->json(['error' => 'Reservation not found.'], 404);
+            return;
+        }
+
+        $isHotel = !empty($booking['room_id']) || !empty($booking['hotel_status']) || (!empty($booking['deposit_amount']) && (float) $booking['deposit_amount'] > 0);
+        $kind = $isHotel ? 'hotel' : 'attraction';
+
+        $policy = $this->computeCancellationPolicy($booking, $kind);
+        if (!$policy['can_cancel']) {
+            $this->json(['error' => $policy['ineligible_reason'] ?? 'This booking cannot be cancelled.'], 422);
+            return;
+        }
+
+        $body = $this->jsonBody();
+        $reason = trim((string) ($body['reason'] ?? ''));
+        if ($reason === '') {
+            $reason = 'Cancelled by tourist via GuideMate app';
+        }
+
+        $refundAmount = (float) $policy['refund_amount'];
+        $refundStatus = $refundAmount > 0 ? 'initiated' : 'none';
+        $newStatus = $refundAmount > 0 ? 'refunded' : 'cancelled';
+
+        // 1. Process payment refund if paid
+        if ($refundAmount > 0) {
+            Payment::refund($bookingId);
+        }
+
+        // 2. Update booking record
+        $hotelStatusSql = $isHotel ? "'{$newStatus}'" : "hotel_status";
+        \App\Core\Database::run(
+            "UPDATE bookings
+             SET status = ?,
+                 hotel_status = {$hotelStatusSql},
+                 payment_stage = CASE WHEN ? > 0 THEN 'refunded' ELSE payment_stage END,
+                 cancelled_at = NOW(),
+                 cancellation_reason = ?,
+                 refund_amount = ?,
+                 refund_status = ?
+             WHERE id = ?",
+            [$newStatus, $refundAmount, $reason, $refundAmount, $refundStatus, $bookingId]
+        );
+
+        // 3. Notify tourist
+        $user = User::find($userId);
+        $customerEmail = (string) ($user['email'] ?? '');
+        $listingTitle = (string) ($booking['listing_title'] ?? 'Booking #' . $bookingId);
+        if ($customerEmail !== '') {
+            $refundNote = $refundAmount > 0
+                ? "A full refund of ₱" . number_format($refundAmount, 2) . " has been automatically initiated to your original payment method. Expected processing time is 1–3 business days."
+                : "No charges were incurred.";
+            NotificationService::bookingCancelled($customerEmail, $listingTitle, $refundNote);
+        }
+
+        $refreshed = Booking::find($bookingId);
+        $this->json([
+            'success' => true,
+            'booking_id' => $bookingId,
+            'status' => $newStatus,
+            'refund_amount' => $refundAmount,
+            'refund_status' => $refundStatus,
+            'processing_time' => '1–3 business days via original payment method',
+            'message' => $refundAmount > 0
+                ? "Booking cancelled successfully. A full refund of ₱" . number_format($refundAmount, 2) . " has been initiated."
+                : "Booking cancelled successfully. No charges were incurred.",
+            'booking' => $refreshed !== null ? $this->bookingPayload($refreshed) : null,
+        ]);
+    }
+
+    /**
+     * POST /api/rentals/{id}/cancel
+     * Tourist-initiated cancellation for Vehicle Rentals.
+     */
+    public function cancelRental(string|int $id): void
+    {
+        $userId = ApiAuth::id();
+        if ($userId === null) {
+            $this->json(['error' => 'Unauthorized.'], 401);
+            return;
+        }
+
+        $rentalId = (int) $id;
+        $rental = RentalRequest::find($rentalId);
+        if ($rental === null || (int) $rental['user_id'] !== $userId) {
+            $this->json(['error' => 'Vehicle reservation not found.'], 404);
+            return;
+        }
+
+        $policy = $this->computeCancellationPolicy($rental, 'rental');
+        if (!$policy['can_cancel']) {
+            $this->json(['error' => $policy['ineligible_reason'] ?? 'This reservation cannot be cancelled.'], 422);
+            return;
+        }
+
+        $body = $this->jsonBody();
+        $reason = trim((string) ($body['reason'] ?? ''));
+        if ($reason === '') {
+            $reason = 'Cancelled by tourist via GuideMate app';
+        }
+
+        $refundAmount = (float) $policy['refund_amount'];
+        $refundStatus = $refundAmount > 0 ? 'initiated' : 'none';
+        $newStatus = $refundAmount > 0 ? 'refunded' : 'cancelled';
+        $newPaymentStatus = $refundAmount > 0 ? 'refunded' : (string) ($rental['payment_status'] ?? 'unpaid');
+
+        \App\Core\Database::run(
+            "UPDATE rental_requests
+             SET status = ?,
+                 payment_status = ?,
+                 cancelled_at = NOW(),
+                 cancellation_reason = ?,
+                 refund_amount = ?,
+                 refund_status = ?
+             WHERE id = ?",
+            [$newStatus, $newPaymentStatus, $reason, $refundAmount, $refundStatus, $rentalId]
+        );
+
+        $customerEmail = (string) ($rental['customer_email'] ?? '');
+        $vehicleName = (string) ($rental['vehicle_name'] ?? 'Vehicle Rental');
+        if ($customerEmail !== '') {
+            $refundNote = $refundAmount > 0
+                ? "A full refund of ₱" . number_format($refundAmount, 2) . " has been automatically initiated to your original payment method. Expected processing time is 1–3 business days."
+                : "No charges were incurred.";
+            NotificationService::rentalCancelled($customerEmail, $vehicleName, $refundNote);
+        }
+
+        $refreshed = RentalRequest::find($rentalId);
+        $this->json([
+            'success' => true,
+            'rental_id' => $rentalId,
+            'status' => $newStatus,
+            'refund_amount' => $refundAmount,
+            'refund_status' => $refundStatus,
+            'processing_time' => '1–3 business days via original payment method',
+            'message' => $refundAmount > 0
+                ? "Vehicle reservation cancelled successfully. A full refund of ₱" . number_format($refundAmount, 2) . " has been initiated."
+                : "Vehicle reservation cancelled successfully. No charges were incurred.",
+            'rental' => $refreshed !== null ? $this->rentalPayload($refreshed) : null,
+        ]);
     }
 }

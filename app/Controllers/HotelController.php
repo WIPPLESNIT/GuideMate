@@ -549,16 +549,25 @@ final class HotelController extends Controller
                 break;
 
             case 'check_in':
-                $db->prepare("UPDATE bookings SET hotel_status = 'checked_in', payment_stage = 'balance_due' WHERE id = ?")->execute([$bookingId]);
-                flash('success', "Guest checked in! Remaining balance of " . money($balance) . " is due at front desk.");
+                $isAlreadySettled = ($booking['payment_stage'] ?? '') === 'settled';
+                if (!$isAlreadySettled && $balance <= 0 && (float) ($booking['total_amount'] ?? 0) > (float) ($booking['deposit_amount'] ?? 0)) {
+                    $balance = max(0.0, round((float) $booking['total_amount'] - (float) ($booking['deposit_amount'] ?? 0), 2));
+                }
+                if ($isAlreadySettled) {
+                    $db->prepare("UPDATE bookings SET hotel_status = 'checked_in', payment_stage = 'settled', balance_amount = 0.00 WHERE id = ?")->execute([$bookingId]);
+                    flash('success', "Guest checked in! Reservation #{$bookingId} is fully settled.");
+                } else {
+                    $db->prepare("UPDATE bookings SET hotel_status = 'checked_in', payment_stage = 'balance_due', balance_amount = ? WHERE id = ?")->execute([$balance, $bookingId]);
+                    flash('success', "Guest checked in! Remaining balance of " . money($balance) . " is due at front desk.");
+                }
                 break;
 
             case 'settle_balance':
-                // Record the remaining front desk payment if not already recorded
-                if ($balance > 0) {
+                // Record the remaining front desk payment if not already recorded or settled
+                if ($balance > 0 && ($booking['payment_stage'] ?? '') !== 'settled') {
                     Payment::create($bookingId, $balance, 'front_desk_cash', 'paid');
                 }
-                $db->prepare("UPDATE bookings SET hotel_status = 'completed', payment_stage = 'settled', status = 'completed', unit_completed_at = NOW() WHERE id = ?")->execute([$bookingId]);
+                $db->prepare("UPDATE bookings SET hotel_status = 'completed', payment_stage = 'settled', balance_amount = 0.00, status = 'completed', unit_completed_at = NOW() WHERE id = ?")->execute([$bookingId]);
                 flash('success', "Front desk balance settled! Reservation #{$bookingId} marked completed.");
                 break;
 

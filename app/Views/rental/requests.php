@@ -134,7 +134,10 @@
                                                      role="menu"
                                                      aria-labelledby="rentalReqBtn_<?= (int) $r['id'] ?>">
                                                     
-                                                    <?php if ($reportStatus === 'open'): ?>
+                                                    <?php if ($reportStatus === 'open'):
+                                                        $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
+                                                        $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
+                                                    ?>
                                                         <button type="button"
                                                                 class="res-action-item action-problem"
                                                                 role="menuitem"
@@ -146,6 +149,7 @@
                                                                 data-pickup="<?= e(date('M j, Y', strtotime((string)$r['pickup_date']))) ?>"
                                                                 data-amount="<?= money((float) $r['total_amount']) ?>"
                                                                 data-message="<?= e((string)($r['report_message'] ?? '')) ?>"
+                                                                data-photos="<?= e(json_encode($rPhotos)) ?>"
                                                                 data-refund-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>"
                                                                 data-reject-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>">
                                                             <?= admin_icon('disputes', 14) ?> View Reported Problem
@@ -327,6 +331,12 @@
                     <p id="problemModalMessage" style="margin:0;font-size:0.92rem;line-height:1.55;color:#7f1d1d;white-space:pre-wrap;word-break:break-word;"></p>
                 </div>
             </div>
+
+            <!-- Attached Photo Evidence -->
+            <div id="problemModalPhotosWrap" style="margin-top:1rem;display:none;">
+                <span style="font-size:0.72rem;color:#991b1b;text-transform:uppercase;font-weight:700;letter-spacing:0.04em;display:block;margin-bottom:0.4rem;">Photo Evidence</span>
+                <div id="problemModalPhotos" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
+            </div>
         </div>
         <div class="gm-modal-foot" style="padding:0.85rem 1.25rem;border-top:1px solid var(--line);background:#f8fafc;margin:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.6rem;">
             <form method="post" id="problemDismissForm" action="" class="res-action-form" onsubmit="return confirm('Dismiss this problem report? The reservation will remain in its current status.');">
@@ -435,6 +445,38 @@
             if (probPickupEl) probPickupEl.textContent = pickup;
             if (probAmountEl) probAmountEl.textContent = amount;
             if (probMessageEl) probMessageEl.textContent = message || 'No details provided.';
+
+            var photosWrap = document.getElementById('problemModalPhotosWrap');
+            var photosContainer = document.getElementById('problemModalPhotos');
+            var photos = [];
+            try {
+                photos = JSON.parse(btn.getAttribute('data-photos') || '[]');
+            } catch (e) { photos = []; }
+
+            if (photosWrap && photosContainer) {
+                photosContainer.innerHTML = '';
+                if (Array.isArray(photos) && photos.length > 0) {
+                    photosWrap.style.display = 'block';
+                    photos.forEach(function(url) {
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                        a.title = 'Click to view full photo';
+                        var img = document.createElement('img');
+                        img.src = url;
+                        img.style.width = '74px';
+                        img.style.height = '74px';
+                        img.style.objectFit = 'cover';
+                        img.style.borderRadius = '8px';
+                        img.style.border = '1px solid #fca5a5';
+                        a.appendChild(img);
+                        photosContainer.appendChild(a);
+                    });
+                } else {
+                    photosWrap.style.display = 'none';
+                }
+            }
 
             if (probRefundForm && refundUrl) probRefundForm.action = refundUrl;
             if (probDismissForm && rejectUrl) probDismissForm.action = rejectUrl;

@@ -1,21 +1,115 @@
 <?php
 /** @var array<int,array<string,mixed>> $bookings */
+
+$today = date('Y-m-d');
+$activeBookings = [];
+$historyBookings = [];
+foreach ($bookings as $b) {
+    $hotelStatus = (string) ($b['hotel_status'] ?? '');
+    $status = (string) ($b['status'] ?? '');
+    $isHotel = !empty($b['room_id']) || !empty($b['hotel_status']) || (!empty($b['deposit_amount']) && (float) $b['deposit_amount'] > 0);
+    $isCompleted = ($hotelStatus === 'completed' || $status === 'completed' || $status === 'cancelled' || $status === 'refunded' || $hotelStatus === 'cancelled' || $hotelStatus === 'no_show');
+
+    if (!$isCompleted) {
+        if ($isHotel) {
+            $checkoutDate = (string) ($b['check_out_date'] ?? $b['booking_date'] ?? '');
+            if ($checkoutDate !== '' && $checkoutDate < $today) {
+                $isCompleted = true;
+            }
+        } else {
+            $bookingDate = (string) ($b['booking_date'] ?? '');
+            if ($bookingDate !== '' && $bookingDate < $today) {
+                $isCompleted = true;
+            }
+        }
+    }
+
+    if ($isCompleted) {
+        $historyBookings[] = $b;
+    } else {
+        $activeBookings[] = $b;
+    }
+}
+$tab = (isset($_GET['tab']) && $_GET['tab'] === 'history') ? 'history' : 'active';
+$cat = (isset($_GET['cat']) && in_array($_GET['cat'], ['hotels', 'attractions'], true)) ? $_GET['cat'] : 'all';
+
+$currentPool = ($tab === 'history') ? $historyBookings : $activeBookings;
+$hotelCount = count(array_filter($currentPool, fn($b) => !empty($b['room_id']) || !empty($b['hotel_status']) || (!empty($b['deposit_amount']) && (float) $b['deposit_amount'] > 0)));
+$attractionCount = count($currentPool) - $hotelCount;
+
+$displayBookings = array_filter($currentPool, function ($b) use ($cat) {
+    $isHotel = !empty($b['room_id']) || !empty($b['hotel_status']) || (!empty($b['deposit_amount']) && (float) $b['deposit_amount'] > 0);
+    if ($cat === 'hotels') return $isHotel;
+    if ($cat === 'attractions') return !$isHotel;
+    return true;
+});
 ?>
 <section class="page-head">
     <div class="container" style="display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
-        <div><h1>My bookings</h1><p class="mb-0">Track and manage your Cebu adventures.</p></div>
-        <a href="<?= e(url('/bookings/map')) ?>" class="btn btn-primary btn-sm">🗺️ Trip map</a>
+        <div>
+            <h1><?= $tab === 'history' ? 'Booking History' : 'My bookings' ?></h1>
+            <p class="mb-0"><?= $tab === 'history' ? 'Completed hotel stays and attraction bookings stored in your history.' : 'Track and manage your active Cebu adventures and stays.' ?></p>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+            <a href="<?= e(url('/bookings?tab=' . ($tab === 'active' ? 'history' : 'active') . ($cat !== 'all' ? '&cat=' . $cat : ''))) ?>" class="btn btn-sm <?= $tab === 'history' ? 'btn-primary' : 'btn-ghost' ?>" style="display:inline-flex;align-items:center;gap:6px;" title="<?= $tab === 'history' ? 'Switch to Active' : 'Switch to History' ?>">
+                <span>🕒</span>
+                <span><?= $tab === 'history' ? 'Active Bookings' : 'History' ?></span>
+                <?php if (count($historyBookings) > 0 && $tab === 'active'): ?>
+                    <span class="badge" style="background:#EF4444;color:#FFFFFF;border-radius:999px;padding:1px 6px;font-size:0.7rem;font-weight:800;"><?= count($historyBookings) ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="<?= e(url('/bookings/map')) ?>" class="btn btn-primary btn-sm">🗺️ Trip map</a>
+        </div>
     </div>
 </section>
 <section class="section">
     <div class="container">
-        <?php if ($bookings === []): ?>
-            <div class="empty-state">
-                <div class="big">🧳</div>
-                <h3>No bookings yet</h3>
-                <p>When you book a tour, guide, stay or table, it shows up here.</p>
-                <a href="<?= e(url('/listings')) ?>" class="btn btn-primary mt-2">Find something to do</a>
+        <!-- Segmented Navigation: Active vs History -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:1.25rem;flex-wrap:wrap;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a href="<?= e(url('/bookings?tab=active' . ($cat !== 'all' ? '&cat=' . $cat : ''))) ?>" class="btn btn-sm <?= $tab === 'active' ? 'btn-primary' : 'btn-ghost' ?>" style="border-radius:999px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+                    <span>✨</span> Active Bookings (<?= count($activeBookings) ?>)
+                </a>
+                <a href="<?= e(url('/bookings?tab=history' . ($cat !== 'all' ? '&cat=' . $cat : ''))) ?>" class="btn btn-sm <?= $tab === 'history' ? 'btn-primary' : 'btn-ghost' ?>" style="border-radius:999px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+                    <span>🕒</span> History (<?= count($historyBookings) ?>)
+                </a>
             </div>
+
+            <!-- Category Separation: Hotels vs Attractions -->
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <span class="hint" style="font-size:0.8rem;font-weight:700;margin-right:4px;">Filter:</span>
+                <a href="<?= e(url('/bookings?tab=' . $tab . '&cat=all')) ?>" class="btn btn-sm <?= $cat === 'all' ? 'btn-dark' : 'btn-ghost' ?>" style="border-radius:999px;font-size:0.8rem;padding:3px 10px;">
+                    All (<?= count($currentPool) ?>)
+                </a>
+                <a href="<?= e(url('/bookings?tab=' . $tab . '&cat=hotels')) ?>" class="btn btn-sm <?= $cat === 'hotels' ? 'btn-dark' : 'btn-ghost' ?>" style="border-radius:999px;font-size:0.8rem;padding:3px 10px;">
+                    🏨 Hotels (<?= $hotelCount ?>)
+                </a>
+                <a href="<?= e(url('/bookings?tab=' . $tab . '&cat=attractions')) ?>" class="btn btn-sm <?= $cat === 'attractions' ? 'btn-dark' : 'btn-ghost' ?>" style="border-radius:999px;font-size:0.8rem;padding:3px 10px;">
+                    🎟️ Attractions (<?= $attractionCount ?>)
+                </a>
+            </div>
+        </div>
+
+        <?php if ($displayBookings === []): ?>
+            <?php if ($tab === 'history'): ?>
+                <div class="empty-state">
+                    <div class="big">🕒</div>
+                    <h3>No <?= $cat === 'hotels' ? 'hotel history' : ($cat === 'attractions' ? 'attraction history' : 'booking history') ?> yet</h3>
+                    <p>When your hotel checkout date passes or attraction visit date is completed, reservations will be stored here in History.</p>
+                    <a href="<?= e(url('/bookings?tab=active')) ?>" class="btn btn-primary mt-2">View active bookings</a>
+                </div>
+            <?php else: ?>
+                <div class="empty-state">
+                    <div class="big">🧳</div>
+                    <h3>No active <?= $cat === 'hotels' ? 'hotel reservations' : ($cat === 'attractions' ? 'attraction bookings' : 'bookings') ?></h3>
+                    <p>When you book a stay or tour, it shows up here. Completed items are automatically moved to History.</p>
+                    <?php if (count($historyBookings) > 0): ?>
+                        <a href="<?= e(url('/bookings?tab=history')) ?>" class="btn btn-ghost mt-2">View booking history (<?= count($historyBookings) ?>)</a>
+                    <?php else: ?>
+                        <a href="<?= e(url('/listings')) ?>" class="btn btn-primary mt-2">Find something to do</a>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
         <?php else: ?>
             <div class="panel">
                 <div class="panel-body" style="padding:0;overflow-x:auto;">
@@ -24,7 +118,7 @@
                             <tr><th>Listing</th><th>Date</th><th>Guests</th><th>Total</th><th>Status</th><th>Payment</th><th class="col-booking-actions">Actions</th></tr>
                         </thead>
                         <tbody>
-                        <?php foreach ($bookings as $b): ?>
+                        <?php foreach ($displayBookings as $b): ?>
                             <?php
                             $isHotel = !empty($b['room_id']) || !empty($b['hotel_status']) || (!empty($b['deposit_amount']) && (float) $b['deposit_amount'] > 0);
                             $hotelStatus = (string) ($b['hotel_status'] ?? '');
@@ -33,6 +127,7 @@
                             $deposit = (float) ($b['deposit_amount'] ?? 0);
                             $balance = (float) ($b['balance_amount'] ?? max(0, $total - $deposit));
                             $isConfirmed = $hotelStatus === 'confirmed' || $status === 'confirmed';
+                            $rowIsCompleted = ($hotelStatus === 'completed' || $status === 'completed');
                             ?>
                             <tr>
                                 <td>
@@ -45,6 +140,13 @@
                                         </div>
                                     <?php endif; ?>
                                     <small class="hint" style="display:block;margin-top:0.2rem;"><?= e($b['area']) ?></small>
+                                    <?php if ($rowIsCompleted): ?>
+                                        <div style="margin-top:0.35rem;">
+                                            <span class="badge" style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0;font-size:0.72rem;padding:2px 7px;border-radius:6px;font-weight:700;">
+                                                ✓ Completed · In History
+                                            </span>
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ($isHotel && (!empty($b['check_in_date']) || !empty($b['check_out_date']))): ?>
@@ -189,5 +291,7 @@
             </div>
             <p class="hint mt-2">Paid on GuideMate but a guide asked for extra money? Use <strong>Report problem</strong>. <a href="<?= e(url('/policy')) ?>">Read our policy</a></p>
         <?php endif; ?>
+    </div>
+</section>
     </div>
 </section>

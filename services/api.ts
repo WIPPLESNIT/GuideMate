@@ -150,14 +150,74 @@ export type ApiBooking = {
   can_review?: boolean;
   can_report?: boolean;
   dispute_status?: string;
+  is_hotel?: boolean;
+  is_completed?: boolean;
+  cancellation?: CancellationPolicyMeta;
 };
 
-// Problem types for reporting a guide to the admin (mirrors Dispute::TYPES).
+export type CancellationPolicyMeta = {
+  policy: '24h' | '72h';
+  policy_hours: number;
+  policy_label: string;
+  deadline: string;
+  deadline_formatted: string;
+  remaining_seconds: number;
+  remaining_text: string;
+  can_cancel: boolean;
+  ineligible_reason: string | null;
+  refund_amount: number;
+  refund_status: string;
+  processing_time: string;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+};
+
+/**
+ * Robust helper defining when a booking (hotel stay or attraction tour) is considered completed.
+ * It is completed if:
+ * 1. Explicitly marked 'completed' (or hotel_status === 'completed')
+ * 2. It is archived / cancelled / refunded
+ * 3. Or after the hotel checkout date (for hotels) or visit date (for attractions) has passed.
+ */
+export function isBookingCompleted(b: ApiBooking): boolean {
+  if (b.hotel_status === 'completed' || b.status === 'completed') {
+    return true;
+  }
+  if (
+    b.hotel_status === 'cancelled' ||
+    b.status === 'cancelled' ||
+    b.status === 'refunded' ||
+    b.hotel_status === 'no_show'
+  ) {
+    return true;
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isHotel = Boolean(b.room_name || b.hotel_status || (b.deposit_amount && b.deposit_amount > 0));
+
+  if (isHotel) {
+    const checkout = b.check_out_date || b.booking_date;
+    if (checkout && checkout < todayStr) {
+      return true;
+    }
+  } else {
+    const visitDate = (b.booking_dates && b.booking_dates.length > 0)
+      ? b.booking_dates[b.booking_dates.length - 1]
+      : b.booking_date;
+    if (visitDate && visitDate < todayStr) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Problem types for reporting a guide or hotel booking to the admin (mirrors Dispute::TYPES).
 export const DISPUTE_TYPES: { value: string; label: string }[] = [
-  { value: 'extra_payment', label: 'Guide asked for extra payment' },
-  { value: 'no_show', label: 'Guide did not show up' },
-  { value: 'service_mismatch', label: 'Service was very different from listing' },
-  { value: 'unsafe', label: 'Unsafe or unprofessional behavior' },
+  { value: 'extra_payment', label: 'Extra payment requested / undisclosed fees' },
+  { value: 'no_show', label: 'Guide or host did not show up / booking not honored' },
+  { value: 'service_mismatch', label: 'Service or room was very different from listing' },
+  { value: 'unsafe', label: 'Unsafe, unclean, or unprofessional behavior' },
   { value: 'other', label: 'Other problem' },
 ];
 
@@ -172,6 +232,7 @@ export type ApiDispute = {
   status_label: string;
   admin_note: string;
   created_at: string;
+  photos?: string[];
 };
 
 export type HomePayload = {
@@ -431,13 +492,49 @@ export type ApiRental = {
   report_type: string;
   report_label: string;
   report_message: string;
+  report_photos?: string[];
   owner_report_note: string;
   can_report: boolean;
   can_review?: boolean;
   has_reviewed?: boolean;
   review?: ApiRentalReview | null;
+  return_date?: string;
+  is_completed?: boolean;
+  cancellation?: CancellationPolicyMeta;
   created_at: string;
 };
+
+/**
+ * Calculates the return date string (YYYY-MM-DD) for a vehicle rental based on pickup_date and rental_days.
+ */
+export function getRentalReturnDate(r: ApiRental): string {
+  if (r.return_date) return r.return_date;
+  if (!r.pickup_date) return '';
+  const pickup = new Date(r.pickup_date);
+  if (isNaN(pickup.getTime())) return r.pickup_date;
+  const returnDate = new Date(pickup);
+  returnDate.setDate(returnDate.getDate() + (r.rental_days || 1));
+  return returnDate.toISOString().slice(0, 10);
+}
+
+/**
+ * Robust helper defining when a rental reservation is considered completed.
+ * It is completed if:
+ * 1. Explicitly marked 'completed'
+ * 2. It is cancelled / rejected / refunded
+ * 3. Or after the vehicle rental return date has passed.
+ */
+export function isRentalCompleted(r: ApiRental): boolean {
+  if (r.status === 'completed' || r.status === 'cancelled' || r.status === 'rejected' || r.status === 'refunded') {
+    return true;
+  }
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const returnDateStr = getRentalReturnDate(r);
+  if (returnDateStr && returnDateStr < todayStr) {
+    return true;
+  }
+  return false;
+}
 
 // Problem types a tourist can report against a reserved unit.
 export const RENTAL_REPORT_TYPES: { value: string; label: string }[] = [
@@ -503,11 +600,62 @@ export function createRentalRequest(payload: {
 
 export const getMyRentals = () => api<{ rentals: ApiRental[] }>('/api/rentals/mine');
 
-export const reportRental = (payload: {
+export async function reportRental(payload: {
   rental_id: number;
   problem_type: string;
   description: string;
-}) => api<{ request: ApiRental | null }>('/api/rentals/report', { method: 'POST', body: payload });
+  photos?: string[];
+}): Promise<{ request: ApiRental | null }> {
+  const parameters: Record<string, string> = {
+    rental_id: String(payload.rental_id),
+    problem_type: payload.problem_type,
+    description: payload.description,
+  };
+
+  const photos = (payload.photos ?? []).filter(Boolean);
+
+  let result: { request: ApiRental | null };
+
+  if (photos.length > 0) {
+    // 1. Submit rental report with the first photo using native uploader
+    result = await uploadFileMultipart<{ request: ApiRental | null }>(
+      '/api/rentals/report',
+      photos[0],
+      'evidence',
+      parameters,
+      {
+        fallbackName: `rental_evidence_${Date.now()}_0.jpg`,
+        connectionError: 'Could not submit your report. Please check your connection and try again.',
+      }
+    );
+
+    // 2. Upload any additional photos
+    const rentalId = result.request?.id ?? payload.rental_id;
+    if (rentalId && photos.length > 1) {
+      for (let i = 1; i < photos.length; i++) {
+        try {
+          await uploadFileMultipart(
+            `/api/rentals/${rentalId}/report/evidence`,
+            photos[i],
+            'evidence',
+            {},
+            { fallbackName: `rental_evidence_${Date.now()}_${i}.jpg` }
+          );
+        } catch (e) {
+          console.warn(`Failed to upload rental evidence photo #${i + 1}:`, e);
+        }
+      }
+    }
+  } else {
+    // No photo: use standard JSON API helper
+    result = await api<{ request: ApiRental | null }>('/api/rentals/report', {
+      method: 'POST',
+      body: parameters,
+    });
+  }
+
+  return result;
+}
 
 export const submitRentalReview = (payload: {
   rental_id: number;
@@ -544,6 +692,55 @@ export const createBooking = (payload: {
   payment_reference?: string;
   card_last4?: string;
 }) => api<{ booking: ApiBooking | null; deposit_amount?: number; balance_amount?: number; payment_instructions?: string }>('/api/bookings', { method: 'POST', body: payload });
+
+export const payBookingBalance = (
+  bookingId: number,
+  payload: {
+    payment_method: PaymentMethod;
+    payment_reference?: string;
+    card_last4?: string;
+  }
+) =>
+  api<{
+    success: boolean;
+    message: string;
+    booking: ApiBooking | null;
+    payment_id?: number;
+    amount_paid?: number;
+  }>(`/api/bookings/${bookingId}/pay-balance`, {
+    method: 'POST',
+    body: payload,
+  });
+
+export const cancelBooking = (bookingId: number, reason?: string) =>
+  api<{
+    success: boolean;
+    booking_id: number;
+    status: string;
+    refund_amount: number;
+    refund_status: string;
+    processing_time: string;
+    message: string;
+    booking?: ApiBooking | null;
+  }>(`/api/bookings/${bookingId}/cancel`, {
+    method: 'POST',
+    body: { reason },
+  });
+
+export const cancelRental = (rentalId: number, reason?: string) =>
+  api<{
+    success: boolean;
+    rental_id: number;
+    status: string;
+    refund_amount: number;
+    refund_status: string;
+    processing_time: string;
+    message: string;
+    rental?: ApiRental | null;
+  }>(`/api/rentals/${rentalId}/cancel`, {
+    method: 'POST',
+    body: { reason },
+  });
 
 export type ApiVoucher = {
   code: string;
@@ -616,7 +813,7 @@ export const submitReview = (payload: {
 export const getMyDispute = (bookingId: number) =>
   api<{ dispute: ApiDispute | null }>(`/api/disputes?booking_id=${bookingId}`);
 
-// Report uses multipart/form-data so photo evidence can be attached.
+// Report uses native multipart uploader so photo evidence can be attached safely on Android.
 export async function submitDispute(payload: {
   booking_id: number;
   problem_type: string;
@@ -624,46 +821,58 @@ export async function submitDispute(payload: {
   amount_requested?: string;
   photos?: string[];
 }): Promise<{ success: boolean; dispute: ApiDispute | null }> {
-  const form = new FormData();
-  form.append('booking_id', String(payload.booking_id));
-  form.append('problem_type', payload.problem_type);
-  form.append('description', payload.description);
-  if (payload.amount_requested) form.append('amount_requested', payload.amount_requested);
+  const parameters: Record<string, string> = {
+    booking_id: String(payload.booking_id),
+    problem_type: payload.problem_type,
+    description: payload.description,
+  };
+  if (payload.amount_requested) {
+    parameters.amount_requested = payload.amount_requested;
+  }
 
-  (payload.photos ?? []).forEach((uri, i) => {
-    const name = uri.split('/').pop() || `evidence_${Date.now()}_${i}.jpg`;
-    const ext = (/\.(\w+)$/.exec(name)?.[1] ?? 'jpg').toLowerCase();
-    const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    // "evidence[]" so PHP receives an array when multiple photos are attached.
-    form.append('evidence[]', { uri, name, type } as unknown as Blob);
-  });
+  const photos = (payload.photos ?? []).filter(Boolean);
 
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  let result: { success: boolean; dispute: ApiDispute | null };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}/api/disputes`, {
+  if (photos.length > 0) {
+    // 1. Submit report with the first photo via native uploader (handles content:// and file:// natively)
+    result = await uploadFileMultipart<{ success: boolean; dispute: ApiDispute | null }>(
+      '/api/disputes',
+      photos[0],
+      'evidence',
+      parameters,
+      {
+        fallbackName: `evidence_${Date.now()}_0.jpg`,
+        connectionError: 'Could not submit your report. Please check that XAMPP is running and your device is on the same network.',
+      }
+    );
+
+    // 2. Upload any additional photos if more than one was attached
+    const disputeId = result.dispute?.id;
+    if (disputeId && photos.length > 1) {
+      for (let i = 1; i < photos.length; i++) {
+        try {
+          await uploadFileMultipart(
+            `/api/disputes/${disputeId}/evidence`,
+            photos[i],
+            'evidence',
+            {},
+            { fallbackName: `evidence_${Date.now()}_${i}.jpg` }
+          );
+        } catch (e) {
+          console.warn(`Failed to upload photo evidence #${i + 1}:`, e);
+        }
+      }
+    }
+  } else {
+    // No photo attached: use the reliable JSON API helper
+    result = await api<{ success: boolean; dispute: ApiDispute | null }>('/api/disputes', {
       method: 'POST',
-      headers,
-      body: form,
-      signal: controller.signal,
+      body: parameters,
     });
-  } catch {
-    throw new Error('Could not submit your report. Check your connection and try again.');
-  } finally {
-    clearTimeout(timeout);
   }
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const err = new Error((data && (data.error || data.message)) || 'Report failed.') as Error & { code?: string };
-    if (response.status === 401 || response.status === 403) err.code = 'UNAUTHORIZED';
-    throw err;
-  }
-  return data as { success: boolean; dispute: ApiDispute | null };
+  return result;
 }
 
 // ── Profile ──

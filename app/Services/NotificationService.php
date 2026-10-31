@@ -139,6 +139,15 @@ HTML;
         self::send($email, 'Rental declined — ' . $vehicleName, $body);
     }
 
+    public static function rentalCancelled(string $email, string $vehicleName, string $refundNote = ''): void
+    {
+        $body = "Your vehicle reservation for {$vehicleName} has been cancelled.";
+        if ($refundNote !== '') {
+            $body .= "\n\n{$refundNote}";
+        }
+        self::send($email, 'Rental reservation cancelled — ' . $vehicleName, $body);
+    }
+
     public static function bookingCancelled(string $email, string $listingTitle, string $refundNote = ''): void
     {
         $body = "Your booking for {$listingTitle} was cancelled.";

@@ -71,14 +71,14 @@ $errors = $errors ?? [];
                             <?php endif; ?>
                         </div>
                     <?php else: ?>
-                        <table class="table" style="vertical-align:middle;width:100%;">
+                        <table class="table my-hotels-table" style="vertical-align:middle;width:100%;">
                             <thead>
                                 <tr>
                                     <th style="min-width:240px;">Property</th>
                                     <th>Starting Rate</th>
                                     <th>Rooms Configured</th>
                                     <th>Status</th>
-                                    <th style="text-align:right;min-width:160px;">Actions</th>
+                                    <th class="col-actions" style="text-align:right;width:140px;min-width:140px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -144,15 +144,15 @@ $errors = $errors ?? [];
                                                 <?= e(\App\Models\Listing::hotelStatusLabel($hStatus)) ?>
                                             </span>
                                         </td>
-                                        <td style="text-align:right;white-space:nowrap;">
-                                            <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:6px;">
+                                        <td class="col-actions" style="text-align:right;white-space:nowrap;width:140px;min-width:140px;">
+                                            <div class="hotel-action-buttons">
                                                 <?php if ($hStatus === 'approved'): ?>
-                                                    <a href="<?= e(url('/dashboard/hotels/' . (int) $h['id'] . '/rooms')) ?>" class="btn btn-ghost btn-sm" style="padding:5px 12px;font-size:0.82rem;border:1px solid var(--line);border-radius:6px;display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--brand, #059669);background:#fff;" title="View and manage rooms">
+                                                    <a href="<?= e(url('/dashboard/hotels/' . (int) $h['id'] . '/rooms')) ?>" class="btn btn-ghost btn-sm btn-hotel-room" title="View and manage rooms">
                                                         <?= admin_icon('listings', 14) ?> Room
                                                     </a>
                                                 <?php else: ?>
-                                                    <button type="button" class="btn btn-ghost btn-sm" style="padding:5px 12px;font-size:0.82rem;border:1px dashed var(--line);border-radius:6px;display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--text-light, #64748b);background:#f8fafc;cursor:not-allowed;" title="Room configuration is unlocked after this property is approved by an administrator." disabled>
-                                                        🔒 Room (<?= e(\App\Models\Listing::hotelStatusLabel($hStatus)) ?>)
+                                                    <button type="button" class="btn btn-ghost btn-sm btn-hotel-room-disabled" disabled aria-disabled="true" title="Room management is unavailable until this hotel listing is approved by an administrator.">
+                                                        <span aria-hidden="true" style="font-size:0.8rem;line-height:1;">🔒</span> Room
                                                     </button>
                                                 <?php endif; ?>
                                                 <div class="res-action-wrap">

@@ -355,10 +355,10 @@ foreach ($reservations as $res) {
 
                                         <!-- 4. BALANCE DUE AT HOTEL -->
                                         <td>
-                                            <?php if ($balance > 0 && !in_array($hotelStatus, ['completed', 'cancelled', 'no_show'], true)): ?>
+                                            <?php if ($balance > 0 && !in_array($hotelStatus, ['completed', 'cancelled', 'no_show'], true) && ($b['payment_stage'] ?? '') !== 'settled'): ?>
                                                 <strong style="font-size:0.92rem;color:#D97706;display:block;line-height:1.2;"><?= money($balance) ?></strong>
                                                 <small class="hint" style="font-size:0.72rem;color:#B45309;font-weight:600;white-space:nowrap;display:block;margin-top:2px;">At front desk</small>
-                                            <?php elseif ($hotelStatus === 'completed'): ?>
+                                            <?php elseif ($hotelStatus === 'completed' || ($b['payment_stage'] ?? '') === 'settled'): ?>
                                                 <span class="pill pill-approved" style="font-size:0.74rem;padding:2px 7px;">Settled</span>
                                             <?php else: ?>
                                                 <span class="hint">—</span>
@@ -444,10 +444,11 @@ foreach ($reservations as $res) {
 
                                                     <?php elseif ($hotelStatus === 'checked_in'): ?>
                                                         <!-- Settle Balance & Check Out -->
-                                                        <form method="post" action="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Collect outstanding balance of <?= money($balance) ?> and complete check-out?');">
+                                                        <?php $isSettled = ($b['payment_stage'] ?? '') === 'settled' || $balance <= 0; ?>
+                                                        <form method="post" action="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('<?= $isSettled ? 'Complete check-out for this guest?' : 'Collect outstanding balance of ' . money($balance) . ' and complete check-out?' ?>');">
                                                             <?= csrf_field() ?>
                                                             <button type="submit" name="action" value="settle_balance" class="res-action-item action-settle" role="menuitem">
-                                                                Settle &amp; Check Out
+                                                                <?= $isSettled ? 'Complete Check Out' : 'Settle &amp; Check Out' ?>
                                                             </button>
                                                         </form>
 

@@ -262,9 +262,59 @@ final class BookingController extends Controller
     {
         $this->verifyCsrf();
         $booking = $this->ownedBooking((int) $id);
-        Booking::updateStatus((int) $booking['id'], 'cancelled');
-        \App\Core\Database::run("UPDATE bookings SET hotel_status = 'cancelled' WHERE id = ?", [(int) $booking['id']]);
-        flash('info', 'Booking cancelled.');
+        $bookingId = (int) $booking['id'];
+
+        $isHotel = !empty($booking['room_id']) || !empty($booking['hotel_status']);
+        $policyHours = $isHotel ? 72 : 24;
+        $startStr = (string) ($isHotel ? ($booking['check_in_date'] ?? $booking['booking_date']) : $booking['booking_date']);
+        $timeStr = !empty($booking['booking_time']) ? (string) $booking['booking_time'] : ($isHotel ? '14:00:00' : '09:00:00');
+        $startTs = strtotime("{$startStr} {$timeStr}") ?: time();
+        $deadlineTs = $startTs - ($policyHours * 3600);
+
+        if ($booking['status'] === 'completed' || ($booking['hotel_status'] ?? '') === 'completed') {
+            flash('error', 'Completed bookings cannot be cancelled.');
+            redirect('/bookings');
+            return;
+        }
+
+        if (time() > $deadlineTs) {
+            flash('error', "The cancellation deadline for this booking passed on " . date('M j, Y, g:i A', $deadlineTs) . " ({$policyHours}h policy).");
+            redirect('/bookings');
+            return;
+        }
+
+        // Check if paid
+        $paidRow = \App\Core\Database::first("SELECT SUM(amount) AS total_paid FROM payments WHERE booking_id = ? AND status = 'paid'", [$bookingId]);
+        $refundAmount = $paidRow !== null && $paidRow['total_paid'] !== null ? (float) $paidRow['total_paid'] : 0.0;
+        if ($refundAmount <= 0.0 && !empty($booking['deposit_amount'])) {
+            $refundAmount = (float) $booking['deposit_amount'];
+        }
+
+        $newStatus = $refundAmount > 0 ? 'refunded' : 'cancelled';
+        if ($refundAmount > 0) {
+            Payment::refund($bookingId);
+        }
+
+        $hotelSql = $isHotel ? "'{$newStatus}'" : "hotel_status";
+        \App\Core\Database::run(
+            "UPDATE bookings
+             SET status = ?,
+                 hotel_status = {$hotelSql},
+                 payment_stage = CASE WHEN ? > 0 THEN 'refunded' ELSE payment_stage END,
+                 cancelled_at = NOW(),
+                 cancellation_reason = 'Cancelled by tourist via web portal',
+                 refund_amount = ?,
+                 refund_status = ?
+             WHERE id = ?",
+            [$newStatus, $refundAmount, $refundAmount, $refundAmount > 0 ? 'initiated' : 'none', $bookingId]
+        );
+
+        if ($refundAmount > 0) {
+            flash('success', 'Booking cancelled. A full refund of ₱' . number_format($refundAmount, 2) . ' has been initiated to your original payment method (1–3 business days).');
+        } else {
+            flash('info', 'Booking cancelled. No charges were incurred.');
+        }
+
         redirect('/bookings');
     }
 
