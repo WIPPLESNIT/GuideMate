@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 // Base URL of your GuideMate PHP web backend.
 //
@@ -11,7 +12,7 @@ import Constants from 'expo-constants';
 const PROD_API_BASE_URL = 'https://yourdomain.com/GuideMate/public';
 
 // Fallback used only if the dev host can't be detected (e.g. tunnel mode).
-const FALLBACK_DEV_IP = '10.0.4.99';
+const FALLBACK_DEV_IP = '192.168.1.39';
 
 function detectDevHost(): string {
   // Expo exposes the dev server as "<ip>:<port>" across SDK versions.
@@ -22,7 +23,11 @@ function detectDevHost(): string {
     (Constants as any).manifest?.debuggerHost ||
     '';
   const host = String(hostUri).split(':')[0];
-  return host || FALLBACK_DEV_IP;
+  const resolved = host || FALLBACK_DEV_IP;
+  if (Platform.OS === 'android' && (resolved === 'localhost' || resolved === '127.0.0.1')) {
+    return '10.0.2.2';
+  }
+  return resolved;
 }
 
 export const API_BASE_URL = __DEV__

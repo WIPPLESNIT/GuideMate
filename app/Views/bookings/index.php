@@ -128,6 +128,8 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                             $balance = (float) ($b['balance_amount'] ?? max(0, $total - $deposit));
                             $isConfirmed = $hotelStatus === 'confirmed' || $status === 'confirmed';
                             $rowIsCompleted = ($hotelStatus === 'completed' || $status === 'completed');
+                            $isCancelled = in_array($hotelStatus, ['cancelled', 'refunded'], true) || in_array($status, ['cancelled', 'refunded'], true) || !empty($b['cancelled_at']);
+                            $cancellation = \App\Services\CancellationPolicyService::compute($b, $isHotel ? 'hotel' : 'attraction');
                             ?>
                             <tr>
                                 <td>
@@ -144,6 +146,12 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                         <div style="margin-top:0.35rem;">
                                             <span class="badge" style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0;font-size:0.72rem;padding:2px 7px;border-radius:6px;font-weight:700;">
                                                 ✓ Completed · In History
+                                            </span>
+                                        </div>
+                                    <?php elseif ($isCancelled): ?>
+                                        <div style="margin-top:0.35rem;">
+                                            <span class="badge" style="background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;font-size:0.72rem;padding:2px 7px;border-radius:6px;font-weight:700;">
+                                                Cancelled · In History
                                             </span>
                                         </div>
                                     <?php endif; ?>
@@ -165,10 +173,14 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                 <td>
                                     <strong><?= money($total) ?></strong>
                                     <?php if ($isHotel && $deposit > 0): ?>
-                                        <div style="font-size:0.75rem;color:#059669;font-weight:700;margin-top:3px;">
-                                            ✓ <?= money($deposit) ?> deposit paid
+                                        <div style="font-size:0.75rem;color:<?= $isCancelled ? '#2563EB' : '#059669' ?>;font-weight:700;margin-top:3px;">
+                                            <?= $isCancelled ? '✓ Refunded' : '✓ ' . money($deposit) . ' deposit paid' ?>
                                         </div>
-                                        <?php if ($balance > 0 && !in_array($hotelStatus, ['cancelled', 'completed'], true)): ?>
+                                        <?php if ($isCancelled): ?>
+                                            <div style="font-size:0.75rem;color:var(--ink-200,#6B7280);font-weight:600;margin-top:1px;">
+                                                Due: -
+                                            </div>
+                                        <?php elseif ($balance > 0 && !in_array($hotelStatus, ['cancelled', 'completed', 'refunded'], true)): ?>
                                             <div style="font-size:0.75rem;color:#D97706;font-weight:700;margin-top:1px;">
                                                 Due: <?= money($balance) ?>
                                             </div>
@@ -190,9 +202,11 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                             'deposit_paid' => ['bg' => '#ECFDF5', 'color' => '#065F46', 'border' => '#A7F3D0', 'label' => 'Deposit Paid'],
                                             'checked_in' => ['bg' => '#E0F2FE', 'color' => '#075985', 'border' => '#7DD3FC', 'label' => 'Checked In'],
                                             'completed' => ['bg' => '#F1F5F9', 'color' => '#334155', 'border' => '#CBD5E1', 'label' => 'Completed'],
-                                            'cancelled' => ['bg' => '#FEE2E2', 'color' => '#991B1B', 'border' => '#FCA5A5', 'label' => 'Cancelled'],
+                                            'cancelled', 'refunded' => ['bg' => '#FEE2E2', 'color' => '#991B1B', 'border' => '#FCA5A5', 'label' => 'Cancelled'],
                                             'no_show' => ['bg' => '#FEE2E2', 'color' => '#7F1D1D', 'border' => '#FCA5A5', 'label' => 'No-Show'],
-                                            default => ['bg' => '#F1F5F9', 'color' => '#334155', 'border' => '#CBD5E1', 'label' => ucfirst($hotelStatus)],
+                                            default => ($isCancelled
+                                                ? ['bg' => '#FEE2E2', 'color' => '#991B1B', 'border' => '#FCA5A5', 'label' => 'Cancelled']
+                                                : ['bg' => '#F1F5F9', 'color' => '#334155', 'border' => '#CBD5E1', 'label' => ucfirst($hotelStatus)]),
                                         };
                                         ?>
                                         <span class="pill" style="background:<?= $hotelStatusStyle['bg'] ?>;color:<?= $hotelStatusStyle['color'] ?>;border:1px solid <?= $hotelStatusStyle['border'] ?>;font-weight:700;">
@@ -216,9 +230,18 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if ($isHotel && $deposit > 0): ?>
+                                    <?php if ($isCancelled): ?>
+                                        <div style="display:inline-flex;flex-direction:column;align-items:flex-start;gap:6px;">
+                                            <span class="pill pill-cancelled">Cancelled</span>
+                                            <?php if (!empty($cancellation['refund_amount']) && (float) $cancellation['refund_amount'] > 0): ?>
+                                                <span class="res-refund-amount" style="font-size:0.75rem;color:#2563EB;font-weight:700;line-height:1.2;white-space:nowrap;letter-spacing:0.01em;">
+                                                    Refunded: <?= money($cancellation['refund_amount']) ?>
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php elseif ($isHotel && $deposit > 0): ?>
                                         <span class="pill pill-paid">Deposit Paid</span>
-                                        <?php if ($balance > 0 && !in_array($hotelStatus, ['cancelled', 'completed'], true)): ?>
+                                        <?php if ($balance > 0 && !in_array($hotelStatus, ['cancelled', 'completed', 'refunded'], true)): ?>
                                             <div style="font-size:0.74rem;color:#D97706;font-weight:700;margin-top:4px;">
                                                 Pay <?= money($balance) ?> at hotel
                                             </div>
@@ -226,6 +249,28 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                     <?php else: ?>
                                         <span class="pill pill-<?= e($b['payment_status'] ?? 'pending') ?>"><?= e(ucfirst($b['payment_status'] ?? 'unpaid')) ?></span>
                                     <?php endif; ?>
+
+                                    <div class="cancellation-policy-meta" style="margin-top:6px;font-size:0.75rem;line-height:1.3;">
+                                        <span class="pill" style="font-size:0.68rem;padding:1px 5px;background:<?= $cancellation['can_cancel'] ? '#DCFCE7' : '#F1F5F9' ?>;color:<?= $cancellation['can_cancel'] ? '#166534' : '#64748B' ?>;border:1px solid <?= $cancellation['can_cancel'] ? '#86EFAC' : '#CBD5E1' ?>;">
+                                            <?= strtoupper($cancellation['policy']) ?> POLICY
+                                        </span>
+                                        <?php if ($cancellation['can_cancel']): ?>
+                                            <div style="color:#059669;margin-top:2px;">
+                                                Free cancel until <?= e($cancellation['deadline_formatted']) ?>
+                                            </div>
+                                            <div style="color:var(--text-muted,#64748B);font-size:0.7rem;">
+                                                <?= e($cancellation['remaining_text']) ?> · <?= e($cancellation['refund_description']) ?>
+                                            </div>
+                                        <?php elseif ($rowIsCompleted): ?>
+                                            <div style="color:var(--text-muted,#64748B);margin-top:2px;">Completed</div>
+                                        <?php elseif ($isCancelled): ?>
+                                            <div style="color:#991B1B;margin-top:2px;font-weight:600;">Cancelled</div>
+                                        <?php else: ?>
+                                            <div style="color:#DC2626;margin-top:2px;">
+                                                <?= e($cancellation['ineligible_reason']) ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                                 <td class="booking-actions-cell">
                                     <div class="booking-actions-row">
@@ -245,14 +290,16 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                         </div>
                                     <?php endif; ?>
                                     <div class="booking-actions-btns">
-                                    <?php if (($b['payment_status'] ?? '') !== 'paid' && $b['status'] !== 'cancelled'): ?>
+                                    <?php if (($b['payment_status'] ?? '') !== 'paid' && $b['status'] !== 'cancelled' && $b['status'] !== 'refunded'): ?>
                                         <a class="btn btn-primary btn-sm booking-action-btn" href="<?= e(url('/checkout/' . $b['id'])) ?>">Pay</a>
                                     <?php endif; ?>
-                                    <?php if ($b['status'] === 'pending' || $hotelStatus === 'pending'): ?>
-                                        <form method="post" class="booking-action-form" action="<?= e(url('/bookings/' . $b['id'] . '/cancel')) ?>" onsubmit="return confirm('Cancel this reservation?');">
+                                    <?php if ($cancellation['can_cancel']): ?>
+                                        <form method="post" class="booking-action-form" action="<?= e(url('/bookings/' . $b['id'] . '/cancel')) ?>" onsubmit="return confirm('Are you sure you want to cancel this booking? <?= $cancellation['refund_amount'] > 0 ? "A full refund of ₱" . number_format($cancellation['refund_amount'], 2) . " will be returned to your original payment method." : "No charges will be incurred." ?>');">
                                             <?= csrf_field() ?>
-                                            <button class="btn btn-ghost btn-sm booking-action-btn" type="submit" style="color:#DC2626;border-color:#FECACA;">Cancel</button>
+                                            <button class="btn btn-ghost btn-sm booking-action-btn" type="submit" style="color:#DC2626;border-color:#FECACA;" title="Cancel before <?= e($cancellation['deadline_formatted']) ?>">Cancel</button>
                                         </form>
+                                    <?php elseif (!$rowIsCompleted && !in_array($b['status'], ['cancelled', 'refunded'], true) && !in_array($hotelStatus, ['cancelled', 'refunded'], true)): ?>
+                                        <button class="btn btn-ghost btn-sm booking-action-btn" type="button" disabled style="opacity:0.5;cursor:not-allowed;" title="<?= e($cancellation['ineligible_reason'] ?? 'Cancellation unavailable') ?>">Cancel</button>
                                     <?php endif; ?>
                                     <?php if ((($b['payment_status'] ?? '') === 'paid' || $deposit > 0) && in_array($b['status'], ['confirmed', 'completed'], true)): ?>
                                         <a class="btn btn-ghost btn-sm booking-action-btn" href="<?= e(url('/bookings/map?booking=' . $b['id'])) ?>">Navigate</a>

@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { API_BASE_URL } from '../config';
 
 // Fail fast instead of hanging forever when the backend is down/unreachable.
-const REQUEST_TIMEOUT_MS = 12000;
+const REQUEST_TIMEOUT_MS = 25000;
 
 // ── Types matching the PHP API payloads (app/Controllers/ApiController.php) ──
 
@@ -67,6 +67,7 @@ export type ApiListing = {
   summary: string;
   area: string;
   price: number;
+  lowest_room_price?: number | null;
   price_unit: string;
   currency: string;
   rating: number;
@@ -76,6 +77,12 @@ export type ApiListing = {
   image: string;
   featured: boolean;
   duration: string;
+  check_in_time?: string | null;
+  check_out_time?: string | null;
+  check_in_time_label?: string | null;
+  check_out_time_label?: string | null;
+  check_in_out_label?: string | null;
+  check_in_schedule_label?: string | null;
   owner_name: string;
   owner_role?: string;
   description?: string;
@@ -132,6 +139,10 @@ export type ApiBooking = {
   days_count?: number;
   booking_time: string;
   booking_end_time?: string;
+  check_in_time_label?: string | null;
+  check_out_time_label?: string | null;
+  check_in_out_label?: string | null;
+  check_in_schedule_label?: string | null;
   guests: number;
   total_amount: number;
   room_id?: number | null;
@@ -141,7 +152,8 @@ export type ApiBooking = {
   nights?: number;
   deposit_amount?: number;
   balance_amount?: number;
-  payment_stage?: string;
+  payment_stage?: 'full' | 'deposit_paid' | 'balance_due' | 'paid' | 'settled' | string;
+  balance_payment_status?: string;
   hotel_status?: string;
   status: string;
   status_label?: string;
@@ -156,16 +168,24 @@ export type ApiBooking = {
 };
 
 export type CancellationPolicyMeta = {
+  kind?: string;
   policy: '24h' | '72h';
   policy_hours: number;
   policy_label: string;
+  scheduled_start?: string;
+  scheduled_start_formatted?: string;
   deadline: string;
   deadline_formatted: string;
+  deadline_timestamp: number;
   remaining_seconds: number;
   remaining_text: string;
   can_cancel: boolean;
   ineligible_reason: string | null;
+  paid_amount?: number;
   refund_amount: number;
+  refund_type?: 'full' | 'deposit_full' | 'none' | 'refunded';
+  refund_description?: string;
+  deposit_rule?: string | null;
   refund_status: string;
   processing_time: string;
   cancelled_at?: string | null;

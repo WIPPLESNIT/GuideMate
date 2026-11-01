@@ -371,21 +371,22 @@ export default function TripsScreen() {
 
   const renderHotelItem = (item: ApiBooking, isCompleted: boolean) => {
     const effectiveStatus = item.hotel_status || item.status;
+    const isCancelled = item.status === 'cancelled' || item.status === 'refunded' || item.hotel_status === 'cancelled' || item.hotel_status === 'refunded';
     const statusColorVal = STATUS_COLOR[effectiveStatus] ?? STATUS_COLOR[item.status] ?? '#9CA3AF';
-    const canNavigate = item.status !== 'cancelled' && item.status !== 'refunded' && item.hotel_status !== 'cancelled';
+    const canNavigate = !isCancelled;
     const checkInFormatted = formatDate(item.check_in_date || item.booking_date);
     const checkOutFormatted = item.check_out_date ? formatDate(item.check_out_date) : '';
     const nights = item.nights || 1;
     const deposit = item.deposit_amount ?? 0;
-    const isSettled = item.payment_stage === 'settled';
-    const unpaidBalance = isSettled
+    const isSettled = item.payment_stage === 'settled' || item.hotel_status === 'completed';
+    const isCheckedIn = item.hotel_status === 'checked_in';
+    const isPaid = item.payment_stage === 'paid' || (isCheckedIn && !isSettled);
+    const unpaidBalance = isSettled || isPaid
       ? 0
       : (item.balance_amount && item.balance_amount > 0 ? item.balance_amount : Math.max(0, item.total_amount - deposit));
     const isConfirmed = item.hotel_status === 'confirmed' || item.status === 'confirmed';
     const isDepositPaid = item.hotel_status === 'deposit_paid';
     const isAccepted = item.hotel_status === 'accepted';
-    const isCheckedIn = item.hotel_status === 'checked_in';
-    const canPayBalance = isCheckedIn && unpaidBalance > 0 && !isSettled;
 
     return (
       <TouchableOpacity
@@ -497,66 +498,67 @@ export default function TripsScreen() {
           </View>
           <View style={[styles.priceCol, styles.priceColDivider, { borderColor: colors.border }]}>
             <Text style={[styles.priceColLabel, { color: colors.textMute }]}>Deposit Paid</Text>
-            <Text style={[styles.priceColDeposit, { color: '#059669' }]}>
-              {deposit > 0 ? `✓ ${formatPrice(deposit)}` : '₱0'}
+            <Text style={[styles.priceColDeposit, { color: isCancelled ? (isDark ? '#60A5FA' : '#2563EB') : '#059669' }]}>
+              {isCancelled ? 'Refunded' : (deposit > 0 ? `✓ ${formatPrice(deposit)}` : '₱0')}
             </Text>
           </View>
           <View style={styles.priceCol}>
             <Text style={[styles.priceColLabel, { color: colors.textMute }]}>Remaining Due</Text>
-            <Text style={[styles.priceColBalance, { color: unpaidBalance > 0 ? '#D97706' : '#059669' }]}>
-              {unpaidBalance > 0 ? formatPrice(unpaidBalance) : 'Settled'}
+            <Text style={[styles.priceColBalance, { color: isCancelled ? colors.textMute : ((isSettled || isCheckedIn || isPaid) ? '#059669' : (unpaidBalance > 0 ? '#D97706' : '#059669')) }]}>
+              {isCancelled ? '-' : (isSettled ? 'Settled' : (isCheckedIn || isPaid ? 'Paid' : (unpaidBalance > 0 ? formatPrice(unpaidBalance) : 'Settled')))}
             </Text>
           </View>
         </View>
 
-        {/* Front Desk Instruction Box */}
-        {item.status !== 'cancelled' && item.hotel_status !== 'cancelled' ? (
-          canPayBalance ? (
-            <View style={[styles.frontDeskNotice, { backgroundColor: isDark ? '#78350F22' : '#FFFBEB', borderColor: isDark ? '#F59E0B44' : '#FDE68A' }]}>
-              <Ionicons name="card-outline" size={18} color="#D97706" style={{ marginTop: 2 }} />
-              <View style={{ flex: 1, marginLeft: 8 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[styles.frontDeskNoticeTitle, { color: isDark ? '#FCD34D' : '#92400E' }]}>
-                    Remaining Balance Payable
-                  </Text>
-                  <View style={{ backgroundColor: '#D9770622', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#D97706' }}>CHECKED IN</Text>
-                  </View>
-                </View>
-                <Text style={[styles.frontDeskNoticeText, { color: isDark ? '#FDE68A' : '#78350F', marginTop: 3 }]}>
-                  You're checked in! You can now pay your remaining balance of <Text style={{ fontWeight: '800' }}>{formatPrice(unpaidBalance)}</Text> directly in the app or settle it at the front desk.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.bannerPayButton, { backgroundColor: '#059669' }]}
-                  activeOpacity={0.85}
-                  onPress={() => openBalancePayment(item, unpaidBalance)}
-                >
-                  <Ionicons name="card" size={14} color="#FFFFFF" />
-                  <Text style={styles.bannerPayButtonText}>Pay {formatPrice(unpaidBalance)} Now</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : unpaidBalance > 0 ? (
-            <View style={[styles.frontDeskNotice, { backgroundColor: isDark ? '#78350F22' : '#FFFBEB', borderColor: isDark ? '#F59E0B44' : '#FDE68A' }]}>
-              <Ionicons name="wallet-outline" size={16} color="#D97706" style={{ marginTop: 1 }} />
-              <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={[styles.frontDeskNoticeTitle, { color: isDark ? '#FCD34D' : '#92400E' }]}>
-                  Pay remaining balance at front desk
-                </Text>
-                <Text style={[styles.frontDeskNoticeText, { color: isDark ? '#FDE68A' : '#78350F' }]}>
-                  Please pay the remaining amount of <Text style={{ fontWeight: '800' }}>{formatPrice(unpaidBalance)}</Text> at the hotel front desk upon arrival / check-in.
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <View style={[styles.frontDeskNotice, { backgroundColor: isDark ? '#064E3B22' : '#F0FDF4', borderColor: isDark ? '#10B98144' : '#BBF7D0' }]}>
-              <Ionicons name="checkmark-done-circle" size={16} color="#10B981" style={{ marginTop: 1 }} />
-              <Text style={[styles.frontDeskNoticeText, { color: isDark ? '#6EE7B7' : '#166534', marginLeft: 8, flex: 1 }]}>
-                Your stay is fully settled. No remaining balance due at the front desk.
+        {/* Front Desk Instruction Box or Cancellation Box */}
+        {isCancelled ? (
+          <View style={[styles.frontDeskNotice, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border }]}>
+            <Ionicons name="close-circle-outline" size={16} color="#EF4444" style={{ marginTop: 1 }} />
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={[styles.frontDeskNoticeTitle, { color: isDark ? '#F87171' : '#B91C1C' }]}>
+                Booking was canceled.
+              </Text>
+              <Text style={[styles.frontDeskNoticeText, { color: colors.textSub }]}>
+                {item.cancellation?.refund_amount && item.cancellation.refund_amount > 0
+                  ? `A full refund of ${formatPrice(item.cancellation.refund_amount)} was initiated to your original payment method.`
+                  : 'This reservation has been canceled. No balance is due.'}
               </Text>
             </View>
-          )
-        ) : null}
+          </View>
+        ) : isCheckedIn || isPaid ? (
+          <View style={[styles.frontDeskNotice, { backgroundColor: isDark ? '#064E3B22' : '#F0FDF4', borderColor: isDark ? '#10B98144' : '#BBF7D0' }]}>
+            <Ionicons name="checkmark-done-circle" size={16} color="#10B981" style={{ marginTop: 1 }} />
+            <Text style={[styles.frontDeskNoticeText, { color: isDark ? '#6EE7B7' : '#166534', marginLeft: 8, flex: 1 }]}>
+              Remaining balance paid at check-in. No further payment required.
+            </Text>
+          </View>
+        ) : isSettled ? (
+          <View style={[styles.frontDeskNotice, { backgroundColor: isDark ? '#064E3B22' : '#F0FDF4', borderColor: isDark ? '#10B98144' : '#BBF7D0' }]}>
+            <Ionicons name="checkmark-done-circle" size={16} color="#10B981" style={{ marginTop: 1 }} />
+            <Text style={[styles.frontDeskNoticeText, { color: isDark ? '#6EE7B7' : '#166534', marginLeft: 8, flex: 1 }]}>
+              Your stay is fully settled. No remaining balance due at the front desk.
+            </Text>
+          </View>
+        ) : unpaidBalance > 0 ? (
+          <View style={[styles.frontDeskNotice, { backgroundColor: isDark ? '#78350F22' : '#FFFBEB', borderColor: isDark ? '#F59E0B44' : '#FDE68A' }]}>
+            <Ionicons name="wallet-outline" size={16} color="#D97706" style={{ marginTop: 1 }} />
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={[styles.frontDeskNoticeTitle, { color: isDark ? '#FCD34D' : '#92400E' }]}>
+                Pay remaining balance at front desk
+              </Text>
+              <Text style={[styles.frontDeskNoticeText, { color: isDark ? '#FDE68A' : '#78350F' }]}>
+                Please pay the remaining amount of <Text style={{ fontWeight: '800' }}>{formatPrice(unpaidBalance)}</Text> at the hotel front desk upon arrival / check-in.
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.frontDeskNotice, { backgroundColor: isDark ? '#064E3B22' : '#F0FDF4', borderColor: isDark ? '#10B98144' : '#BBF7D0' }]}>
+            <Ionicons name="checkmark-done-circle" size={16} color="#10B981" style={{ marginTop: 1 }} />
+            <Text style={[styles.frontDeskNoticeText, { color: isDark ? '#6EE7B7' : '#166534', marginLeft: 8, flex: 1 }]}>
+              Your stay is fully settled. No remaining balance due at the front desk.
+            </Text>
+          </View>
+        )}
 
         {/* Action buttons */}
         <View style={styles.hotelActionsRow}>
@@ -568,16 +570,6 @@ export default function TripsScreen() {
             <Ionicons name="receipt-outline" size={14} color={colors.text} />
             <Text style={[styles.actionText, { color: colors.text }]}>Details &amp; Receipt</Text>
           </TouchableOpacity>
-          {canPayBalance ? (
-            <TouchableOpacity
-              style={[styles.payBalanceBtn, { backgroundColor: '#059669' }]}
-              activeOpacity={0.85}
-              onPress={() => openBalancePayment(item, unpaidBalance)}
-            >
-              <Ionicons name="card" size={14} color="#FFFFFF" />
-              <Text style={styles.payBalanceBtnText}>Pay Balance ({formatPrice(unpaidBalance)})</Text>
-            </TouchableOpacity>
-          ) : null}
           {canNavigate ? (
             <TouchableOpacity
               style={[styles.navBtn, { backgroundColor: colors.primary }]}
@@ -678,62 +670,60 @@ export default function TripsScreen() {
           </View>
         ) : null}
 
-        {/* Subtle divider separating tour details from actions */}
-        <View style={[styles.cardDivider, { backgroundColor: colors.border }]} />
-
-        {/* Bottom row: Price on left, Navigate button on right (spans full card width) */}
-        <View style={styles.bottomRow}>
-          <Text style={[styles.price, { color: colors.accent }]}>{formatPrice(item.total_amount)}</Text>
+        {/* Price on left, Navigate button on right (spans full card width with clean padding) */}
+        <View style={styles.attractionPriceRow}>
+          <Text style={[styles.attractionPrice, { color: colors.accent }]}>{formatPrice(item.total_amount)}</Text>
           {canNavigate ? (
             <TouchableOpacity
-              style={[styles.navBtn, { backgroundColor: colors.primary }]}
+              style={[styles.attractionNavBtn, { backgroundColor: colors.primary }]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/trip-map', params: { booking: String(item.id) } })}
             >
-              <Ionicons name="navigate" size={13} color="#FFFFFF" />
-              <Text style={styles.navBtnText}>Navigate</Text>
+              <Ionicons name="navigate" size={14} color="#FFFFFF" />
+              <Text style={styles.attractionNavBtnText}>Navigate</Text>
             </TouchableOpacity>
           ) : null}
         </View>
 
-        {/* Action buttons row with outline pills (spans full card width) */}
-        <View style={styles.actionsRow}>
+        {/* Stacked Full-Width Action Buttons matching mockup */}
+        <View style={styles.attractionActionsCol}>
           <TouchableOpacity
-            style={[styles.actionBtn, { borderColor: colors.border, backgroundColor: isDark ? '#1E2330' : '#F8FAFC' }]}
+            style={[styles.attractionActionBtn, { borderColor: colors.border, backgroundColor: isDark ? '#1E2330' : '#F8FAFC' }]}
             activeOpacity={0.85}
             onPress={() => setSelectedBookingDetails(item)}
           >
-            <Ionicons name="receipt-outline" size={13} color={colors.text} />
-            <Text style={[styles.actionText, { color: colors.text }]}>Details &amp; Receipt</Text>
+            <Ionicons name="receipt-outline" size={15} color={colors.text} />
+            <Text style={[styles.attractionActionText, { color: colors.text }]}>Details &amp; Receipt</Text>
           </TouchableOpacity>
 
           {item.can_review ? (
             <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: colors.primary }]}
+              style={[styles.attractionActionBtn, { borderColor: colors.primary, backgroundColor: isDark ? '#1E2330' : '#F8FAFC' }]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
             >
-              <Ionicons name="star-outline" size={14} color={colors.primary} />
-              <Text style={[styles.actionText, { color: colors.primary }]}>Rate your guide</Text>
+              <Ionicons name="star-outline" size={15} color={colors.primary} />
+              <Text style={[styles.attractionActionText, { color: colors.primary }]}>Rate your guide</Text>
             </TouchableOpacity>
           ) : null}
+
           {item.dispute_status ? (
             <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: colors.textMute }]}
+              style={[styles.attractionActionBtn, { borderColor: colors.textMute, backgroundColor: 'transparent' }]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } })}
             >
-              <Ionicons name="flag" size={13} color={colors.textMute} />
-              <Text style={[styles.actionText, { color: colors.textMute }]}>View report</Text>
+              <Ionicons name="flag" size={15} color={colors.textMute} />
+              <Text style={[styles.attractionActionText, { color: colors.textMute }]}>View report</Text>
             </TouchableOpacity>
           ) : item.can_report ? (
             <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: '#EF4444' }]}
+              style={[styles.attractionActionBtn, { borderColor: '#EF4444', backgroundColor: 'transparent' }]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } })}
             >
-              <Ionicons name="flag-outline" size={14} color="#EF4444" />
-              <Text style={[styles.actionText, { color: '#EF4444' }]}>Report a problem</Text>
+              <Ionicons name="flag-outline" size={15} color="#EF4444" />
+              <Text style={[styles.attractionActionText, { color: '#EF4444' }]}>Report a problem</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -1011,7 +1001,7 @@ export default function TripsScreen() {
                         <Text style={[styles.hotelStayValue, { color: colors.text }]}>
                           {formatDate(selectedBookingDetails?.check_in_date || selectedBookingDetails?.booking_date)}
                         </Text>
-                        <Text style={{ fontSize: 11, color: colors.textMute }}>From 2:00 PM</Text>
+                        <Text style={{ fontSize: 11, color: colors.textMute }}>From {selectedBookingDetails?.check_in_time_label || '2:00 PM'}</Text>
                       </View>
                       <Ionicons name="arrow-forward" size={14} color={colors.textMute} style={{ marginHorizontal: 8, marginTop: 12 }} />
                       <View style={{ flex: 1 }}>
@@ -1019,7 +1009,7 @@ export default function TripsScreen() {
                         <Text style={[styles.hotelStayValue, { color: colors.text }]}>
                           {formatDate(selectedBookingDetails?.check_out_date || selectedBookingDetails?.booking_date)}
                         </Text>
-                        <Text style={{ fontSize: 11, color: colors.textMute }}>Until 12:00 PM</Text>
+                        <Text style={{ fontSize: 11, color: colors.textMute }}>Until {selectedBookingDetails?.check_out_time_label || '12:00 PM'}</Text>
                       </View>
                     </View>
                     <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderColor: colors.border, flexDirection: 'row', gap: 16 }}>
@@ -1062,72 +1052,90 @@ export default function TripsScreen() {
 
               {/* Itemized Payment & Receipt Box */}
               <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border, marginTop: 12 }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Itemized Receipt</Text>
-                  <View
-                    style={{
-                      backgroundColor:
-                        selectedBookingDetails?.payment_stage === 'settled' || selectedBookingDetails?.status === 'completed'
-                          ? '#DCFCE7'
-                          : '#FEF3C7',
-                      paddingHorizontal: 8,
-                      paddingVertical: 2,
-                      borderRadius: 6,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontWeight: '800',
-                        color:
-                          selectedBookingDetails?.payment_stage === 'settled' || selectedBookingDetails?.status === 'completed'
-                            ? '#166534'
-                            : '#92400E',
-                      }}
-                    >
-                      {selectedBookingDetails?.payment_stage === 'settled' || selectedBookingDetails?.status === 'completed'
-                        ? '✓ SETTLED'
-                        : 'PARTIAL / PENDING'}
-                    </Text>
-                  </View>
-                </View>
+                {(() => {
+                  const isDetailsCancelled = selectedBookingDetails?.status === 'cancelled' || selectedBookingDetails?.status === 'refunded' || selectedBookingDetails?.hotel_status === 'cancelled' || selectedBookingDetails?.hotel_status === 'refunded' || Boolean(selectedBookingDetails?.cancellation?.cancelled_at);
+                  const isDetailsSettled = !isDetailsCancelled && (selectedBookingDetails?.payment_stage === 'settled' || selectedBookingDetails?.hotel_status === 'completed' || selectedBookingDetails?.status === 'completed');
+                  const isDetailsPaid = !isDetailsCancelled && !isDetailsSettled && (selectedBookingDetails?.payment_stage === 'paid' || selectedBookingDetails?.hotel_status === 'checked_in');
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
-                  <Text style={{ fontSize: 13, color: colors.textSub }}>Total Amount</Text>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: colors.text }}>
-                    {selectedBookingDetails ? formatPrice(selectedBookingDetails.total_amount) : '₱0'}
-                  </Text>
-                </View>
-                {selectedBookingDetails?.deposit_amount && selectedBookingDetails.deposit_amount > 0 ? (
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                    <Text style={{ fontSize: 12, color: colors.textSub }}>Deposit Paid</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#059669' }}>
-                      ✓ {formatPrice(selectedBookingDetails.deposit_amount)}
-                    </Text>
-                  </View>
-                ) : null}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, color: colors.textMute }}>Remaining Balance</Text>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: '700',
-                      color: selectedBookingDetails?.payment_stage === 'settled' ? '#059669' : '#D97706',
-                    }}
-                  >
-                    {selectedBookingDetails?.payment_stage === 'settled'
-                      ? '₱0.00 (Fully Settled)'
-                      : selectedBookingDetails?.balance_amount
-                      ? formatPrice(selectedBookingDetails.balance_amount)
-                      : '₱0.00'}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, color: colors.textMute }}>Booking Reference</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
-                    BK-{selectedBookingDetails?.id}
-                  </Text>
-                </View>
+                  return (
+                    <>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Itemized Receipt</Text>
+                        <View
+                          style={{
+                            backgroundColor: isDetailsCancelled
+                              ? (isDark ? '#1E3A8A33' : '#EFF6FF')
+                              : isDetailsSettled
+                              ? '#DCFCE7'
+                              : isDetailsPaid
+                              ? '#E0F2FE'
+                              : '#FEF3C7',
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 6,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: '800',
+                              color: isDetailsCancelled
+                                ? (isDark ? '#93C5FD' : '#2563EB')
+                                : isDetailsSettled
+                                ? '#166534'
+                                : isDetailsPaid
+                                ? '#0369A1'
+                                : '#92400E',
+                            }}
+                          >
+                            {isDetailsCancelled ? 'Refunded' : (isDetailsSettled ? '✓ SETTLED' : isDetailsPaid ? '✓ PAID' : 'PARTIAL / PENDING')}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                        <Text style={{ fontSize: 13, color: colors.textSub }}>Total Amount</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '900', color: colors.text }}>
+                          {selectedBookingDetails ? formatPrice(selectedBookingDetails.total_amount) : '₱0'}
+                        </Text>
+                      </View>
+                      {selectedBookingDetails?.deposit_amount && selectedBookingDetails.deposit_amount > 0 ? (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                          <Text style={{ fontSize: 12, color: colors.textSub }}>Deposit Paid</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: isDetailsCancelled ? colors.textMute : '#059669' }}>
+                            {isDetailsCancelled ? '-' : `✓ ${formatPrice(selectedBookingDetails.deposit_amount)}`}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute }}>Remaining Balance</Text>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '700',
+                            color: isDetailsCancelled ? colors.textMute : (isDetailsSettled || isDetailsPaid ? '#059669' : '#D97706'),
+                          }}
+                        >
+                          {isDetailsCancelled
+                            ? '-'
+                            : isDetailsSettled
+                            ? '₱0.00 (Fully Settled)'
+                            : isDetailsPaid
+                            ? '₱0.00 (Paid at Check-In)'
+                            : selectedBookingDetails?.balance_amount
+                            ? formatPrice(selectedBookingDetails.balance_amount)
+                            : '₱0.00'}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute }}>Booking Reference</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
+                          BK-{selectedBookingDetails?.id}
+                        </Text>
+                      </View>
+                    </>
+                  );
+                })()}
               </View>
 
               {/* Cancellation & Refund Policy Box */}
@@ -1193,19 +1201,33 @@ export default function TripsScreen() {
                           {formatPrice(selectedBookingDetails.cancellation.refund_amount)}
                         </Text>
                       </View>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                        <Text style={{ fontSize: 12, color: colors.textMute }}>Refund Status</Text>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563EB' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 6, gap: 12 }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute, flexShrink: 0 }}>Refund Status</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563EB', flex: 1, textAlign: 'right' }}>
                           Initiated ({selectedBookingDetails.cancellation.processing_time})
                         </Text>
                       </View>
                     </View>
                   ) : selectedBookingDetails.cancellation.can_cancel && selectedBookingDetails.cancellation.refund_amount > 0 ? (
-                    <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 12, color: colors.textMute }}>Applicable Refund on Cancel</Text>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: '#059669' }}>
-                        {formatPrice(selectedBookingDetails.cancellation.refund_amount)}
-                      </Text>
+                    <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderColor: colors.border }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute }}>Applicable Refund on Cancel</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#059669' }}>
+                          {formatPrice(selectedBookingDetails.cancellation.refund_amount)}
+                        </Text>
+                      </View>
+                      {selectedBookingDetails.cancellation.refund_description ? (
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: '#059669', marginTop: 2 }}>
+                          {selectedBookingDetails.cancellation.refund_description}
+                        </Text>
+                      ) : null}
+                      {selectedBookingDetails.cancellation.deposit_rule ? (
+                        <View style={{ marginTop: 6, padding: 8, borderRadius: 8, backgroundColor: isDark ? '#064E3B18' : '#F0FDF4' }}>
+                          <Text style={{ fontSize: 11, color: isDark ? '#6EE7B7' : '#15803D', lineHeight: 16 }}>
+                            {selectedBookingDetails.cancellation.deposit_rule}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
                   ) : null}
                 </View>
@@ -1579,6 +1601,13 @@ const styles = StyleSheet.create({
   actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   actionText: { fontSize: 12, fontWeight: '800' },
+  attractionPriceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, marginBottom: 12 },
+  attractionPrice: { fontSize: 21, fontWeight: '900' },
+  attractionNavBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999 },
+  attractionNavBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  attractionActionsCol: { flexDirection: 'column', gap: 9, width: '100%' },
+  attractionActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, width: '100%' },
+  attractionActionText: { fontSize: 13, fontWeight: '800' },
   statusChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 11, fontWeight: '800', textTransform: 'capitalize' },
@@ -1607,11 +1636,7 @@ const styles = StyleSheet.create({
   frontDeskNotice: { flexDirection: 'row', alignItems: 'flex-start', borderWidth: 1, borderRadius: 12, padding: 10, marginTop: 10 },
   frontDeskNoticeTitle: { fontSize: 12, fontWeight: '800' },
   frontDeskNoticeText: { fontSize: 12, fontWeight: '500', marginTop: 2, lineHeight: 16 },
-  bannerPayButton: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, marginTop: 8 },
-  bannerPayButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   hotelActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12, alignItems: 'center' },
-  payBalanceBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999 },
-  payBalanceBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   modalBackdrop: { flex: 1, backgroundColor: '#00000088', justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1 },

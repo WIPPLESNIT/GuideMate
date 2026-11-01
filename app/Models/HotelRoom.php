@@ -8,6 +8,49 @@ use App\Core\Database;
 
 final class HotelRoom
 {
+
+    /**
+     * Return up to 3 distinct photos for a hotel room.
+     *
+     * @param array<string, mixed> $room
+     * @return array<int, string>
+     */
+    public static function getPhotos(array $room): array
+    {
+        $photos = [];
+        if (!empty($room['images'])) {
+            $decoded = json_decode((string) $room['images'], true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $p) {
+                    if (is_string($p) && trim($p) !== '') {
+                        $photos[] = trim($p);
+                    }
+                }
+            }
+        }
+        if ($photos === []) {
+            $raw = (string) ($room['image'] ?? '');
+            if (str_starts_with(trim($raw), '[') && str_ends_with(trim($raw), ']')) {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    foreach ($decoded as $p) {
+                        if (is_string($p) && trim($p) !== '') {
+                            $photos[] = trim($p);
+                        }
+                    }
+                }
+            } elseif ($raw !== '') {
+                foreach (explode(',', $raw) as $p) {
+                    $p = trim($p);
+                    if ($p !== '') {
+                        $photos[] = $p;
+                    }
+                }
+            }
+        }
+        return array_values(array_slice(array_unique($photos), 0, 3));
+    }
+
     /** Allowed room availability statuses */
     public const STATUS_AVAILABLE = 'available';
     public const STATUS_UNAVAILABLE = 'unavailable';
@@ -25,12 +68,17 @@ final class HotelRoom
         }
         $sql .= " ORDER BY r.price_per_night ASC, r.id ASC";
 
-        return Database::all($sql, [$listingId]);
+        $rows = Database::all($sql, [$listingId]);
+        foreach ($rows as &$r) {
+            $r['photos'] = self::getPhotos($r);
+        }
+        unset($r);
+        return $rows;
     }
 
     public static function forOwner(int $userId): array
     {
-        return Database::all(
+        $rows = Database::all(
             "SELECT r.*, l.title as hotel_title, l.slug as hotel_slug, l.area as hotel_area
              FROM hotel_rooms r
              JOIN listings l ON l.id = r.listing_id
@@ -38,30 +86,95 @@ final class HotelRoom
              ORDER BY l.id ASC, r.price_per_night ASC",
             [$userId]
         );
+        foreach ($rows as &$r) {
+            $r['photos'] = self::getPhotos($r);
+        }
+        unset($r);
+        return $rows;
     }
 
     public static function find(int $id): ?array
     {
-        return Database::first(
+        $row = Database::first(
             "SELECT r.*, l.title as hotel_title, l.slug as hotel_slug, l.user_id as owner_id, l.area as hotel_area
              FROM hotel_rooms r
              JOIN listings l ON l.id = r.listing_id
              WHERE r.id = ?",
             [$id]
         );
+        if ($row !== null) {
+            $row['photos'] = self::getPhotos($row);
+        }
+        return $row;
+    }
+
+    public static function getLowestRoomPrice(int $listingId): ?float
+    {
+        $row = Database::first(
+            "SELECT MIN(price_per_night) AS min_p FROM hotel_rooms WHERE listing_id = ? AND status = 'available' AND price_per_night > 0",
+            [$listingId]
+        );
+        if ($row && $row['min_p'] !== null && (float) $row['min_p'] > 0) {
+            return (float) $row['min_p'];
+        }
+
+        $fallback = Database::first(
+            "SELECT MIN(price_per_night) AS min_p FROM hotel_rooms WHERE listing_id = ? AND price_per_night > 0",
+            [$listingId]
+        );
+        if ($fallback && $fallback['min_p'] !== null && (float) $fallback['min_p'] > 0) {
+            return (float) $fallback['min_p'];
+        }
+
+        return null;
+    }
+
+    public static function syncHotelStartingPrice(int $listingId): ?float
+    {
+        $lowest = self::getLowestRoomPrice($listingId);
+        Database::run(
+            "UPDATE listings SET price = ?, price_unit = 'per night' WHERE id = ?",
+            [$lowest ?? 0.0, $listingId]
+        );
+        return $lowest;
     }
 
     public static function create(array $data): int
     {
-        return Database::insert(
+        $photos = [];
+        if (isset($data['photos']) && is_array($data['photos'])) {
+            $photos = $data['photos'];
+        } elseif (isset($data['images'])) {
+            if (is_array($data['images'])) {
+                $photos = $data['images'];
+            } else {
+                $decoded = json_decode((string) $data['images'], true);
+                $photos = is_array($decoded) ? $decoded : [(string) $data['images']];
+            }
+        } elseif (!empty($data['image'])) {
+            $photos = [(string) $data['image']];
+        }
+
+        $cleanPhotos = [];
+        foreach ($photos as $p) {
+            $p = trim((string) $p);
+            if ($p !== '' && !in_array($p, $cleanPhotos, true)) {
+                $cleanPhotos[] = $p;
+            }
+        }
+        $cleanPhotos = array_values(array_slice($cleanPhotos, 0, 3));
+        $primary = $cleanPhotos[0] ?? (trim((string) ($data['image'] ?? '')) ?: null);
+        $imagesJson = $cleanPhotos !== [] ? json_encode($cleanPhotos) : ($primary !== null ? json_encode([$primary]) : null);
+
+        $id = Database::insert(
             "INSERT INTO hotel_rooms 
-                (listing_id, name, description, room_size, bed_type, max_guests, price_per_night, deposit_percentage, total_units, available_units, status, amenities, image)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (listing_id, name, description, room_size, bed_type, max_guests, price_per_night, deposit_percentage, total_units, available_units, status, amenities, image, images)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (int) $data['listing_id'],
                 trim((string) $data['name']),
                 $data['description'] ?? null,
-                $data['room_size'] ?? '32 m²',
+                $data['room_size'] ?? null,
                 $data['bed_type'] ?? '1 King Bed',
                 max(1, (int) ($data['max_guests'] ?? 2)),
                 max(0.0, (float) ($data['price_per_night'] ?? 0)),
@@ -70,32 +183,80 @@ final class HotelRoom
                 max(0, (int) ($data['available_units'] ?? 1)),
                 $data['status'] ?? self::STATUS_AVAILABLE,
                 $data['amenities'] ?? null,
-                $data['image'] ?? null,
+                $primary,
+                $imagesJson,
             ]
         );
+
+        self::syncHotelStartingPrice((int) $data['listing_id']);
+
+        return $id;
     }
 
     public static function update(int $id, array $data): bool
     {
+        $room = self::find($id);
+
+        $cleanPhotos = null;
+        if (isset($data['photos']) && is_array($data['photos'])) {
+            $cleanPhotos = [];
+            foreach ($data['photos'] as $p) {
+                $p = trim((string) $p);
+                if ($p !== '' && !in_array($p, $cleanPhotos, true)) {
+                    $cleanPhotos[] = $p;
+                }
+            }
+            $cleanPhotos = array_values(array_slice($cleanPhotos, 0, 3));
+        } elseif (isset($data['images'])) {
+            if (is_array($data['images'])) {
+                $cleanPhotos = array_values(array_slice(array_filter(array_map('trim', $data['images'])), 0, 3));
+            } else {
+                $decoded = json_decode((string) $data['images'], true);
+                if (is_array($decoded)) {
+                    $cleanPhotos = array_values(array_slice(array_filter(array_map('trim', $decoded)), 0, 3));
+                }
+            }
+        }
+
+        $primary = null;
+        $imagesJson = null;
+        if ($cleanPhotos !== null) {
+            $primary = $cleanPhotos[0] ?? null;
+            $imagesJson = $cleanPhotos !== [] ? json_encode($cleanPhotos) : null;
+        } elseif (isset($data['image'])) {
+            $primary = trim((string) $data['image']) ?: null;
+            if ($primary !== null) {
+                $imagesJson = json_encode([$primary]);
+            }
+        }
+
         Database::run(
             "UPDATE hotel_rooms 
              SET name = ?, description = ?, room_size = ?, bed_type = ?, max_guests = ?,
-                 price_per_night = ?, deposit_percentage = ?, status = ?, amenities = ?, image = COALESCE(?, image)
+                 price_per_night = ?, deposit_percentage = ?, status = ?, amenities = ?,
+                 image = COALESCE(?, image),
+                 images = COALESCE(?, images)
              WHERE id = ?",
             [
                 trim((string) $data['name']),
                 $data['description'] ?? null,
-                $data['room_size'] ?? '32 m²',
+                $data['room_size'] ?? ($room['room_size'] ?? null),
                 $data['bed_type'] ?? '1 King Bed',
                 max(1, (int) ($data['max_guests'] ?? 2)),
                 max(0.0, (float) ($data['price_per_night'] ?? 0)),
                 max(5, min(100, (int) ($data['deposit_percentage'] ?? 20))),
                 $data['status'] ?? self::STATUS_AVAILABLE,
                 $data['amenities'] ?? null,
-                $data['image'] ?? null,
+                $primary,
+                $imagesJson,
                 $id,
             ]
         );
+
+        if ($room) {
+            self::syncHotelStartingPrice((int) $room['listing_id']);
+        }
+
         return true;
     }
 
@@ -106,22 +267,36 @@ final class HotelRoom
             return false;
         }
 
+        $room = self::find($id);
+
         Database::run(
             "UPDATE hotel_rooms SET status = ? WHERE id = ?",
             [$status, $id]
         );
+
+        if ($room) {
+            self::syncHotelStartingPrice((int) $room['listing_id']);
+        }
+
         return true;
     }
 
     public static function delete(int $id): bool
     {
+        $room = self::find($id);
         Database::run("DELETE FROM hotel_rooms WHERE id = ?", [$id]);
+
+        if ($room) {
+            self::syncHotelStartingPrice((int) $room['listing_id']);
+        }
+
         return true;
     }
 
     public static function deleteForListing(int $listingId): bool
     {
         Database::run("DELETE FROM hotel_rooms WHERE listing_id = ?", [$listingId]);
+        self::syncHotelStartingPrice($listingId);
         return true;
     }
 

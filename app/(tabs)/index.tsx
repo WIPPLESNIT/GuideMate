@@ -198,7 +198,25 @@ export default function HomeScreen() {
           </View>
         ) : null}
         <Text style={styles.heroTitle} numberOfLines={2}>{item.title}</Text>
-        <Text style={styles.heroPrice}>{item.price > 0 ? formatPrice(item.price) : t('free')}</Text>
+        {item.category_slug === 'hotels' ? (
+          item.price > 0 ? (
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#E2E8F0', marginBottom: 2 }}>
+                Lowest price room
+              </Text>
+              <Text style={styles.heroPrice}>
+                {formatPrice(item.price)}
+                <Text style={{ fontSize: 12, fontWeight: '400', color: '#CBD5E1' }}> / per night</Text>
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#CBD5E1', fontStyle: 'italic' }}>
+              Price unavailable
+            </Text>
+          )
+        ) : (
+          <Text style={styles.heroPrice}>{item.price > 0 ? formatPrice(item.price) : t('free')}</Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -245,12 +263,30 @@ export default function HomeScreen() {
           </View>
         ) : null}
         <Text style={[styles.placeName, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
-        <Text style={[styles.placePrice, { color: colors.accent }]}>
-          {item.price > 0 ? formatPrice(item.price) : t('free')}
-          {item.price > 0 && item.price_unit ? (
-            <Text style={[styles.placeUnit, { color: colors.textMute }]}> / {item.price_unit}</Text>
-          ) : null}
-        </Text>
+        {item.category_slug === 'hotels' ? (
+          item.price > 0 ? (
+            <View>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textMute, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>
+                Lowest price room
+              </Text>
+              <Text style={[styles.placePrice, { color: colors.accent }]}>
+                {formatPrice(item.price)}
+                <Text style={[styles.placeUnit, { color: colors.textMute }]}> / per night</Text>
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textMute, fontStyle: 'italic', marginTop: 4 }}>
+              Price unavailable
+            </Text>
+          )
+        ) : (
+          <Text style={[styles.placePrice, { color: colors.accent }]}>
+            {item.price > 0 ? formatPrice(item.price) : t('free')}
+            {item.price > 0 && item.price_unit ? (
+              <Text style={[styles.placeUnit, { color: colors.textMute }]}> / {item.price_unit}</Text>
+            ) : null}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );

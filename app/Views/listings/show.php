@@ -20,6 +20,7 @@ $host = host_labels($listing['owner_role'] ?? null);
 
 $isHotel = ($listing['category_slug'] ?? '') === 'hotels';
 $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int) $listing['id']) : []);
+$lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $listing['id']) : null;
 ?>
 <div class="container">
     <div class="breadcrumb">
@@ -34,14 +35,19 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
         </div>
     <?php endif; ?>
 
+    <?php
+    $listingPhotos = \App\Models\Listing::getPhotos($listing);
+    $mainPhoto = $listingPhotos[0] ?? $listing['cover_image'] ?? null;
+    $sidePhoto1 = $listingPhotos[1] ?? $listingPhotos[0] ?? $mainPhoto;
+    $sidePhoto2 = $listingPhotos[2] ?? $listingPhotos[1] ?? $listingPhotos[0] ?? $mainPhoto;
+    ?>
     <div class="detail-hero">
         <div class="main-img">
-            <img src="<?= e(img_src($listing['cover_image'] ?? null, 'listing' . $listing['id'])) ?>" alt="<?= e($listing['title']) ?>" onerror="this.onerror=null;this.src='https://picsum.photos/seed/listing<?= (int) $listing['id'] ?>/1200/800';">
+            <img src="<?= e(img_src($mainPhoto, 'listing' . $listing['id'])) ?>" alt="<?= e($listing['title']) ?>" onerror="this.onerror=null;this.src='https://picsum.photos/seed/listing<?= (int) $listing['id'] ?>/1200/800';">
         </div>
         <div class="side">
-            <?php for ($i = 0; $i < 2; $i++): ?>
-                <img src="<?= e(img_src($gallery[$i]['image_path'] ?? null, 'gallery' . $listing['id'] . $i)) ?>" alt="">
-            <?php endfor; ?>
+            <img src="<?= e(img_src($sidePhoto1, 'gallery' . $listing['id'] . '0')) ?>" alt="<?= e($listing['title']) ?> photo 2" onerror="this.onerror=null;this.src='https://picsum.photos/seed/gallery<?= (int) $listing['id'] ?>1/800/600';">
+            <img src="<?= e(img_src($sidePhoto2, 'gallery' . $listing['id'] . '1')) ?>" alt="<?= e($listing['title']) ?> photo 3" onerror="this.onerror=null;this.src='https://picsum.photos/seed/gallery<?= (int) $listing['id'] ?>2/800/600';">
         </div>
     </div>
 
@@ -53,7 +59,12 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
                 <span class="rating"><?= e(stars($summary['avg'])) ?> <strong><?= number_format($summary['avg'], 1) ?></strong>
                     <span class="count">(<?= $summary['count'] ?> reviews)</span></span>
                 <span>📍 <?= e($listing['area']) ?></span>
-                <?php if (!empty($listing['duration'])): ?><span>⏱️ <?= e($listing['duration']) ?></span><?php endif; ?>
+                <?php if ($isHotel): ?>
+                    <?php $parsedTimes = \App\Models\Listing::parseCheckInOutTimes($listing['duration'] ?? null); ?>
+                    <span>🕒 <?= e($parsedTimes['summary_label']) /* Default: Check-in 2:00 PM · Check-out 12:00 PM */ ?></span>
+                <?php elseif (!empty($listing['duration'])): ?>
+                    <span>⏱️ <?= e($listing['duration']) ?></span>
+                <?php endif; ?>
                 <?php if ($isHotel): ?>
                     <span class="chip" style="background:#E0F2FE;color:#0369A1;font-weight:600;font-size:0.85rem;">🏨 <?= e($host['badge'] ?? 'Hotel Partner') ?></span>
                 <?php elseif (!empty($guideBadge)): ?>
@@ -111,9 +122,32 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
                             };
                             ?>
                             <div class="card-soft room-card" style="padding:0;overflow:hidden;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);<?= !$isAvail ? 'opacity:0.75;background:#F8FAFC;' : 'background:#FFF;' ?>">
+                                <?php
+                                $roomPhotos = \App\Models\HotelRoom::getPhotos($room);
+                                $rPhoto1 = $roomPhotos[0] ?? $room['image'] ?? null;
+                                $rPhoto2 = $roomPhotos[1] ?? null;
+                                $rPhoto3 = $roomPhotos[2] ?? null;
+                                ?>
                                 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));">
-                                    <div style="position:relative;min-height:220px;background:#E2E8F0;">
-                                        <img src="<?= e(img_src($room['image'] ?? null, 'room' . $room['id'])) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>/800/600';">
+                                    <div style="position:relative;min-height:220px;background:#E2E8F0;overflow:hidden;">
+                                        <?php if (count($roomPhotos) >= 3): ?>
+                                            <div style="display:grid;grid-template-columns:2fr 1fr;gap:4px;height:100%;min-height:220px;">
+                                                <div style="height:100%;">
+                                                    <img src="<?= e(img_src($rPhoto1, 'room' . $room['id'] . '0')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>/800/600';">
+                                                </div>
+                                                <div style="display:grid;grid-template-rows:1fr 1fr;gap:4px;height:100%;">
+                                                    <img src="<?= e(img_src($rPhoto2, 'room' . $room['id'] . '1')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>1/800/600';">
+                                                    <img src="<?= e(img_src($rPhoto3, 'room' . $room['id'] . '2')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>2/800/600';">
+                                                </div>
+                                            </div>
+                                        <?php elseif (count($roomPhotos) === 2): ?>
+                                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;height:100%;min-height:220px;">
+                                                <img src="<?= e(img_src($rPhoto1, 'room' . $room['id'] . '0')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>/800/600';">
+                                                <img src="<?= e(img_src($rPhoto2, 'room' . $room['id'] . '1')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>1/800/600';">
+                                            </div>
+                                        <?php else: ?>
+                                            <img src="<?= e(img_src($rPhoto1, 'room' . $room['id'])) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>/800/600';">
+                                        <?php endif; ?>
                                     </div>
                                     <div style="padding:1.25rem;display:flex;flex-direction:column;justify-content:space-between;">
                                         <div>
@@ -121,7 +155,6 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
                                                 <div>
                                                     <h3 style="margin:0 0 4px;font-size:1.25rem;font-weight:700;color:var(--ink-900);"><?= e($room['name']) ?></h3>
                                                     <div style="display:flex;gap:0.75rem;flex-wrap:wrap;font-size:0.85rem;color:var(--ink-500);margin-bottom:8px;">
-                                                        <span>📐 <?= e($room['room_size'] ?? '32 m²') ?></span>
                                                         <span>🛏️ <?= e($room['bed_type'] ?? '1 King Bed') ?></span>
                                                         <span>👥 Up to <?= (int) ($room['max_guests'] ?? 2) ?> guests</span>
                                                     </div>
@@ -308,11 +341,21 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
         <aside>
             <div class="booking-box" id="bookingBox">
                 <div class="price">
-                    <span><?= money($displayPrice ?? $listing['price']) ?></span>
-                    <?php if (isset($displayPrice) && (float) $displayPrice < (float) $listing['price']): ?>
-                        <s style="font-size:.85rem;color:var(--ink-300);"><?= money($listing['price']) ?></s>
+                    <?php if ($isHotel): ?>
+                        <?php if ($lowestRoomPrice !== null && $lowestRoomPrice > 0): ?>
+                            <span class="price-prefix" style="display:block;font-size:0.85rem;font-weight:600;color:var(--text-muted,#64748B);margin-bottom:0.15rem;">Starting from</span>
+                            <span><?= money($lowestRoomPrice) ?></span>
+                            <span class="price-unit">/ per night</span>
+                        <?php else: ?>
+                            <span style="font-size:1.15rem;font-weight:700;color:var(--text-muted,#64748B);">Price unavailable</span>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <span><?= money($displayPrice ?? $listing['price']) ?></span>
+                        <?php if (isset($displayPrice) && (float) $displayPrice < (float) $listing['price']): ?>
+                            <s style="font-size:.85rem;color:var(--ink-300);"><?= money($listing['price']) ?></s>
+                        <?php endif; ?>
+                        <span class="price-unit">/ <?= e($listing['price_unit']) ?></span>
                     <?php endif; ?>
-                    <span class="price-unit">/ <?= e($listing['price_unit']) ?></span>
                 </div>
 
                 <div class="guide-mini">
@@ -355,12 +398,14 @@ $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int)
                         <div class="form-grid-2">
                             <div class="field-row">
                                 <label for="check_in_date">Check-in</label>
-                                <input class="input" type="date" id="check_in_date" name="check_in_date" min="<?= date('Y-m-d') ?>" value="<?= e(old('check_in_date', date('Y-m-d', strtotime('+1 day')))) ?>" required onchange="recalculateHotelTotal()">
+                                <input class="input" type="date" id="check_in_date" name="check_in_date" min="<?= date('Y-m-d') ?>" value="<?= e(old('check_in_date', date('Y-m-d', strtotime('+1 day')))) ?>" required onchange="onHotelCheckInChange()">
+                                <small class="hint" style="display:block;margin-top:4px;color:var(--text-muted,#64748B);">From 2:00 PM</small>
                                 <?php if (isset($errors['check_in_date'])): ?><div class="field-error"><?= e($errors['check_in_date']) ?></div><?php endif; ?>
                             </div>
                             <div class="field-row">
                                 <label for="check_out_date">Check-out</label>
-                                <input class="input" type="date" id="check_out_date" name="check_out_date" min="<?= date('Y-m-d', strtotime('+2 days')) ?>" value="<?= e(old('check_out_date', date('Y-m-d', strtotime('+3 days')))) ?>" required onchange="recalculateHotelTotal()">
+                                <input class="input" type="date" id="check_out_date" name="check_out_date" min="<?= date('Y-m-d', strtotime('+2 days')) ?>" value="<?= e(old('check_out_date', date('Y-m-d', strtotime('+2 days')))) ?>" required onchange="recalculateHotelTotal()">
+                                <small class="hint" style="display:block;margin-top:4px;color:var(--text-muted,#64748B);">Until 12:00 PM</small>
                                 <?php if (isset($errors['check_out_date'])): ?><div class="field-error"><?= e($errors['check_out_date']) ?></div><?php endif; ?>
                             </div>
                         </div>
@@ -471,6 +516,27 @@ function onHotelRoomChange() {
     recalculateHotelTotal();
 }
 
+function onHotelCheckInChange() {
+    var inDate = document.getElementById('check_in_date');
+    var outDate = document.getElementById('check_out_date');
+    if (inDate && inDate.value && outDate) {
+        var dInParts = inDate.value.split('-');
+        if (dInParts.length === 3) {
+            var y = parseInt(dInParts[0], 10);
+            var m = parseInt(dInParts[1], 10) - 1;
+            var d = parseInt(dInParts[2], 10);
+            var nextD = new Date(Date.UTC(y, m, d + 1));
+            var yyyy = nextD.getUTCFullYear();
+            var mm = String(nextD.getUTCMonth() + 1).padStart(2, '0');
+            var dd = String(nextD.getUTCDate()).padStart(2, '0');
+            var defaultOut = yyyy + '-' + mm + '-' + dd;
+            outDate.min = defaultOut;
+            outDate.value = defaultOut;
+        }
+    }
+    recalculateHotelTotal();
+}
+
 function recalculateHotelTotal() {
     var roomSelect = document.getElementById('hotel_room_id');
     var inDate = document.getElementById('check_in_date');
@@ -480,10 +546,13 @@ function recalculateHotelTotal() {
     if (inDate.value) {
         var dInParts = inDate.value.split('-');
         if (dInParts.length === 3) {
-            var nextD = new Date(parseInt(dInParts[0], 10), parseInt(dInParts[1], 10) - 1, parseInt(dInParts[2], 10) + 1);
-            var yyyy = nextD.getFullYear();
-            var mm = String(nextD.getMonth() + 1).padStart(2, '0');
-            var dd = String(nextD.getDate()).padStart(2, '0');
+            var y = parseInt(dInParts[0], 10);
+            var m = parseInt(dInParts[1], 10) - 1;
+            var d = parseInt(dInParts[2], 10);
+            var nextD = new Date(Date.UTC(y, m, d + 1));
+            var yyyy = nextD.getUTCFullYear();
+            var mm = String(nextD.getUTCMonth() + 1).padStart(2, '0');
+            var dd = String(nextD.getUTCDate()).padStart(2, '0');
             var minOut = yyyy + '-' + mm + '-' + dd;
             outDate.min = minOut;
             if (!outDate.value || outDate.value <= inDate.value) {

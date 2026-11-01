@@ -297,8 +297,14 @@ final class GuideController extends Controller
         $this->verifyCsrf();
         Auth::refreshUser();
         if (User::isGuideWarned((int) Auth::id())) {
-            flash('error', 'Your account has an active administrator warning. Booking actions (including cancel and refund) are restricted until an admin clears it.');
+            $msg = 'Your account has an active administrator warning. Booking actions (Confirm, Complete, and Cancel) are restricted until an administrator clears this warning.';
+            if ($this->isJson() || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
+                $this->json(['error' => $msg, 'restricted' => true], 403);
+                return;
+            }
+            flash('error', $msg);
             redirect('/dashboard/bookings');
+            return;
         }
         $booking = Booking::find((int) $id);
         if ($booking === null || (int) $booking['guide_id'] !== (int) Auth::id()) {
@@ -360,7 +366,14 @@ final class GuideController extends Controller
     public function showVerifyBooking(): void
     {
         $this->rejectHotelPaidTools();
-        $this->view('guide/verify', ['title' => 'Verify booking', 'errors' => errors()]);
+        Auth::refreshUser();
+        $user = Auth::user();
+        $this->view('guide/verify', [
+            'title' => 'Verify booking',
+            'errors' => errors(),
+            'isWarned' => User::isGuideWarned((int) Auth::id()),
+            'warningNote' => (string) ($user['guide_warning_note'] ?? ''),
+        ]);
     }
 
     /**
@@ -388,6 +401,17 @@ final class GuideController extends Controller
     {
         $this->rejectHotelPaidTools();
         $this->verifyCsrf();
+        Auth::refreshUser();
+        if (User::isGuideWarned((int) Auth::id())) {
+            $msg = 'Your account has an active administrator warning. Verification and booking actions are restricted until an administrator clears this warning.';
+            if ($this->isJson() || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
+                $this->json(['error' => $msg, 'restricted' => true], 403);
+                return;
+            }
+            flash('error', $msg);
+            redirect('/dashboard/bookings');
+            return;
+        }
         $token = trim((string) $this->input('verify_token', ''));
         if ($token === '') {
             flash_keep_old(['verify_token' => 'Enter or scan a booking code.'], [], '/dashboard/bookings/verify');

@@ -183,7 +183,7 @@ export default function VehicleDetailsScreen() {
   };
 
   const submitRental = async () => {
-    if (!vehicle) return;
+    if (!vehicle || submitting) return;
     if (!pickupDate) {
       Alert.alert('Pickup date required', 'Please select a date for your pickup.');
       return;

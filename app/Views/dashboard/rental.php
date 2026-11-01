@@ -9,6 +9,8 @@
 $status = (string) ($user['guide_status'] ?? 'none');
 $isVerified = $status === 'approved';
 $guideStats = $guideStats ?? [];
+$isWarned = $isWarned ?? \App\Models\User::isGuideWarned((int) ($user['id'] ?? 0));
+$warningNote = $warningNote ?? (string) ($user['guide_warning_note'] ?? '');
 ?>
 <div class="container">
     <div class="dash-layout">
@@ -29,7 +31,19 @@ $guideStats = $guideStats ?? [];
                 </div>
             </div>
 
-            <?php if (!$isVerified): ?>
+            <?php if ($isWarned): ?>
+                <div class="status-banner banner-red" style="margin-bottom:1.2rem;">
+                    <span class="status-icon">⚠️</span>
+                    <div>
+                        <strong>Administrator warning — booking actions restricted</strong>
+                        <p class="mb-0">
+                            <?= $warningNote !== '' ? e($warningNote) . ' — ' : '' ?>
+                            Rental request actions (Confirm, Complete, Cancel, and Refund) are restricted until an administrator clears this warning.
+                            <a href="<?= e(url('/messages')) ?>">View administrator message →</a>
+                        </p>
+                    </div>
+                </div>
+            <?php elseif (!$isVerified): ?>
                 <div class="status-banner <?= $status === 'rejected' ? 'banner-red' : 'banner-amber' ?>" style="margin-bottom:1.2rem;">
                     <span class="status-icon"><?= $status === 'rejected' ? admin_icon('disputes', 22) : admin_icon('clock', 22) ?></span>
                     <div>

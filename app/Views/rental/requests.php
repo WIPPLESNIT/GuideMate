@@ -1,5 +1,7 @@
 <?php
-/** @var array<int,array<string,mixed>> $requests */
+/** @var array<int,array<string,mixed>> $requests @var bool $isWarned @var string $warningNote */
+$isWarned = $isWarned ?? \App\Models\User::isGuideWarned((int) (auth_user()['id'] ?? 0));
+$warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? '');
 ?>
 <div class="container">
     <div class="dash-layout">
@@ -11,6 +13,20 @@
                     <p class="hint mb-0">Paid reservations stay awaiting confirmation until you confirm or decline them.</p>
                 </div>
             </div>
+
+            <?php if ($isWarned): ?>
+                <div class="status-banner banner-red" style="margin-bottom:1.2rem;">
+                    <span class="status-icon">⚠️</span>
+                    <div>
+                        <strong>Administrator warning — booking actions restricted</strong>
+                        <p class="mb-0">
+                            <?= $warningNote !== '' ? e($warningNote) . ' — ' : '' ?>
+                            Your rental actions (Confirm, Complete, Cancel, and Refund) are restricted until an administrator clears this warning.
+                            <a href="<?= e(url('/messages')) ?>">View administrator message →</a>
+                        </p>
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <?php if ($requests === []): ?>
                 <div class="panel">
@@ -134,7 +150,63 @@
                                                      role="menu"
                                                      aria-labelledby="rentalReqBtn_<?= (int) $r['id'] ?>">
                                                     
-                                                    <?php if ($reportStatus === 'open'):
+                                                    <?php if ($isWarned): ?>
+                                                        <div class="res-action-restricted-notice" title="Action unavailable: Active administrator warning on your account.">
+                                                            <span class="res-action-restricted-badge"><?= admin_icon('alert-triangle', 13) ?> Actions Restricted</span>
+                                                            <span>navailable due to an active administrator warning.</span>
+                                                        </div>
+                                                        <?php if ($reportStatus === 'open'):
+                                                            $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
+                                                            $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
+                                                        ?>
+                                                            <button type="button"
+                                                                    class="res-action-item action-problem"
+                                                                    role="menuitem"
+                                                                    data-open-problem-modal
+                                                                    data-req-id="<?= (int) $r['id'] ?>"
+                                                                    data-customer="<?= e($r['customer_name']) ?>"
+                                                                    data-phone="<?= e((string)($r['customer_phone'] ?? '')) ?>"
+                                                                    data-vehicle="<?= e($r['vehicle_name']) ?>"
+                                                                    data-pickup="<?= e(date('M j, Y', strtotime((string)$r['pickup_date']))) ?>"
+                                                                    data-amount="<?= money((float) $r['total_amount']) ?>"
+                                                                    data-message="<?= e((string)($r['report_message'] ?? '')) ?>"
+                                                                    data-photos="<?= e(json_encode($rPhotos)) ?>"
+                                                                    data-refund-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>"
+                                                                    data-reject-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>">
+                                                                <?= admin_icon('disputes', 14) ?> View Reported Problem
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('revenue', 14) ?> Refund Customer
+                                                            </button>
+                                                            <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                        <?php endif; ?>
+
+                                                        <?php if ($isPending): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('check-circle', 14) ?> Confirm Booking
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> Decline Booking
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <?php if ($reqStatus !== 'completed' && $reqStatus !== 'cancelled'): ?>
+                                                                <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                    <?= admin_icon('check-circle', 14) ?> Complete Rental
+                                                                </button>
+                                                                <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                    <?= admin_icon('x-circle', 14) ?> Cancel Rental
+                                                                </button>
+                                                            <?php endif; ?>
+                                                        <?php endif; ?>
+
+                                                        <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
+                                                            <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('revenue', 14) ?> Refund Payment
+                                                            </button>
+                                                        <?php endif; ?>
+
+                                                    <?php elseif ($reportStatus === 'open'):
                                                         $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
                                                         $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
                                                     ?>
@@ -339,20 +411,32 @@
             </div>
         </div>
         <div class="gm-modal-foot" style="padding:0.85rem 1.25rem;border-top:1px solid var(--line);background:#f8fafc;margin:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.6rem;">
-            <form method="post" id="problemDismissForm" action="" class="res-action-form" onsubmit="return confirm('Dismiss this problem report? The reservation will remain in its current status.');">
-                <?= csrf_field() ?>
-                <button type="submit" class="btn btn-ghost btn-sm" style="color:#64748b;border:1px solid #cbd5e1;background:#fff;padding:0.4rem 0.9rem;border-radius:6px;font-weight:600;">
-                    Dismiss Report
+            <?php if ($isWarned): ?>
+                <button type="button" class="btn btn-ghost btn-sm" disabled title="Unavailable: Active administrator warning on your account." style="opacity:0.6;cursor:not-allowed;">
+                    Dismiss Report (Restricted)
                 </button>
-            </form>
-            <div style="display:flex;gap:0.5rem;align-items:center;">
-                <button type="button" class="btn btn-ghost btn-sm" data-close-problem-modal style="padding:0.4rem 0.9rem;border-radius:6px;">Close</button>
-                <form method="post" id="problemRefundForm" action="" class="res-action-form" onsubmit="return confirm('Issue a full refund to the customer for this rental booking?');">
+            <?php else: ?>
+                <form method="post" id="problemDismissForm" action="" class="res-action-form" onsubmit="return confirm('Dismiss this problem report? The reservation will remain in its current status.');">
                     <?= csrf_field() ?>
-                    <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#ffffff;font-weight:700;border:none;padding:0.4rem 1rem;border-radius:6px;cursor:pointer;">
-                        Refund Customer
+                    <button type="submit" class="btn btn-ghost btn-sm" style="color:#64748b;border:1px solid #cbd5e1;background:#fff;padding:0.4rem 0.9rem;border-radius:6px;font-weight:600;">
+                        Dismiss Report
                     </button>
                 </form>
+            <?php endif; ?>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+                <button type="button" class="btn btn-ghost btn-sm" data-close-problem-modal style="padding:0.4rem 0.9rem;border-radius:6px;">Close</button>
+                <?php if ($isWarned): ?>
+                    <button type="button" class="btn btn-sm" disabled title="Unavailable: Active administrator warning on your account." style="background:#cbd5e1;color:#64748b;font-weight:700;border:none;padding:0.4rem 1rem;border-radius:6px;cursor:not-allowed;">
+                        Refund Restricted
+                    </button>
+                <?php else: ?>
+                    <form method="post" id="problemRefundForm" action="" class="res-action-form" onsubmit="return confirm('Issue a full refund to the customer for this rental booking?');">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#ffffff;font-weight:700;border:none;padding:0.4rem 1rem;border-radius:6px;cursor:pointer;">
+                            Refund Customer
+                        </button>
+                    </form>
+                <?php endif; ?>
             </div>
         </div>
     </div>

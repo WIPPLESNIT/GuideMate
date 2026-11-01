@@ -168,6 +168,14 @@ final class Listing
         $data['latitude'] = $coords['latitude'] ?? null;
         $data['longitude'] = $coords['longitude'] ?? null;
         $data['submitted_at'] = $data['submitted_at'] ?? date('Y-m-d H:i:s');
+        $data['address'] = $data['address'] ?? null;
+        $data['summary'] = $data['summary'] ?? null;
+        $data['duration'] = $data['duration'] ?? null;
+        $data['included'] = $data['included'] ?? null;
+        $data['not_included'] = $data['not_included'] ?? null;
+        $data['price_unit'] = $data['price_unit'] ?? 'per night';
+        $data['cover_image'] = $data['cover_image'] ?? null;
+        $data['status'] = $data['status'] ?? 'pending';
 
         return Database::insert(
             'INSERT INTO listings
@@ -342,6 +350,65 @@ final class Listing
         Database::run('DELETE FROM listings WHERE id = ?', [$id]);
     }
 
+    /**
+     * Return up to 3 distinct photos for a listing.
+     *
+     * @param int|array<string, mixed> $listing
+     * @return array<int, string>
+     */
+    public static function getPhotos(int|array $listing): array
+    {
+        if (is_int($listing)) {
+            $found = self::find($listing);
+            if ($found === null) {
+                return [];
+            }
+            $listing = $found;
+        }
+
+        $photos = [];
+        $cover = trim((string) ($listing['cover_image'] ?? ''));
+        if ($cover !== '') {
+            $photos[] = $cover;
+        }
+
+        $gallery = self::gallery((int) ($listing['id'] ?? 0));
+        foreach ($gallery as $item) {
+            $path = trim((string) ($item['image_path'] ?? ''));
+            if ($path !== '' && !in_array($path, $photos, true)) {
+                $photos[] = $path;
+            }
+        }
+
+        return array_values(array_slice($photos, 0, 3));
+    }
+
+    /**
+     * Sync up to 3 images for a listing in listing_images and listings.cover_image.
+     *
+     * @param int $listingId
+     * @param array<int, string> $photos
+     */
+    public static function syncImages(int $listingId, array $photos): void
+    {
+        $clean = [];
+        foreach ($photos as $p) {
+            $p = trim((string) $p);
+            if ($p !== '' && !in_array($p, $clean, true)) {
+                $clean[] = $p;
+            }
+        }
+        $clean = array_values(array_slice($clean, 0, 3));
+
+        if ($clean !== []) {
+            \App\Core\Database::run('UPDATE listings SET cover_image = ? WHERE id = ?', [$clean[0], $listingId]);
+            \App\Core\Database::run('DELETE FROM listing_images WHERE listing_id = ?', [$listingId]);
+            foreach ($clean as $idx => $p) {
+                self::addImage($listingId, $p, $idx + 1);
+            }
+        }
+    }
+
     public static function addImage(int $listingId, string $path, int $sort = 0): void
     {
         Database::run('INSERT INTO listing_images (listing_id, image_path, sort_order) VALUES (?, ?, ?)', [$listingId, $path, $sort]);
@@ -494,5 +561,68 @@ final class Listing
             'rejected' => 'Rejected',
             default => ucfirst($status),
         };
+    }
+
+    /**
+     * Parse hotel check-in and check-out times from a duration string or return defaults.
+     *
+     * @param string|null $duration e.g. "10:00PM - 12:00PM", "Check-in 2:00 PM / Check-out 12:00 PM"
+     * @return array{
+     *   valid: bool,
+     *   check_in_time: string,
+     *   check_out_time: string,
+     *   check_in_time_label: string,
+     *   check_out_time_label: string,
+     *   check_in_out_label: string,
+     *   summary_label: string
+     * }
+     */
+    public static function parseCheckInOutTimes(?string $duration): array
+    {
+        $defaultIn = '14:00:00';
+        $defaultOut = '12:00:00';
+        $defaultInLabel = '2:00 PM';
+        $defaultOutLabel = '12:00 PM';
+
+        $raw = trim((string) $duration);
+        if ($raw === '') {
+            return [
+                'valid' => true,
+                'check_in_time' => $defaultIn,
+                'check_out_time' => $defaultOut,
+                'check_in_time_label' => $defaultInLabel,
+                'check_out_time_label' => $defaultOutLabel,
+                'check_in_out_label' => "{$defaultInLabel} / {$defaultOutLabel}",
+                'summary_label' => "Check-in from {$defaultInLabel} · Check-out until {$defaultOutLabel}",
+            ];
+        }
+
+        preg_match_all('/(?:(\d{1,2}(?::\d{2})?\s*(?:am|pm))|(\d{1,2}:\d{2}))/i', $raw, $matches);
+        $found = $matches[0] ?? [];
+
+        $inTs = false;
+        $outTs = false;
+
+        if (count($found) >= 2) {
+            $inTs = strtotime($found[0]);
+            $outTs = strtotime($found[1]);
+        } elseif (count($found) === 1) {
+            $inTs = strtotime($found[0]);
+        }
+
+        $inTime = $inTs !== false ? date('H:i:s', $inTs) : $defaultIn;
+        $outTime = $outTs !== false ? date('H:i:s', $outTs) : $defaultOut;
+        $inLabel = $inTs !== false ? date('g:i A', $inTs) : $defaultInLabel;
+        $outLabel = $outTs !== false ? date('g:i A', $outTs) : $defaultOutLabel;
+
+        return [
+            'valid' => count($found) >= 1 && $inTs !== false,
+            'check_in_time' => $inTime,
+            'check_out_time' => $outTime,
+            'check_in_time_label' => $inLabel,
+            'check_out_time_label' => $outLabel,
+            'check_in_out_label' => "{$inLabel} / {$outLabel}",
+            'summary_label' => "Check-in from {$inLabel} · Check-out until {$outLabel}",
+        ];
     }
 }

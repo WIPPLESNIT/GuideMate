@@ -794,6 +794,25 @@ final class AdminController extends Controller
         redirect('/admin/disputes');
     }
 
+    public function warnProvider(string $id): void
+    {
+        $this->verifyCsrf();
+        $user = User::find((int) $id);
+        $fallback = '/admin/users';
+        if ($user === null || !User::isProviderRole((string) ($user['role'] ?? ''))) {
+            abort(404, 'Provider not found.');
+        }
+        $note = trim((string) $this->input('note', 'Administrator warning issued.'));
+        if ($note === '') {
+            $note = 'Administrator warning issued.';
+        }
+        User::warnGuide((int) $id, $note);
+        $this->notifyGuideWarning((int) $id, $note);
+        AuditLog::recordAction('guide.warning', 'user', (int) $id);
+        flash('success', "Warning issued to {$user['name']}. Booking actions (Confirm, Complete, Cancel) are restricted until you clear the warning.");
+        redirect($this->adminSafeReturn($fallback));
+    }
+
     public function clearGuideWarning(string $id): void
     {
         $this->verifyCsrf();

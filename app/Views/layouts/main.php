@@ -22,7 +22,7 @@ $publicBrowse = $current === '/'
 $isMessages = str_starts_with($current, '/messages');
 $isDashboard = str_starts_with($current, '/dashboard') || str_starts_with($current, '/profile');
 $hideFooter = $isMessages;
-$guideWarned = $user && ($user['role'] ?? null) === 'guide' && \App\Models\User::isGuideWarned((int) $user['id']);
+$guideWarned = $user && \App\Models\User::isProviderRole((string) ($user['role'] ?? '')) && \App\Models\User::isGuideWarned((int) $user['id']);
 
 // Guides have their own workspace; on the public tourist-facing browse pages
 // they appear as an anonymous visitor so their account never shows "connected"

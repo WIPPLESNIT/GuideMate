@@ -28,7 +28,13 @@ $payNowAmount = $isHotel && $depositAmount > 0 ? $depositAmount : (float) $booki
                             <?php endif; ?>
                             <small class="hint">
                                 <?php if ($isHotel && !empty($booking['check_in_date']) && !empty($booking['check_out_date'])): ?>
-                                    📅 <?= e(date('M j', strtotime($booking['check_in_date']))) ?> – <?= e(date('M j, Y', strtotime($booking['check_out_date']))) ?> (<?= (int) ($booking['nights'] ?? 1) ?> night<?= (int) ($booking['nights'] ?? 1) > 1 ? 's' : '' ?>) · <?= (int) $booking['guests'] ?> guest(s)
+                                    📅 <?= e(date('M j', strtotime($booking['check_in_date']))) ?> – <?= e(date('M j, Y', strtotime($booking['check_out_date']))) ?> (<?= (int) ($booking['nights'] ?? 1) ?> night<?= (int) ($booking['nights'] ?? 1) > 1 ? 's' : '' ?>) · <?= (int) $booking['guests'] ?> guest(s)<br>
+                                    <?php
+                                        $parsedTimes = \App\Models\Listing::parseCheckInOutTimes($listing['duration'] ?? null);
+                                        $checkInLabel = !empty($booking['booking_time']) ? date('g:i A', strtotime($booking['booking_time'])) : $parsedTimes['check_in_time_label'];
+                                        $checkOutLabel = !empty($booking['booking_end_time']) ? date('g:i A', strtotime($booking['booking_end_time'])) : $parsedTimes['check_out_time_label'];
+                                    ?>
+                                    <span style="display:inline-block;margin-top:3px;color:var(--text-muted,#64748B);">🕒 Check-in from <?= e($checkInLabel) ?> · Check-out until <?= e($checkOutLabel) ?><!-- Default: Check-in from 2:00 PM · Check-out until 12:00 PM --></span>
                                 <?php else: ?>
                                     <?= e(date('M j, Y', strtotime($booking['booking_date']))) ?> · <?= (int) $booking['guests'] ?> guest(s)
                                 <?php endif; ?>

@@ -92,12 +92,30 @@ export default function ListingsScreen() {
           <Text style={[styles.cardDesc, { color: colors.textSub }]} numberOfLines={2}>{item.summary}</Text>
         ) : null}
         <View style={styles.cardFooter}>
-          <Text style={[styles.cardPrice, { color: colors.accent }]}>
-            {item.price > 0 ? formatPrice(item.price) : t('free')}
-            <Text style={[styles.cardPriceUnit, { color: colors.textMute }]}>
-              {item.price > 0 ? ` / ${item.price_unit || 'person'}` : ''}
+          {item.category_slug === 'hotels' ? (
+            item.price > 0 ? (
+              <View>
+                <Text style={{ fontSize: 9, fontWeight: '600', color: colors.textMute, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Lowest price room
+                </Text>
+                <Text style={[styles.cardPrice, { color: colors.accent }]}>
+                  {formatPrice(item.price)}
+                  <Text style={[styles.cardPriceUnit, { color: colors.textMute }]}> / per night</Text>
+                </Text>
+              </View>
+            ) : (
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textMute, fontStyle: 'italic' }}>
+                Price unavailable
+              </Text>
+            )
+          ) : (
+            <Text style={[styles.cardPrice, { color: colors.accent }]}>
+              {item.price > 0 ? formatPrice(item.price) : t('free')}
+              <Text style={[styles.cardPriceUnit, { color: colors.textMute }]}>
+                {item.price > 0 ? ` / ${item.price_unit || 'person'}` : ''}
+              </Text>
             </Text>
-          </Text>
+          )}
           <View style={[styles.viewBtn, { backgroundColor: colors.primary }]}>
             <Text style={styles.viewBtnText}>View</Text>
             <Ionicons name="arrow-forward" size={13} color="#FFFFFF" />

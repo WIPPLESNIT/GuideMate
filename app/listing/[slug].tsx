@@ -15,6 +15,7 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    useWindowDimensions,
 } from 'react-native';
 import { ApiHotelRoom, ApiListing, createBooking, getListing, isUnauthorized, PaymentMethod, resolveImage, validateVoucher } from '../../services/api';
 import { clearSession, restoreSession } from '../../lib/authStore';
@@ -71,11 +72,48 @@ function hostMessageLabel(listing: Pick<ApiListing, 'owner_name' | 'owner_role'>
   return listing.owner_name ? `Message ${listing.owner_name}` : 'Message the guide';
 }
 
+function getNextCalendarDay(dateStr: string): string {
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const utcDate = new Date(Date.UTC(y, m, d + 1));
+    const yyyy = utcDate.getUTCFullYear();
+    const mm = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(utcDate.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return dateStr;
+}
+
+function calculateNights(inDate: string, outDate: string): number {
+  if (!inDate || !outDate) return 1;
+  const inParts = inDate.split('-');
+  const outParts = outDate.split('-');
+  if (inParts.length === 3 && outParts.length === 3) {
+    const inUtc = Date.UTC(parseInt(inParts[0], 10), parseInt(inParts[1], 10) - 1, parseInt(inParts[2], 10));
+    const outUtc = Date.UTC(parseInt(outParts[0], 10), parseInt(outParts[1], 10) - 1, parseInt(outParts[2], 10));
+    const diffDays = Math.round((outUtc - inUtc) / 86400000);
+    return Math.max(1, diffDays);
+  }
+  return 1;
+}
+
+function getTodayString(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function ListingDetailScreen() {
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { t, formatPrice } = usePreferences();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { colors, gradients } = useTheme();
 
   const [listing, setListing] = useState<ApiListing | null>(null);
@@ -94,6 +132,9 @@ export default function ListingDetailScreen() {
   const [modalOpen, setModalOpen] = useState(false);
   const [step, setStep] = useState<BookingStep>('details');
   const [bookingDates, setBookingDates] = useState<string[]>([]);
+  const [hotelCheckIn, setHotelCheckIn] = useState('');
+  const [hotelCheckOut, setHotelCheckOut] = useState('');
+  const [hotelPickerTarget, setHotelPickerTarget] = useState<'check_in' | 'check_out'>('check_in');
   const [bookingTime, setBookingTime] = useState('');
   const [bookingEndTime, setBookingEndTime] = useState('');
   const [guests, setGuests] = useState(1);
@@ -164,6 +205,12 @@ export default function ListingDetailScreen() {
       ]);
       return;
     }
+    const todayStr = getTodayString();
+    const tomorrowStr = getNextCalendarDay(todayStr);
+    const dayAfterTomorrowStr = getNextCalendarDay(tomorrowStr);
+    setHotelCheckIn(tomorrowStr);
+    setHotelCheckOut(dayAfterTomorrowStr);
+    setHotelPickerTarget('check_in');
     setBookingDates([]);
     setBookingTime('');
     setBookingEndTime('');
@@ -182,9 +229,10 @@ export default function ListingDetailScreen() {
   };
 
   const isHotel = listing?.category === 'Hotels' || (listing as any)?.category_slug === 'hotels';
-  const daysCount = Math.max(1, bookingDates.length);
+  const hotelNights = isHotel && hotelCheckIn && hotelCheckOut ? calculateNights(hotelCheckIn, hotelCheckOut) : 1;
+  const daysCount = isHotel ? hotelNights : Math.max(1, bookingDates.length);
   const roomPrice = isHotel && selectedRoom ? selectedRoom.price_per_night : (listing ? listing.price : 0);
-  const hotelTotal = roomPrice * daysCount;
+  const hotelTotal = roomPrice * hotelNights;
   const depositPct = isHotel && selectedRoom ? (selectedRoom.deposit_percentage ?? 20) : 100;
   const hotelDeposit = Math.round((hotelTotal * depositPct) / 100);
   const hotelBalance = Math.max(0, hotelTotal - hotelDeposit);
@@ -237,11 +285,28 @@ export default function ListingDetailScreen() {
   }, [bookingDates]);
 
   const goToPayment = () => {
-    if (bookingDates.length === 0) {
-      Alert.alert('Pick date(s)', isHotel ? 'Please select your check-in and check-out dates.' : 'Please choose one or more dates from the calendar.');
-      return;
-    }
-    if (!isHotel) {
+    if (isHotel) {
+      if (!hotelCheckIn) {
+        Alert.alert('Arrival date required', 'Please select your check-in date.');
+        return;
+      }
+      if (!hotelCheckOut) {
+        Alert.alert('Departure date required', 'Please select your check-out date.');
+        return;
+      }
+      if (hotelCheckOut < hotelCheckIn) {
+        Alert.alert('Invalid dates', 'Check-out date cannot be earlier than check-in date.');
+        return;
+      }
+      if (hotelCheckOut === hotelCheckIn) {
+        Alert.alert('Invalid stay', 'Check-out date must be at least one day after check-in date. A minimum stay is 1 night.');
+        return;
+      }
+    } else {
+      if (bookingDates.length === 0) {
+        Alert.alert('Pick date(s)', 'Please choose one or more dates from the calendar.');
+        return;
+      }
       if (!bookingTime) {
         Alert.alert('Pick a start time', 'Please choose a start time for your experience.');
         return;
@@ -398,7 +463,7 @@ export default function ListingDetailScreen() {
     reference?: string,
     cardLast4?: string
   ) => {
-    if (!listing) {
+    if (!listing || booking) {
       return;
     }
     setBooking(true);
@@ -406,12 +471,12 @@ export default function ListingDetailScreen() {
       await createBooking({
         listing_id: listing.id,
         room_id: isHotel ? selectedRoom?.id : undefined,
-        check_in_date: isHotel ? bookingDates[0] : undefined,
-        check_out_date: isHotel ? (bookingDates[bookingDates.length - 1] || bookingDates[0]) : undefined,
-        booking_date: bookingDates[0],
-        booking_dates: bookingDates,
-        booking_time: isHotel ? undefined : bookingTime,
-        booking_end_time: isHotel ? undefined : bookingEndTime,
+        check_in_date: isHotel ? hotelCheckIn : undefined,
+        check_out_date: isHotel ? hotelCheckOut : undefined,
+        booking_date: isHotel ? hotelCheckIn : bookingDates[0],
+        booking_dates: isHotel ? [hotelCheckIn, hotelCheckOut] : bookingDates,
+        booking_time: isHotel ? (listing.check_in_time ? listing.check_in_time.slice(0, 5) : '14:00') : bookingTime,
+        booking_end_time: isHotel ? (listing.check_out_time ? listing.check_out_time.slice(0, 5) : '12:00') : bookingEndTime,
         guests,
         payment_method: method,
         payment_reference: reference,
@@ -421,12 +486,16 @@ export default function ListingDetailScreen() {
       setVoucherCode('');
       setVoucherDraft('');
       setModalOpen(false);
-      const datesSummary = bookingDates.length === 1
-        ? bookingDates[0]
-        : `${bookingDates.length} days (${bookingDates.join(', ')})`;
-      const timeSummary = bookingTime
-        ? ` from ${formatTimeLabel(bookingTime)}${bookingEndTime ? ` to ${formatTimeLabel(bookingEndTime)}` : ''}`
-        : '';
+      const datesSummary = isHotel
+        ? `${hotelNights} night${hotelNights > 1 ? 's' : ''} (${hotelCheckIn} to ${hotelCheckOut})`
+        : (bookingDates.length === 1
+            ? bookingDates[0]
+            : `${bookingDates.length} days (${bookingDates.join(', ')})`);
+      const timeSummary = isHotel
+        ? ` · Check-in: ${listing.check_in_time_label || '2:00 PM'} · Check-out: ${listing.check_out_time_label || '12:00 PM'}`
+        : (bookingTime
+            ? ` from ${formatTimeLabel(bookingTime)}${bookingEndTime ? ` to ${formatTimeLabel(bookingEndTime)}` : ''}`
+            : '');
       Alert.alert(
         'Payment received',
         `Your payment for "${listing.title}" on ${datesSummary}${timeSummary} was received. The partner still needs to confirm this booking. Track it under Trips — it will show as Awaiting confirmation until they accept it.`,
@@ -452,6 +521,7 @@ export default function ListingDetailScreen() {
   };
 
   const confirmQrPaid = () => {
+    if (booking) return;
     if (paymentReference.trim().length < 4) {
       Alert.alert('Reference required', 'Enter the reference / confirmation number from your payment app so the admin can verify it.');
       return;
@@ -460,6 +530,7 @@ export default function ListingDetailScreen() {
   };
 
   const confirmCardPaid = () => {
+    if (booking) return;
     const digits = cardNumber.replace(/\D/g, '');
     if (cardName.trim().length < 2) {
       Alert.alert('Name required', 'Enter the cardholder name.');
@@ -507,7 +578,24 @@ export default function ListingDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}>
         <View>
-          <Image source={{ uri: resolveImage(listing.image) }} style={styles.hero} />
+          {listing.photos && listing.photos.length > 1 ? (
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              style={{ width: '100%', height: 320 }}
+            >
+              {listing.photos.map((p, idx) => (
+                <Image
+                  key={idx}
+                  source={{ uri: resolveImage(p) }}
+                  style={[styles.hero, { width: windowWidth }]}
+                />
+              ))}
+            </ScrollView>
+          ) : (
+            <Image source={{ uri: resolveImage(listing.image) }} style={styles.hero} />
+          )}
           <LinearGradient colors={gradients.hero} style={styles.heroOverlay} />
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.8}>
             <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
@@ -526,11 +614,19 @@ export default function ListingDetailScreen() {
 
         <View style={styles.body}>
           <View style={styles.factsRow}>
-            <View style={[styles.factCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Ionicons name="time-outline" size={18} color={theme.accent} />
-              <Text style={[styles.factLabel, { color: theme.textSub }]}>Duration</Text>
-              <Text style={[styles.factValue, { color: theme.textMain }]}>{listing.duration || 'N/A'}</Text>
-            </View>
+            {isHotel ? (
+              <View style={[styles.factCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Ionicons name="time-outline" size={18} color={theme.accent} />
+                <Text style={[styles.factLabel, { color: theme.textSub }]}>Check-In / Out</Text>
+                <Text style={[styles.factValue, { color: theme.textMain }]}>{listing.check_in_out_label || '2:00 PM / 12:00 PM'}</Text>
+              </View>
+            ) : (
+              <View style={[styles.factCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Ionicons name="time-outline" size={18} color={theme.accent} />
+                <Text style={[styles.factLabel, { color: theme.textSub }]}>Duration</Text>
+                <Text style={[styles.factValue, { color: theme.textMain }]}>{listing.duration || 'N/A'}</Text>
+              </View>
+            )}
             <TouchableOpacity
               style={[styles.factCard, { backgroundColor: theme.card, borderColor: theme.border }]}
               activeOpacity={0.7}
@@ -591,7 +687,21 @@ export default function ListingDetailScreen() {
                       !isAvail && { opacity: 0.65 },
                     ]}
                   >
-                    {room.image ? (
+                    {room.photos && room.photos.length > 1 ? (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={{ height: 160, backgroundColor: '#E2E8F0' }}
+                      >
+                        {room.photos.map((p, pIdx) => (
+                          <Image
+                            key={pIdx}
+                            source={{ uri: resolveImage(p) }}
+                            style={{ width: 240, height: 160, marginRight: 4 }}
+                          />
+                        ))}
+                      </ScrollView>
+                    ) : room.image ? (
                       <Image source={{ uri: resolveImage(room.image) }} style={styles.roomImage} />
                     ) : null}
                     <View style={styles.roomBody}>
@@ -635,7 +745,7 @@ export default function ListingDetailScreen() {
                       </View>
 
                       <Text style={[styles.roomSpecs, { color: theme.textSub }]}>
-                        {room.bed_type || '1 King Bed'} · {room.room_size || '32 m²'} · Max {room.max_guests || 2} guests
+                        {room.bed_type || '1 King Bed'} · Max {room.max_guests || 2} guests
                       </Text>
 
                       {room.description ? (
@@ -756,13 +866,31 @@ export default function ListingDetailScreen() {
         ]}
       >
         <View>
-          <Text style={[styles.bookPriceLabel, { color: theme.textSub }]}>Starting from</Text>
-          <Text style={[styles.bookPrice, { color: colors.accent }]}>
-            {priceLabel}
-            {listing.price > 0 ? (
-              <Text style={[styles.bookPer, { color: theme.textSub }]}> / {listing.price_unit || 'person'}</Text>
-            ) : null}
-          </Text>
+          {isHotel ? (
+            listing.price > 0 ? (
+              <>
+                <Text style={[styles.bookPriceLabel, { color: theme.textSub }]}>Starting from</Text>
+                <Text style={[styles.bookPrice, { color: colors.accent }]}>
+                  {formatPrice(listing.price)}
+                  <Text style={[styles.bookPer, { color: theme.textSub }]}> / per night</Text>
+                </Text>
+              </>
+            ) : (
+              <Text style={{ fontSize: 15, fontWeight: '700', color: theme.textSub, fontStyle: 'italic' }}>
+                Price unavailable
+              </Text>
+            )
+          ) : (
+            <>
+              <Text style={[styles.bookPriceLabel, { color: theme.textSub }]}>{t('from')}</Text>
+              <Text style={[styles.bookPrice, { color: colors.accent }]}>
+                {priceLabel}
+                {listing.price > 0 ? (
+                  <Text style={[styles.bookPer, { color: theme.textSub }]}> / {listing.price_unit || 'person'}</Text>
+                ) : null}
+              </Text>
+            </>
+          )}
         </View>
         {alreadyBooked ? (
           <View style={[styles.bookButton, styles.bookedButton]}>
@@ -883,39 +1011,126 @@ export default function ListingDetailScreen() {
               {/* ── STEP 1: Date + Guests ── */}
               {step === 'details' ? (
                 <>
-                  <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select date(s)</Text>
-                  <Text style={[styles.modalSubHint, { color: theme.textSub }]}>
-                    Tap dates to select or unselect. You can book 1 day or multiple dates.
-                  </Text>
-                  <CalendarPicker
-                    values={bookingDates}
-                    onMultiChange={setBookingDates}
-                    multiSelect
-                    theme={theme}
-                    disabledDates={fullyBookedDates}
-                  />
-
-                  {bookingDates.length > 0 ? (
-                    <View style={styles.selectedDatesWrap}>
-                      <Text style={[styles.selectedDatesLabel, { color: theme.textSub }]}>
-                        Selected ({bookingDates.length} {bookingDates.length === 1 ? 'date' : 'dates'}):
-                      </Text>
-                      <View style={styles.chipsContainer}>
-                        {bookingDates.map((d) => (
-                          <View key={d} style={[styles.dateChip, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-                            <Text style={[styles.dateChipText, { color: theme.textMain }]}>{d}</Text>
-                            <TouchableOpacity
-                              onPress={() => setBookingDates((cur) => cur.filter((x) => x !== d))}
-                              hitSlop={6}
-                              style={{ marginLeft: 4 }}
-                            >
-                              <Ionicons name="close-circle" size={14} color={theme.textSub} />
-                            </TouchableOpacity>
+                  {isHotel ? (
+                    <>
+                      {/* Hotel Stay Duration & Standard Time Badge */}
+                      <View style={[styles.hotelStayBanner, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Ionicons name="moon" size={16} color={theme.accent} />
+                            <Text style={{ fontSize: 15, fontWeight: '800', color: theme.textMain }}>
+                              {hotelNights} night{hotelNights > 1 ? 's' : ''} stay
+                            </Text>
                           </View>
-                        ))}
+                          <View style={{ backgroundColor: theme.accent + '20', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.accent }}>STANDARD STAY</Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 12, color: theme.textSub, marginTop: 4 }}>
+                          🕒 {listing.check_in_schedule_label || `Check-in from ${listing.check_in_time_label || '2:00 PM'} · Check-out until ${listing.check_out_time_label || '12:00 PM'}`}
+                        </Text>
                       </View>
-                    </View>
-                  ) : null}
+
+                      {/* Check-In and Check-Out Date Selectors */}
+                      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, marginBottom: 8 }}>
+                        <TouchableOpacity
+                          style={[
+                            styles.hotelDateCard,
+                            { backgroundColor: theme.card, borderColor: hotelPickerTarget === 'check_in' ? theme.accent : theme.border },
+                            hotelPickerTarget === 'check_in' && { borderWidth: 2 },
+                          ]}
+                          activeOpacity={0.85}
+                          onPress={() => setHotelPickerTarget('check_in')}
+                        >
+                          <Text style={[styles.hotelDateLabel, { color: hotelPickerTarget === 'check_in' ? theme.accent : theme.textSub }]}>
+                            ARRIVAL / CHECK-IN
+                          </Text>
+                          <Text style={[styles.hotelDateValue, { color: theme.textMain }]}>
+                            {hotelCheckIn || 'Select date'}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: theme.textSub, marginTop: 2 }}>From {listing.check_in_time_label || '2:00 PM'}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.hotelDateCard,
+                            { backgroundColor: theme.card, borderColor: hotelPickerTarget === 'check_out' ? theme.accent : theme.border },
+                            hotelPickerTarget === 'check_out' && { borderWidth: 2 },
+                          ]}
+                          activeOpacity={0.85}
+                          onPress={() => setHotelPickerTarget('check_out')}
+                        >
+                          <Text style={[styles.hotelDateLabel, { color: hotelPickerTarget === 'check_out' ? theme.accent : theme.textSub }]}>
+                            DEPARTURE / CHECK-OUT
+                          </Text>
+                          <Text style={[styles.hotelDateValue, { color: theme.textMain }]}>
+                            {hotelCheckOut || 'Select date'}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: theme.textSub, marginTop: 2 }}>Until {listing.check_out_time_label || '12:00 PM'}</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={[styles.modalSubHint, { color: theme.textSub, marginTop: 4, marginBottom: 10 }]}>
+                        {hotelPickerTarget === 'check_in'
+                          ? 'Select your arrival (check-in) date below:'
+                          : 'Select your departure (check-out) date below (must be after check-in):'}
+                      </Text>
+
+                      <CalendarPicker
+                        value={hotelPickerTarget === 'check_in' ? hotelCheckIn : hotelCheckOut}
+                        onChange={(pickedDate) => {
+                          if (hotelPickerTarget === 'check_in') {
+                            setHotelCheckIn(pickedDate);
+                            // Selecting a check-in date automatically sets the default check-out date
+                            // to exactly one day after the selected check-in date (one-night stay).
+                            setHotelCheckOut(getNextCalendarDay(pickedDate));
+                            setHotelPickerTarget('check_out');
+                          } else {
+                            // Keep manual check-out date selection
+                            setHotelCheckOut(pickedDate);
+                          }
+                        }}
+                        minDate={hotelPickerTarget === 'check_in' ? getTodayString() : getNextCalendarDay(hotelCheckIn || getTodayString())}
+                        theme={theme}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[styles.modalLabel, { color: theme.textSub }]}>Select date(s)</Text>
+                      <Text style={[styles.modalSubHint, { color: theme.textSub }]}>
+                        Tap dates to select or unselect. You can book 1 day or multiple dates.
+                      </Text>
+                      <CalendarPicker
+                        values={bookingDates}
+                        onMultiChange={setBookingDates}
+                        multiSelect
+                        theme={theme}
+                        disabledDates={fullyBookedDates}
+                      />
+
+                      {bookingDates.length > 0 ? (
+                        <View style={styles.selectedDatesWrap}>
+                          <Text style={[styles.selectedDatesLabel, { color: theme.textSub }]}>
+                            Selected ({bookingDates.length} {bookingDates.length === 1 ? 'date' : 'dates'}):
+                          </Text>
+                          <View style={styles.chipsContainer}>
+                            {bookingDates.map((d) => (
+                              <View key={d} style={[styles.dateChip, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+                                <Text style={[styles.dateChipText, { color: theme.textMain }]}>{d}</Text>
+                                <TouchableOpacity
+                                  onPress={() => setBookingDates((cur) => cur.filter((x) => x !== d))}
+                                  hitSlop={6}
+                                  style={{ marginLeft: 4 }}
+                                >
+                                  <Ionicons name="close-circle" size={14} color={theme.textSub} />
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      ) : null}
+                    </>
+                  )}
 
                   {isHotel && hotelRooms.length > 0 ? (
                     <View style={{ marginTop: 12 }}>
@@ -1058,7 +1273,7 @@ export default function ListingDetailScreen() {
                   {isHotel && selectedRoom ? (
                     <View style={[styles.priceSummaryBox, { backgroundColor: theme.card, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }]}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Text style={[styles.priceBreakdownText, { color: theme.textSub }]}>Total Stay ({daysCount} night{daysCount > 1 ? 's' : ''}):</Text>
+                        <Text style={[styles.priceBreakdownText, { color: theme.textSub }]}>Total Stay ({hotelNights} night{hotelNights > 1 ? 's' : ''}):</Text>
                         <Text style={[styles.totalLine, { fontSize: 14, color: theme.textMain }]}>{formatPrice(hotelTotal)}</Text>
                       </View>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -1192,7 +1407,14 @@ export default function ListingDetailScreen() {
                     disabled={booking}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.confirmBtnText}>{booking ? 'Processing...' : "I've paid"}</Text>
+                    {booking ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={styles.confirmBtnText}>Verifying payment...</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.confirmBtnText}>I've paid</Text>
+                    )}
                   </TouchableOpacity>
                 </>
               ) : null}
@@ -1258,7 +1480,14 @@ export default function ListingDetailScreen() {
                     disabled={booking}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.confirmBtnText}>{booking ? 'Processing...' : `Pay ${formatPrice(totalAmount)}`}</Text>
+                    {booking ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={styles.confirmBtnText}>Processing payment...</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.confirmBtnText}>{`Pay ${formatPrice(totalAmount)}`}</Text>
+                    )}
                   </TouchableOpacity>
                 </>
               ) : null}
@@ -1398,6 +1627,10 @@ const styles = StyleSheet.create({
   dateChipText: { fontSize: 12, fontWeight: '700' },
   input: { borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16, fontSize: 15 },
   timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
+  hotelStayBanner: { borderRadius: 12, borderWidth: 1, padding: 12, marginTop: 10, marginBottom: 4 },
+  hotelDateCard: { flex: 1, borderRadius: 12, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12 },
+  hotelDateLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  hotelDateValue: { fontSize: 15, fontWeight: '800', marginTop: 4 },
   timeChip: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   timeChipText: { fontSize: 13, fontWeight: '700' },
   bookedTag: { fontSize: 9, fontWeight: '700', marginTop: 1 },

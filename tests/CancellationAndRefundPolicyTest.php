@@ -190,6 +190,146 @@ assertCond(strpos($rentalsContent, 'Cancel Reservation') !== false, "Cancel Rese
 assertCond(strpos($rentalsContent, 'selectedDetailRental.cancellation?.can_cancel') !== false, "Rental cancel button conditionally enabled/styled based on eligibility");
 
 // ---------------------------------------------------------
+// Test 7: Deposit vs Full Payment, Checked-In, and Started Bookings
+// ---------------------------------------------------------
+echo "\n--- Test 7: Deposit Rules, Started, and Checked-In Stays ---\n";
+use App\Services\CancellationPolicyService;
+
+// Deposit payment refund rule
+$depositStay = [
+    'status' => 'confirmed',
+    'hotel_status' => 'deposit_paid',
+    'payment_stage' => 'deposit_paid',
+    'check_in_date' => date('Y-m-d', strtotime('+4 days')),
+    'total_amount' => 6000.0,
+    'deposit_amount' => 1200.0,
+];
+$depositPolicy = CancellationPolicyService::compute($depositStay, 'hotel');
+assertCond($depositPolicy['can_cancel'] === true, "Deposit-paid hotel booking is eligible for cancellation");
+assertCond($depositPolicy['refund_amount'] === 1200.0, "Deposit-paid refund amount is exactly deposit paid (₱1,200)");
+assertCond($depositPolicy['refund_type'] === 'deposit_full', "Refund type is 'deposit_full'");
+assertCond(strpos($depositPolicy['deposit_rule'], 'remaining balance') !== false, "Deposit rule clearly explains remaining balance is cancelled");
+
+// Full payment refund rule
+$fullPaidStay = [
+    'status' => 'confirmed',
+    'hotel_status' => 'confirmed',
+    'payment_stage' => 'settled',
+    'payment_status' => 'paid',
+    'check_in_date' => date('Y-m-d', strtotime('+4 days')),
+    'total_amount' => 4500.0,
+    'deposit_amount' => 900.0,
+    'paid_amount' => 4500.0,
+];
+$fullPaidPolicy = CancellationPolicyService::compute($fullPaidStay, 'hotel');
+assertCond($fullPaidPolicy['can_cancel'] === true, "Full-paid hotel booking is eligible for cancellation");
+assertCond($fullPaidPolicy['refund_amount'] === 4500.0, "Full-paid refund amount is total amount paid (₱4,500)");
+assertCond($fullPaidPolicy['refund_type'] === 'full', "Refund type is 'full'");
+
+// Already checked in booking
+$checkedInStay = [
+    'status' => 'confirmed',
+    'hotel_status' => 'checked_in',
+    'check_in_date' => date('Y-m-d', strtotime('-1 day')),
+    'total_amount' => 3000.0,
+];
+$checkedInPolicy = CancellationPolicyService::compute($checkedInStay, 'hotel');
+assertCond($checkedInPolicy['can_cancel'] === false, "Checked-in guest cannot cancel booking");
+assertCond(strpos($checkedInPolicy['ineligible_reason'], 'already checked in') !== false, "Ineligible reason mentions already checked in");
+
+// Already started tour
+$startedTour = [
+    'status' => 'confirmed',
+    'booking_date' => date('Y-m-d'),
+    'booking_time' => '06:00:00', // 6 AM today
+    'total_amount' => 2000.0,
+];
+$startedPolicy = CancellationPolicyService::compute($startedTour, 'attraction');
+assertCond($startedPolicy['can_cancel'] === false, "Tour that has already started cannot be cancelled");
+
+// Timezone test (Asia/Manila)
+assertCond(CancellationPolicyService::TIMEZONE === 'Asia/Manila', "Cancellation service uses Asia/Manila timezone");
+$tourTzCheck = [
+    'booking_date' => '2026-12-01',
+    'booking_time' => '09:00:00',
+];
+$tzPolicy = CancellationPolicyService::compute($tourTzCheck, 'attraction');
+$tzDeadlineObj = new DateTimeImmutable('2026-12-01 09:00:00', new DateTimeZone('Asia/Manila'));
+$expectedTzDeadline = $tzDeadlineObj->getTimestamp() - (24 * 3600);
+assertCond($tzPolicy['deadline_timestamp'] === $expectedTzDeadline, "Deadline timestamp accurately respects Asia/Manila 24h offset");
+
+// Web bookings view verification
+$bookingsViewContent = file_get_contents(__DIR__ . '/../app/Views/bookings/index.php');
+assertCond(strpos($bookingsViewContent, 'CancellationPolicyService::compute') !== false, "bookings/index.php computes cancellation policy");
+assertCond(strpos($bookingsViewContent, '$cancellation[\'can_cancel\']') !== false, "bookings/index.php shows active cancel button when eligible");
+assertCond(strpos($bookingsViewContent, 'POLICY') !== false, "bookings/index.php displays policy badge and deadline");
+
+// ---------------------------------------------------------
+// Test 8: 24-Hour Booking Grace Period (Cooling-Off Window)
+// ---------------------------------------------------------
+echo "\n--- Test 8: Booking Grace Period / Cooling-Off Window ---\n";
+
+// Booking #145 scenario: Hotel check-in is 71.7 hours away (past standard 72h mark), but created 15 minutes ago
+$threeDaysFromNow = date('Y-m-d', strtotime('+3 days'));
+$recentlyCreatedHotelBooking = [
+    'id' => 999,
+    'status' => 'confirmed',
+    'hotel_status' => 'confirmed',
+    'check_in_date' => $threeDaysFromNow,
+    'booking_time' => '14:00:00',
+    'deposit_amount' => 1120.0,
+    'total_amount' => 5600.0,
+    'created_at' => date('Y-m-d H:i:s', strtotime('-15 minutes')),
+];
+$recentPolicy = CancellationPolicyService::compute($recentlyCreatedHotelBooking, 'hotel');
+assertCond($recentPolicy['can_cancel'] === true, "Recently created booking (<24h old) within 72h window is eligible under grace period");
+assertCond(strpos($recentPolicy['policy_label'], 'grace period active') !== false, "Policy label denotes active grace period");
+assertCond(strpos($recentPolicy['remaining_text'], 'Grace period') !== false, "Remaining text shows remaining grace period");
+assertCond($recentPolicy['refund_amount'] === 1120.0, "Refund amount matches deposit paid during grace period");
+
+// Old booking scenario: check-in is 2 days away, created 3 days ago (grace period expired)
+$expiredGraceBooking = [
+    'id' => 998,
+    'status' => 'confirmed',
+    'hotel_status' => 'confirmed',
+    'check_in_date' => date('Y-m-d', strtotime('+2 days')),
+    'booking_time' => '14:00:00',
+    'deposit_amount' => 1000.0,
+    'total_amount' => 4000.0,
+    'created_at' => date('Y-m-d H:i:s', strtotime('-3 days')),
+];
+$expiredGracePolicy = CancellationPolicyService::compute($expiredGraceBooking, 'hotel');
+assertCond($expiredGracePolicy['can_cancel'] === false, "Booking created >24h ago past standard deadline cannot be cancelled");
+assertCond($expiredGracePolicy['remaining_text'] === 'Deadline passed', "Remaining text shows deadline passed for expired grace booking");
+
+// ---------------------------------------------------------
+// Test 9: Web & App Cancelled Hotel Experience Consistency
+// ---------------------------------------------------------
+echo "\n--- Test 9: Web & App Cancelled Hotel Reservation Consistency ---\n";
+
+// 9.1 Web Hotel Reservation Table in dashboard/hotel.php
+$hotelDashContent = file_get_contents(__DIR__ . '/../app/Views/dashboard/hotel.php');
+assertCond(strpos($hotelDashContent, "'cancelled', 'refunded' => 'Cancelled'") !== false, "dashboard/hotel.php sets label to 'Cancelled' for cancelled and refunded bookings");
+assertCond(strpos($hotelDashContent, "<?php if (\$isCancelled): ?>\n                                                <span class=\"hint\" style=\"font-weight:600;color:var(--ink-200,#6B7280);\">-</span>") !== false, "dashboard/hotel.php displays '-' for balance due when cancelled");
+
+// 9.2 Web Tourist My Bookings in bookings/index.php
+$bookingsViewContent = file_get_contents(__DIR__ . '/../app/Views/bookings/index.php');
+assertCond(strpos($bookingsViewContent, "Due: -") !== false, "bookings/index.php displays 'Due: -' when cancelled");
+assertCond(strpos($bookingsViewContent, "'cancelled', 'refunded' => ['bg' => '#FEE2E2', 'color' => '#991B1B', 'border' => '#FCA5A5', 'label' => 'Cancelled']") !== false, "bookings/index.php maps refunded/cancelled status to Cancelled badge");
+
+// 9.3 App Hotel Card in trips.tsx
+$tripsContent = file_get_contents(__DIR__ . '/../app/(tabs)/trips.tsx');
+assertCond(strpos($tripsContent, "isCancelled ? 'Refunded'") !== false, "trips.tsx hotel card sets deposit paid to 'Refunded' when cancelled");
+assertCond(strpos($tripsContent, "isCancelled ? '-'") !== false, "trips.tsx hotel card sets remaining due to '-' when cancelled");
+assertCond(strpos($tripsContent, "Booking was canceled.") !== false, "trips.tsx replaces pay remaining balance with 'Booking was canceled.'");
+
+// 9.4 App Details & Receipt Modal in trips.tsx
+assertCond(strpos($tripsContent, "isDetailsCancelled ? 'Refunded'") !== false, "trips.tsx itemized receipt badge displays 'Refunded' when cancelled");
+assertCond(strpos($tripsContent, "{isDetailsCancelled ? '-' : `✓ \${formatPrice(selectedBookingDetails.deposit_amount)}`}") !== false, "trips.tsx itemized receipt sets deposit paid to '-' when cancelled");
+assertCond(strpos($tripsContent, "isDetailsCancelled\n                            ? '-'") !== false || strpos($tripsContent, "isDetailsCancelled ? '-'") !== false, "trips.tsx itemized receipt sets remaining balance to '-' when cancelled");
+assertCond(strpos($tripsContent, "Refund Status") !== false && strpos($tripsContent, "flexShrink: 0") !== false, "trips.tsx prevents refund status label collision with flexShrink");
+
+// ---------------------------------------------------------
 // Summary
 // ---------------------------------------------------------
 echo "\n========================================================\n";

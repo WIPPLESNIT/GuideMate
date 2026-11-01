@@ -123,7 +123,7 @@ final class HotelListingManagementTest
 
         $this->assert((int) $listing['category_id'] === 3, "Listing category must be 3 (Hotels & Stays)");
         $this->assert($listing['price_unit'] === 'per night', "Price unit must be 'per night'");
-        $this->assert((float) $listing['price'] === 7800.0, "Price must be 7800.00");
+        $this->assert((float) $listing['price'] === 0.0, "Starting price is automatically derived from lowest room (0.00 when no rooms yet)");
 
         unset($_SERVER['HTTP_ACCEPT'], $_SERVER['HTTP_X_REQUESTED_WITH'], $_POST);
     }
@@ -212,7 +212,7 @@ final class HotelListingManagementTest
         $updated = Listing::find($listingId);
         $this->assert($updated['title'] === 'Updated Hotel Luxury Name', "Title must be updated");
         $this->assert($updated['area'] === 'Mandaue City, Cebu', "Area must be updated");
-        $this->assert((float) $updated['price'] === 4500.0, "Price must be updated to 4500");
+        $this->assert((float) $updated['price'] === 0.0, "Starting price is automatically derived from lowest room (0.00 when no rooms yet)");
 
         unset($_SERVER['HTTP_ACCEPT'], $_SERVER['HTTP_X_REQUESTED_WITH'], $_POST);
     }

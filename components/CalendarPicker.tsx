@@ -21,6 +21,7 @@ type Props = {
   multiSelect?: boolean;
   theme: Theme;
   disabledDates?: string[]; // YYYY-MM-DD dates that are fully booked
+  minDate?: string; // Optional minimum selectable date (YYYY-MM-DD)
 };
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -45,6 +46,7 @@ export default function CalendarPicker({
   multiSelect = false,
   theme,
   disabledDates = [],
+  minDate,
 }: Props) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -135,7 +137,7 @@ export default function CalendarPicker({
             return <View key={`empty-${idx}`} style={styles.cell} />;
           }
           const key = toKey(viewYear, viewMonth, day);
-          const isPast = key < todayKey;
+          const isPast = minDate ? key < minDate : key < todayKey;
           const isFull = blocked.has(key);
           const isDisabled = isPast || isFull;
           const isSelected = selectedSet.has(key);

@@ -17,13 +17,31 @@ $reviewStats = $reviewStats ?? ['avg_rating' => 0, 'review_count' => 0];
 $rooms = $rooms ?? [];
 $reservations = $reservations ?? [];
 
+$isWarned = $isWarned ?? \App\Models\User::isGuideWarned((int) ($user['id'] ?? 0));
+$warningNote = $warningNote ?? (string) ($user['guide_warning_note'] ?? '');
 $totalRoomsCount = count($rooms);
 $availableRoomsCount = count(array_filter($rooms, fn($r) => ($r['status'] ?? '') === 'available'));
 $blockedRoomsCount = count(array_filter($rooms, fn($r) => in_array($r['status'] ?? '', ['blocked', 'unavailable', 'fully_booked'], true)));
 
-$activeReservations = array_filter($reservations, fn($b) => !in_array($b['status'] ?? '', ['cancelled', 'refunded'], true) && ($b['hotel_status'] ?? '') !== 'cancelled');
+$activeReservations = array_filter($reservations, fn($b) => !in_array($b['status'] ?? '', ['cancelled', 'refunded'], true) && !in_array($b['hotel_status'] ?? '', ['cancelled', 'refunded'], true));
 $pendingCheckIns = array_filter($reservations, fn($b) => in_array($b['hotel_status'] ?? '', ['deposit_paid', 'confirmed'], true));
-$balanceDueReservations = array_filter($reservations, fn($b) => ($b['payment_stage'] ?? '') === 'balance_due' || ($b['hotel_status'] ?? '') === 'checked_in');
+$balanceDueReservations = array_filter($reservations, fn($b) => (($b['payment_stage'] ?? '') === 'balance_due' || ($b['hotel_status'] ?? '') === 'checked_in') && !in_array($b['hotel_status'] ?? '', ['cancelled', 'refunded', 'completed'], true) && !in_array($b['status'] ?? '', ['cancelled', 'refunded', 'completed'], true));
+$completedStays = array_filter($reservations, fn($b) => ($b['hotel_status'] ?? '') === 'completed' || ($b['status'] ?? '') === 'completed');
+$completedStaysCount = count($completedStays);
+
+$revenue = (float) ($revenue ?? 0.0);
+if ($revenue === 0.0 && $reservations !== []) {
+    foreach ($reservations as $b) {
+        $st = $b['status'] ?? '';
+        $hst = $b['hotel_status'] ?? '';
+        if (in_array($st, ['cancelled', 'refunded'], true) || in_array($hst, ['cancelled', 'refunded'], true)) {
+            continue;
+        }
+        if (in_array($st, ['confirmed', 'completed'], true) || in_array($hst, ['confirmed', 'checked_in', 'completed'], true)) {
+            $revenue += (float) ($b['total_amount'] ?? 0);
+        }
+    }
+}
 
 $totalOutstandingBalance = 0.0;
 foreach ($reservations as $res) {
@@ -91,6 +109,12 @@ foreach ($reservations as $res) {
                     <div class="label">Active Stays</div>
                     <div class="value"><?= count($activeReservations) ?></div>
                     <div class="stat-action" style="color:#2563EB;"><?= count($pendingCheckIns) ?> arriving soon</div>
+                </div>
+                <div class="stat stat-ico-card">
+                    <span class="stat-ico"><?= admin_icon('revenue', 18) ?></span>
+                    <div class="label"><?= e(__('d_stat_revenue', 'Revenue')) ?></div>
+                    <div class="value" style="font-size:1.4rem;"><?= money($revenue) ?></div>
+                    <div class="stat-action" style="color:var(--brand, #059669);"><?= $completedStaysCount > 0 ? $completedStaysCount . ' completed ' . ($completedStaysCount === 1 ? 'stay' : 'stays') : 'Completed stays' ?></div>
                 </div>
                 <div class="stat stat-ico-card">
                     <span class="stat-ico">💳</span>
@@ -180,9 +204,6 @@ foreach ($reservations as $res) {
                                                 <?= e($rm['bed_type'] ?? '1 King Bed') ?>
                                             </div>
                                             <div class="hint" style="font-size:0.78rem;margin-top:2px;line-height:1.35;color:var(--ink-300, #64748b);">
-                                                <?php if (!empty($rm['room_size'])): ?>
-                                                    <div><?= e($rm['room_size']) ?> •</div>
-                                                <?php endif; ?>
                                                 <div style="white-space:nowrap;">Max <?= (int) ($rm['max_guests'] ?? 2) ?> <?= (int) ($rm['max_guests'] ?? 2) > 1 ? 'guests' : 'guest' ?></div>
                                             </div>
                                         </td>
@@ -306,15 +327,17 @@ foreach ($reservations as $res) {
                                     $propertyName = (string) ($b['listing_title'] ?? 'Hotel Property');
                                     $roomName = (string) (!empty($b['room_name']) ? $b['room_name'] : 'Standard Room');
                                     
+                                    $isCancelled = in_array($hotelStatus, ['cancelled', 'refunded'], true) || in_array((string) ($b['status'] ?? ''), ['cancelled', 'refunded'], true) || !empty($b['cancelled_at']);
+                                    
                                     $resPillClass = match ($hotelStatus) {
                                         'confirmed' => 'pill-approved',
                                         'deposit_paid' => 'pill-paid',
                                         'accepted' => 'pill-completed',
                                         'checked_in' => 'pill-completed',
                                         'pending' => 'pill-pending',
-                                        'cancelled' => 'pill-cancelled',
+                                        'cancelled', 'refunded' => 'pill-cancelled',
                                         'no_show' => 'pill-refunded',
-                                        default => 'pill-secondary',
+                                        default => ($isCancelled ? 'pill-cancelled' : 'pill-secondary'),
                                     };
                                     $resPillLabel = match ($hotelStatus) {
                                         'pending' => 'Pending',
@@ -323,9 +346,9 @@ foreach ($reservations as $res) {
                                         'confirmed' => 'Confirmed',
                                         'checked_in' => 'Checked In',
                                         'completed' => 'Completed',
-                                        'cancelled' => 'Cancelled',
+                                        'cancelled', 'refunded' => 'Cancelled',
                                         'no_show' => 'No-Show',
-                                        default => ucfirst($hotelStatus),
+                                        default => ($isCancelled ? 'Cancelled' : ucfirst($hotelStatus)),
                                     };
                                     ?>
                                     <tr>
@@ -355,19 +378,30 @@ foreach ($reservations as $res) {
 
                                         <!-- 4. BALANCE DUE AT HOTEL -->
                                         <td>
-                                            <?php if ($balance > 0 && !in_array($hotelStatus, ['completed', 'cancelled', 'no_show'], true) && ($b['payment_stage'] ?? '') !== 'settled'): ?>
+                                            <?php if ($isCancelled): ?>
+                                                <span class="hint" style="font-weight:600;color:var(--ink-200,#6B7280);">-</span>
+                                            <?php elseif ($balance > 0 && !in_array($hotelStatus, ['completed', 'cancelled', 'refunded', 'no_show', 'checked_in'], true) && ($b['payment_stage'] ?? '') !== 'settled' && ($b['payment_stage'] ?? '') !== 'paid'): ?>
                                                 <strong style="font-size:0.92rem;color:#D97706;display:block;line-height:1.2;"><?= money($balance) ?></strong>
                                                 <small class="hint" style="font-size:0.72rem;color:#B45309;font-weight:600;white-space:nowrap;display:block;margin-top:2px;">At front desk</small>
+                                            <?php elseif ($hotelStatus === 'checked_in' || ($b['payment_stage'] ?? '') === 'paid'): ?>
+                                                <span class="pill pill-paid" style="font-size:0.74rem;padding:2px 7px;background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;">Paid</span>
                                             <?php elseif ($hotelStatus === 'completed' || ($b['payment_stage'] ?? '') === 'settled'): ?>
                                                 <span class="pill pill-approved" style="font-size:0.74rem;padding:2px 7px;">Settled</span>
                                             <?php else: ?>
-                                                <span class="hint">—</span>
+                                                <span class="hint">-</span>
                                             <?php endif; ?>
                                         </td>
 
                                         <!-- 5. RESERVATION STATUS BADGE -->
-                                        <td>
-                                            <span class="pill <?= $resPillClass ?>" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;"><?= e($resPillLabel) ?></span>
+                                        <td style="vertical-align:middle;">
+                                            <div style="display:inline-flex;flex-direction:column;align-items:center;gap:6px;">
+                                                <span class="pill <?= $resPillClass ?>" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;"><?= e($resPillLabel) ?></span>
+                                                <?php if ($isCancelled && !empty($b['refund_amount']) && (float) $b['refund_amount'] > 0): ?>
+                                                    <span class="res-refund-amount" style="font-size:0.74rem;color:#2563EB;font-weight:700;line-height:1.2;white-space:nowrap;letter-spacing:0.01em;">
+                                                        Refunded <?= money((float) $b['refund_amount']) ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
                                         </td>
 
                                         <!-- 6. ACTIONS (3-DOT DROPDOWN MENU) -->
@@ -387,7 +421,44 @@ foreach ($reservations as $res) {
                                                      id="resActionMenu_<?= (int) $b['id'] ?>"
                                                      role="menu"
                                                      aria-labelledby="resActionBtn_<?= (int) $b['id'] ?>">
-                                                    <?php if ($hotelStatus === 'pending'): ?>
+                                                    <?php if ($isWarned): ?>
+                                                        <div class="res-action-restricted-notice" title="Action unavailable: Active administrator warning on your account.">
+                                                            <span class="res-action-restricted-badge"><?= admin_icon('alert-triangle', 13) ?> Actions Restricted</span>
+                                                            <span>Unavailable due to an active administrator warning.</span>
+                                                        </div>
+                                                        <?php if ($hotelStatus === 'pending'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Accept Reservation
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-confirm" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Confirm Deposit
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Cancel Reservation
+                                                            </button>
+                                                        <?php elseif ($hotelStatus === 'accepted' || $hotelStatus === 'deposit_paid'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-confirm" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Confirm Deposit
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Cancel Reservation
+                                                            </button>
+                                                        <?php elseif ($hotelStatus === 'confirmed'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-checkin" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Check In
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Cancel Reservation
+                                                            </button>
+                                                        <?php elseif ($hotelStatus === 'checked_in'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-settle" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Complete Check Out
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <div style="padding: 8px 12px; font-size: 0.8rem; color: #94a3b8; font-weight: 500;">No actions available</div>
+                                                        <?php endif; ?>
+
+                                                    <?php elseif ($hotelStatus === 'pending'): ?>
                                                         <!-- Accept Reservation -->
                                                         <form method="post" action="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form">
                                                             <?= csrf_field() ?>
@@ -443,12 +514,11 @@ foreach ($reservations as $res) {
                                                         </form>
 
                                                     <?php elseif ($hotelStatus === 'checked_in'): ?>
-                                                        <!-- Settle Balance & Check Out -->
-                                                        <?php $isSettled = ($b['payment_stage'] ?? '') === 'settled' || $balance <= 0; ?>
-                                                        <form method="post" action="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('<?= $isSettled ? 'Complete check-out for this guest?' : 'Collect outstanding balance of ' . money($balance) . ' and complete check-out?' ?>');">
+                                                        <!-- Complete Check Out (Transitions to Settled & Completed) -->
+                                                        <form method="post" action="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Complete check-out for this guest? Reservation will be marked Settled and Completed.');">
                                                             <?= csrf_field() ?>
                                                             <button type="submit" name="action" value="settle_balance" class="res-action-item action-settle" role="menuitem">
-                                                                <?= $isSettled ? 'Complete Check Out' : 'Settle &amp; Check Out' ?>
+                                                                Complete Check Out
                                                             </button>
                                                         </form>
 
@@ -470,11 +540,11 @@ foreach ($reservations as $res) {
             <div class="panel mt-4">
                 <div class="panel-head">
                     <h3>Your Hotel Properties</h3>
-                    <a href="<?= e(url('/dashboard/listings')) ?>" class="btn btn-ghost btn-sm">View all</a>
+                    <a href="<?= e(url('/dashboard/hotels')) ?>" class="btn btn-ghost btn-sm">View all</a>
                 </div>
                 <div class="panel-body" style="padding:0;overflow-x:auto;">
                     <?php if ($listings === []): ?>
-                        <div class="empty-state" style="padding:2.5rem 1rem;"><p>You haven't created any listings yet. <a href="<?= e(url('/dashboard/listings/create')) ?>">Create your first →</a></p></div>
+                        <div class="empty-state" style="padding:2.5rem 1rem;"><p>You haven't created any listings yet. <a href="<?= e(url('/dashboard/hotels?create=1')) ?>">Create your first →</a></p></div>
                     <?php else: ?>
                         <table class="table hotel-table hotel-properties-table" style="vertical-align:middle;width:100%;margin:0;">
                             <thead>
@@ -494,13 +564,19 @@ foreach ($reservations as $res) {
                                         <a href="<?= e(url('/listing/' . $l['slug'])) ?>" style="font-weight:600;"><?= e($l['title']) ?></a>
                                     </td>
                                     <td class="hint" style="white-space:nowrap;">📍 <?= e($l['area']) ?></td>
-                                    <td style="white-space:nowrap;"><strong><?= money($l['price']) ?></strong></td>
+                                    <td style="white-space:nowrap;">
+                                        <?php if ((float) ($l['price'] ?? 0) > 0): ?>
+                                            <strong><?= money($l['price']) ?></strong>
+                                        <?php else: ?>
+                                            <span class="hint" style="color:var(--text-muted, #64748B);font-style:italic;">Price unavailable</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td style="white-space:nowrap;"><?= (int) $l['review_count'] > 0 ? number_format((float) $l['avg_rating'], 1) . ' ★' : '—' ?></td>
                                     <td style="white-space:nowrap;"><span class="pill pill-<?= e($l['status']) ?>"><?= e(status_label((string) $l['status'])) ?></span></td>
                                     <td class="col-actions" style="text-align:right;white-space:nowrap;">
                                         <div class="hotel-prop-actions">
                                             <a href="<?= e(url('/listing/' . $l['slug'])) ?>" class="btn btn-ghost btn-sm hotel-prop-btn" target="_blank" rel="noopener">View Listing ↗</a>
-                                            <a href="<?= e(url('/dashboard/listings/' . $l['id'] . '/edit')) ?>" class="btn btn-ghost btn-sm hotel-prop-btn">Edit</a>
+                                            <a href="<?= e(url('/dashboard/hotels')) ?>" class="btn btn-ghost btn-sm hotel-prop-btn">Edit</a>
                                         </div>
                                     </td>
                                 </tr>
@@ -560,13 +636,14 @@ foreach ($reservations as $res) {
             <h3 class="mb-0">Add New Room Type</h3>
             <button type="button" onclick="closeAddRoomModal()" class="btn btn-ghost btn-sm" style="font-size:1.2rem;line-height:1;">✕</button>
         </div>
-        <form method="post" action="<?= e(url('/dashboard/hotel/rooms/create')) ?>">
+        <form method="post" action="<?= e(url('/dashboard/hotel/rooms/create')) ?>" enctype="multipart/form-data">
             <?= csrf_field() ?>
             <div class="field-row">
                 <label>Select Hotel Property</label>
                 <select name="listing_id" class="input" required>
                     <?php foreach ($listings as $l): ?>
-                        <option value="<?= $l['id'] ?>"><?= e($l['title']) ?> (<?= e($l['area']) ?>)</option>
+                        <?php $isAppr = ($l['status'] ?? '') === 'approved'; ?>
+                        <option value="<?= $l['id'] ?>" <?= !$isAppr ? 'disabled' : '' ?>><?= e($l['title']) ?> (<?= e($l['area']) ?>)<?= !$isAppr ? ' — ' . e(status_label((string) $l['status'])) . ' (Rooms Locked)' : '' ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -595,17 +672,69 @@ foreach ($reservations as $res) {
                     <small class="hint">Remaining % paid at hotel check-in</small>
                 </div>
             </div>
-            <div class="field-row">
-                <label>Room Size</label>
-                <input type="text" name="room_size" class="input" placeholder="e.g. 38 m² (409 sq ft)" value="38 m²">
-            </div>
+
             <div class="field-row">
                 <label>Key Amenities (comma separated)</label>
                 <input type="text" name="amenities" class="input" placeholder="Air Conditioning, Free Wi-Fi, Hot Rain Shower, Private Balcony, Mini-Fridge">
             </div>
-            <div class="field-row">
-                <label>Photo URL (Optional)</label>
-                <input type="text" name="image" class="input" placeholder="https://images.unsplash.com/...">
+            <div class="field-row" style="background:#f8fafc;padding:0.85rem 1rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:1rem;">
+                <label style="font-weight:700;font-size:0.90rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;color:var(--text, #0f172a);">
+                    <span>📸 Room Photos (Upload up to 3 photos)</span>
+                    <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">Max 3 Photos</span>
+                </label>
+                <span class="hint" style="display:block;margin-bottom:0.75rem;font-size:0.8rem;color:#64748b;">
+                    Upload high-quality JPG, PNG, or WEBP images (up to 5MB each) or paste direct photo URLs. Photo 1 will be used as the primary room photo.
+                </span>
+
+                                                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:0.6rem;">
+                    <!-- Slot 0: Cover -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 1 (Cover) *</strong>
+                            <span style="font-size:0.65rem;background:#dcfce7;color:#166534;font-weight:700;padding:1px 5px;border-radius:4px;">Cover</span>
+                        </div>
+                        <div id="dash_add_room_preview_wrap_0" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="dash_add_room_preview_img_0" src="" alt="Photo 1" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="dash_add_room_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="dash_add_room_remove_btn_0" onclick="removeDashAddRoomPhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="room_photo_file_0" id="dash_add_room_file_0" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleDashAddRoomFileChange(0, this)">
+                        <input type="url" name="room_photo_url_0" id="dash_add_room_url_0" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleDashAddRoomUrlChange(0, this.value)">
+                        <input type="hidden" name="room_photo_removed_0" id="dash_add_room_removed_0" value="0">
+                    </div>
+
+                    <!-- Slot 1: Photo 2 -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 2</strong>
+                            <span style="font-size:0.65rem;background:#f1f5f9;color:#64748b;font-weight:700;padding:1px 5px;border-radius:4px;">Optional</span>
+                        </div>
+                        <div id="dash_add_room_preview_wrap_1" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="dash_add_room_preview_img_1" src="" alt="Photo 2" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="dash_add_room_placeholder_1" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="dash_add_room_remove_btn_1" onclick="removeDashAddRoomPhoto(1)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="room_photo_file_1" id="dash_add_room_file_1" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleDashAddRoomFileChange(1, this)">
+                        <input type="url" name="room_photo_url_1" id="dash_add_room_url_1" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleDashAddRoomUrlChange(1, this.value)">
+                        <input type="hidden" name="room_photo_removed_1" id="dash_add_room_removed_1" value="0">
+                    </div>
+
+                    <!-- Slot 2: Photo 3 -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 3</strong>
+                            <span style="font-size:0.65rem;background:#f1f5f9;color:#64748b;font-weight:700;padding:1px 5px;border-radius:4px;">Optional</span>
+                        </div>
+                        <div id="dash_add_room_preview_wrap_2" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="dash_add_room_preview_img_2" src="" alt="Photo 3" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="dash_add_room_placeholder_2" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="dash_add_room_remove_btn_2" onclick="removeDashAddRoomPhoto(2)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="room_photo_file_2" id="dash_add_room_file_2" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleDashAddRoomFileChange(2, this)">
+                        <input type="url" name="room_photo_url_2" id="dash_add_room_url_2" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleDashAddRoomUrlChange(2, this.value)">
+                        <input type="hidden" name="room_photo_removed_2" id="dash_add_room_removed_2" value="0">
+                    </div>
+                </div>
             </div>
             <div class="field-row">
                 <label>Description</label>
@@ -626,7 +755,7 @@ foreach ($reservations as $res) {
             <h3 class="mb-0">Edit Room Type</h3>
             <button onclick="document.getElementById('modal-edit-room').style.display='none';" class="btn btn-ghost btn-sm" style="font-size:1.2rem;line-height:1;">✕</button>
         </div>
-        <form id="edit-room-form" method="post" action="">
+        <form id="edit-room-form" method="post" action="" enctype="multipart/form-data">
             <?= csrf_field() ?>
             <div class="field-row">
                 <label>Room Name</label>
@@ -652,10 +781,7 @@ foreach ($reservations as $res) {
                     <input type="number" id="edit-room-deposit" name="deposit_percentage" class="input" min="5" max="100" required>
                 </div>
             </div>
-            <div class="field-row">
-                <label>Room Size</label>
-                <input type="text" id="edit-room-size" name="room_size" class="input">
-            </div>
+
             <div class="field-row">
                 <label>Availability Status</label>
                 <select id="edit-room-status" name="status" class="input">
@@ -682,6 +808,128 @@ foreach ($reservations as $res) {
 </div>
 
 <script>
+
+// Dashboard Room Photo Handlers
+window.handleDashAddRoomFileChange = function(slot, input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            setDashAddRoomSlotPreview(slot, e.target.result);
+        };
+        reader.readAsDataURL(input.files[0]);
+        var rem = document.getElementById('dash_add_room_removed_' + slot);
+        if (rem) rem.value = '0';
+    }
+};
+
+window.handleDashAddRoomUrlChange = function(slot, val) {
+    val = (val || '').trim();
+    if (val) {
+        setDashAddRoomSlotPreview(slot, val);
+        var rem = document.getElementById('dash_add_room_removed_' + slot);
+        if (rem) rem.value = '0';
+    } else {
+        var fileIn = document.getElementById('dash_add_room_file_' + slot);
+        if (!fileIn || !fileIn.files || !fileIn.files[0]) {
+            clearDashAddRoomSlotPreview(slot);
+        }
+    }
+};
+
+window.removeDashAddRoomPhoto = function(slot) {
+    var fileIn = document.getElementById('dash_add_room_file_' + slot);
+    if (fileIn) fileIn.value = '';
+    var urlIn = document.getElementById('dash_add_room_url_' + slot);
+    if (urlIn) urlIn.value = '';
+    var rem = document.getElementById('dash_add_room_removed_' + slot);
+    if (rem) rem.value = '1';
+    clearDashAddRoomSlotPreview(slot);
+};
+
+function setDashAddRoomSlotPreview(slot, src) {
+    var img = document.getElementById('dash_add_room_preview_img_' + slot);
+    var ph = document.getElementById('dash_add_room_placeholder_' + slot);
+    var btn = document.getElementById('dash_add_room_remove_btn_' + slot);
+    if (img && ph && btn) {
+        img.src = src;
+        img.style.display = 'block';
+        ph.style.display = 'none';
+        btn.style.display = 'flex';
+    }
+}
+
+function clearDashAddRoomSlotPreview(slot) {
+    var img = document.getElementById('dash_add_room_preview_img_' + slot);
+    var ph = document.getElementById('dash_add_room_placeholder_' + slot);
+    var btn = document.getElementById('dash_add_room_remove_btn_' + slot);
+    if (img && ph && btn) {
+        img.src = '';
+        img.style.display = 'none';
+        ph.style.display = 'block';
+        btn.style.display = 'none';
+    }
+}
+
+window.handleDashEditRoomFileChange = function(slot, input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            setDashEditRoomSlotPreview(slot, e.target.result);
+        };
+        reader.readAsDataURL(input.files[0]);
+        var rem = document.getElementById('dash_edit_room_removed_' + slot);
+        if (rem) rem.value = '0';
+    }
+};
+
+window.handleDashEditRoomUrlChange = function(slot, val) {
+    val = (val || '').trim();
+    if (val) {
+        setDashEditRoomSlotPreview(slot, val);
+        var rem = document.getElementById('dash_edit_room_removed_' + slot);
+        if (rem) rem.value = '0';
+    } else {
+        var fileIn = document.getElementById('dash_edit_room_file_' + slot);
+        if (!fileIn || !fileIn.files || !fileIn.files[0]) {
+            clearDashEditRoomSlotPreview(slot);
+        }
+    }
+};
+
+window.removeDashEditRoomPhoto = function(slot) {
+    var fileIn = document.getElementById('dash_edit_room_file_' + slot);
+    if (fileIn) fileIn.value = '';
+    var urlIn = document.getElementById('dash_edit_room_url_' + slot);
+    if (urlIn) urlIn.value = '';
+    var rem = document.getElementById('dash_edit_room_removed_' + slot);
+    if (rem) rem.value = '1';
+    clearDashEditRoomSlotPreview(slot);
+};
+
+function setDashEditRoomSlotPreview(slot, src) {
+    var img = document.getElementById('dash_edit_room_preview_img_' + slot);
+    var ph = document.getElementById('dash_edit_room_placeholder_' + slot);
+    var btn = document.getElementById('dash_edit_room_remove_btn_' + slot);
+    if (img && ph && btn) {
+        img.src = src;
+        img.style.display = 'block';
+        ph.style.display = 'none';
+        btn.style.display = 'flex';
+    }
+}
+
+function clearDashEditRoomSlotPreview(slot) {
+    var img = document.getElementById('dash_edit_room_preview_img_' + slot);
+    var ph = document.getElementById('dash_edit_room_placeholder_' + slot);
+    var btn = document.getElementById('dash_edit_room_remove_btn_' + slot);
+    if (img && ph && btn) {
+        img.src = '';
+        img.style.display = 'none';
+        ph.style.display = 'block';
+        btn.style.display = 'none';
+    }
+}
+
 function openAddRoomModal() {
     var gatingModal = document.getElementById('verificationGatingModal');
     var metaVerified = document.querySelector('meta[name="auth-user-verified"]');
@@ -711,10 +959,24 @@ function openEditRoomModal(room) {
     document.getElementById('edit-room-guests').value = room.max_guests || 2;
     document.getElementById('edit-room-price').value = room.price_per_night || 0;
     document.getElementById('edit-room-deposit').value = room.deposit_percentage || 20;
-    document.getElementById('edit-room-size').value = room.room_size || '';
     document.getElementById('edit-room-status').value = room.status || 'available';
     document.getElementById('edit-room-amenities').value = room.amenities || '';
     document.getElementById('edit-room-desc').value = room.description || '';
+    var photos = room.photos || (room.image ? [room.image] : []);
+    for (var i = 0; i < 3; i++) {
+        var fileIn = document.getElementById('dash_edit_room_file_' + i);
+        if (fileIn) fileIn.value = '';
+        var urlIn = document.getElementById('dash_edit_room_url_' + i);
+        var remIn = document.getElementById('dash_edit_room_removed_' + i);
+        if (remIn) remIn.value = '0';
+        if (photos[i]) {
+            if (urlIn) urlIn.value = photos[i];
+            setDashEditRoomSlotPreview(i, photos[i]);
+        } else {
+            if (urlIn) urlIn.value = '';
+            clearDashEditRoomSlotPreview(i);
+        }
+    }
     document.getElementById('modal-edit-room').style.display = 'flex';
 }
 function closeEditRoomModal() {

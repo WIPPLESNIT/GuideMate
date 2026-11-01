@@ -744,11 +744,18 @@ export default function MyRentalsScreen() {
                       </View>
                     </View>
                   ) : selectedDetailRental.cancellation.can_cancel && selectedDetailRental.cancellation.refund_amount > 0 ? (
-                    <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 12, color: colors.textMute }}>Applicable Refund on Cancel</Text>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: '#059669' }}>
-                        ₱{selectedDetailRental.cancellation.refund_amount.toLocaleString()}
-                      </Text>
+                    <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderColor: colors.border }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute }}>Applicable Refund on Cancel</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#059669' }}>
+                          ₱{selectedDetailRental.cancellation.refund_amount.toLocaleString()}
+                        </Text>
+                      </View>
+                      {selectedDetailRental.cancellation.refund_description ? (
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: '#059669', marginTop: 2 }}>
+                          {selectedDetailRental.cancellation.refund_description}
+                        </Text>
+                      ) : null}
                     </View>
                   ) : null}
                 </View>

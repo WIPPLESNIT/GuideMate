@@ -43,6 +43,7 @@ final class HotelController extends Controller
         }
         foreach ($hotels as &$h) {
             $h['room_count'] = $roomCounts[(int) $h['id']] ?? 0;
+            $h['photos'] = Listing::getPhotos($h);
         }
         unset($h);
 
@@ -70,6 +71,7 @@ final class HotelController extends Controller
         if ($hotel === []) {
             return;
         }
+        $hotel['photos'] = Listing::getPhotos($hotel);
         $this->json([
             'success' => true,
             'hotel' => $hotel,
@@ -90,9 +92,14 @@ final class HotelController extends Controller
         $userId = (int) Auth::id();
         $data = $this->validateHotelData();
 
-        $cover = $this->uploadedCover() ?? $data['cover_image'];
-        if ($cover === null || $cover === '') {
+        $photos = $this->resolveHotelPhotos();
+        $cover = $photos[0] ?? $this->uploadedCover() ?? $data['cover_image'];
+        if ($cover === null || $cover === '' || str_starts_with((string) $cover, 'data:image/')) {
             $cover = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80';
+        }
+        $photos = array_values(array_filter($photos, fn($p) => is_string($p) && !str_starts_with($p, 'data:image/')));
+        if ($photos === []) {
+            $photos = [$cover];
         }
 
         $cat = Category::findBySlug('hotels');
@@ -109,7 +116,7 @@ final class HotelController extends Controller
             'description' => $data['description'],
             'area' => $data['area'],
             'address' => $data['address'],
-            'price' => $data['price'],
+            'price' => 0.0,
             'price_unit' => 'per night',
             'duration' => $data['duration'],
             'included' => $data['included'],
@@ -119,9 +126,7 @@ final class HotelController extends Controller
             'submitted_at' => date('Y-m-d H:i:s'),
         ]);
 
-        if ($cover !== null && $cover !== '') {
-            Listing::addImage($listingId, $cover, 1);
-        }
+        Listing::syncImages($listingId, $photos);
 
         if ($this->isJson()) {
             unset($_SESSION['_flash']['success']);
@@ -159,13 +164,20 @@ final class HotelController extends Controller
         }
         $data = $this->validateHotelData(true);
 
-        $cover = $this->uploadedCover() ?? $data['cover_image'];
-        if ($cover === null || $cover === '') {
-            $cover = $hotel['cover_image'];
+        $photos = $this->resolveHotelPhotos($listingId);
+        $cover = $photos[0] ?? $this->uploadedCover() ?? $data['cover_image'];
+        if ($cover === null || $cover === '' || str_starts_with((string) $cover, 'data:image/')) {
+            $cover = $hotel['cover_image'] ?? 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80';
+        }
+        $photos = array_values(array_filter($photos, fn($p) => is_string($p) && !str_starts_with($p, 'data:image/')));
+        if ($photos === [] && !empty($cover)) {
+            $photos = [$cover];
         }
 
         $cat = Category::findBySlug('hotels');
         $categoryId = $cat ? (int) $cat['id'] : 3;
+
+        $lowestPrice = HotelRoom::getLowestRoomPrice($listingId) ?? 0.0;
 
         Listing::update($listingId, [
             'category_id' => $categoryId,
@@ -174,13 +186,17 @@ final class HotelController extends Controller
             'description' => $data['description'],
             'area' => $data['area'],
             'address' => $data['address'],
-            'price' => $data['price'],
+            'price' => $lowestPrice,
             'price_unit' => 'per night',
             'duration' => $data['duration'],
             'included' => $data['included'],
             'not_included' => $data['not_included'],
             'cover_image' => $cover,
         ]);
+
+        if (!empty($photos)) {
+            Listing::syncImages($listingId, $photos);
+        }
 
         if (($hotel['status'] ?? '') === 'rejected') {
             Listing::resubmitHotel($listingId);
@@ -353,18 +369,25 @@ final class HotelController extends Controller
         $price = max(0.0, (float) $this->input('price_per_night', 0));
         $depositPct = max(5, min(100, (int) $this->input('deposit_percentage', 20)));
 
+        $photos = $this->resolveRoomPhotos();
+        $primary = $photos[0] ?? (trim((string) $this->input('image', '')) ?: ($listing['cover_image'] ?? 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80'));
+        if ($photos === []) {
+            $photos = [$primary];
+        }
+
         HotelRoom::create([
             'listing_id' => $listingId,
             'name' => $name,
             'description' => trim((string) $this->input('description', '')),
-            'room_size' => trim((string) $this->input('room_size', '32 m²')),
+            'room_size' => null,
             'bed_type' => trim((string) $this->input('bed_type', '1 King Bed')),
             'max_guests' => max(1, (int) $this->input('max_guests', 2)),
             'price_per_night' => $price,
             'deposit_percentage' => $depositPct,
             'status' => (string) $this->input('status', HotelRoom::STATUS_AVAILABLE),
             'amenities' => trim((string) $this->input('amenities', '')),
-            'image' => trim((string) $this->input('image', '')) ?: $listing['cover_image'],
+            'image' => $primary,
+            'images' => $photos,
         ]);
 
         if ($this->isJson()) {
@@ -412,17 +435,21 @@ final class HotelController extends Controller
             return;
         }
 
+        $photos = $this->resolveRoomPhotos($roomId);
+        $primary = $photos[0] ?? (trim((string) $this->input('image', '')) ?: ($room['image'] ?? null));
+
         HotelRoom::update($roomId, [
             'name' => $name,
             'description' => trim((string) $this->input('description', $room['description'] ?? '')),
-            'room_size' => trim((string) $this->input('room_size', $room['room_size'] ?? '32 m²')),
+            'room_size' => null,
             'bed_type' => trim((string) $this->input('bed_type', $room['bed_type'] ?? '1 King Bed')),
             'max_guests' => max(1, (int) $this->input('max_guests', $room['max_guests'] ?? 2)),
             'price_per_night' => max(0.0, (float) $this->input('price_per_night', $room['price_per_night'])),
             'deposit_percentage' => max(5, min(100, (int) $this->input('deposit_percentage', $room['deposit_percentage'] ?? 20))),
             'status' => (string) $this->input('status', $room['status']),
             'amenities' => trim((string) $this->input('amenities', $room['amenities'] ?? '')),
-            'image' => trim((string) $this->input('image', '')) ?: null,
+            'image' => $primary,
+            'images' => !empty($photos) ? $photos : null,
         ]);
 
         flash('success', "Room \"{$name}\" updated successfully.");
@@ -511,6 +538,20 @@ final class HotelController extends Controller
         $this->verifyCsrf();
         $this->ensureHotelPartner();
 
+        Auth::refreshUser();
+        $redirectTo = trim((string) $this->input('redirect_to', '/dashboard#reservations'));
+
+        if (User::isGuideWarned((int) Auth::id())) {
+            $msg = 'Your account has an active administrator warning. Reservation actions (Confirm, Check In, Complete, and Cancel) are restricted until an administrator clears this warning.';
+            if ($this->isJson() || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
+                $this->json(['error' => $msg, 'restricted' => true], 403);
+                return;
+            }
+            flash('error', $msg);
+            redirect($redirectTo === '/dashboard/bookings' ? '/dashboard/bookings' : '/dashboard#reservations');
+            return;
+        }
+
         $bookingId = (int) $id;
         $booking = Booking::find($bookingId);
         if ($booking === null) {
@@ -550,25 +591,30 @@ final class HotelController extends Controller
 
             case 'check_in':
                 $isAlreadySettled = ($booking['payment_stage'] ?? '') === 'settled';
-                if (!$isAlreadySettled && $balance <= 0 && (float) ($booking['total_amount'] ?? 0) > (float) ($booking['deposit_amount'] ?? 0)) {
-                    $balance = max(0.0, round((float) $booking['total_amount'] - (float) ($booking['deposit_amount'] ?? 0), 2));
-                }
                 if ($isAlreadySettled) {
                     $db->prepare("UPDATE bookings SET hotel_status = 'checked_in', payment_stage = 'settled', balance_amount = 0.00 WHERE id = ?")->execute([$bookingId]);
-                    flash('success', "Guest checked in! Reservation #{$bookingId} is fully settled.");
+                    flash('success', "Guest checked in! Reservation #{$bookingId} is Settled.");
                 } else {
-                    $db->prepare("UPDATE bookings SET hotel_status = 'checked_in', payment_stage = 'balance_due', balance_amount = ? WHERE id = ?")->execute([$balance, $bookingId]);
-                    flash('success', "Guest checked in! Remaining balance of " . money($balance) . " is due at front desk.");
+                    // Calculate remaining balance to record payment at check-in
+                    if ($balance <= 0 && (float) ($booking['total_amount'] ?? 0) > (float) ($booking['deposit_amount'] ?? 0)) {
+                        $balance = max(0.0, round((float) $booking['total_amount'] - (float) ($booking['deposit_amount'] ?? 0), 2));
+                    }
+                    if ($balance > 0) {
+                        Payment::create($bookingId, $balance, 'front_desk_checkin', 'paid');
+                    }
+                    // Remaining balance payment status automatically becomes 'Paid'
+                    $db->prepare("UPDATE bookings SET hotel_status = 'checked_in', payment_stage = 'paid', balance_amount = 0.00 WHERE id = ?")->execute([$bookingId]);
+                    flash('success', "Guest checked in! Reservation #{$bookingId} remaining balance is marked Paid.");
                 }
                 break;
 
             case 'settle_balance':
-                // Record the remaining front desk payment if not already recorded or settled
-                if ($balance > 0 && ($booking['payment_stage'] ?? '') !== 'settled') {
-                    Payment::create($bookingId, $balance, 'front_desk_cash', 'paid');
+                // Checkout transition: preserve existing behavior marking payment status as 'Settled'
+                if ($balance > 0 && !in_array(($booking['payment_stage'] ?? ''), ['settled', 'paid'], true)) {
+                    Payment::create($bookingId, $balance, 'front_desk_checkout', 'paid');
                 }
                 $db->prepare("UPDATE bookings SET hotel_status = 'completed', payment_stage = 'settled', balance_amount = 0.00, status = 'completed', unit_completed_at = NOW() WHERE id = ?")->execute([$bookingId]);
-                flash('success', "Front desk balance settled! Reservation #{$bookingId} marked completed.");
+                flash('success', "Guest checked out! Reservation #{$bookingId} is Settled and completed.");
                 break;
 
             case 'no_show':
@@ -638,17 +684,27 @@ final class HotelController extends Controller
         $address = trim((string) $this->input('address', ''));
         $summary = trim((string) $this->input('summary', ''));
         $duration = trim((string) $this->input('duration', 'Check-in 2:00 PM / Check-out 12:00 PM'));
+        if ($duration === '') {
+            $duration = 'Check-in 2:00 PM / Check-out 12:00 PM';
+        } else {
+            $parsedTimes = Listing::parseCheckInOutTimes($duration);
+            if (!$parsedTimes['valid']) {
+                $errors['duration'] = 'Please enter valid check-in and check-out times (e.g. 10:00PM - 12:00PM or 2:00 PM / 12:00 PM).';
+            }
+        }
         $included = trim((string) $this->input('included', ''));
         $notIncluded = trim((string) $this->input('not_included', ''));
 
-        $price = (float) $this->input('price', 0);
-        if ($price <= 0) {
-            $errors['price'] = 'Please enter a valid starting nightly rate.';
-        }
-
         $coverUrl = trim((string) $this->input('cover_image', ''));
-        if ($coverUrl !== '' && !filter_var($coverUrl, FILTER_VALIDATE_URL)) {
-            $errors['cover_image'] = 'Cover image must be a valid URL.';
+        if ($coverUrl !== '') {
+            if (str_starts_with($coverUrl, 'data:image/')) {
+                // Ignore base64 data preview strings submitted inadvertently from client
+                $coverUrl = '';
+            } elseif (!filter_var($coverUrl, FILTER_VALIDATE_URL)
+                && !str_starts_with($coverUrl, 'uploads/')
+                && !str_starts_with($coverUrl, '/uploads/')) {
+                $errors['cover_image'] = 'Cover image must be a valid URL.';
+            }
         }
 
         if ($errors !== []) {
@@ -669,7 +725,6 @@ final class HotelController extends Controller
             'address' => $address,
             'summary' => $summary,
             'description' => $description,
-            'price' => $price,
             'duration' => $duration,
             'included' => $included,
             'not_included' => $notIncluded,
@@ -766,4 +821,158 @@ final class HotelController extends Controller
         }
         return $fallback;
     }
+
+    /**
+     * Resolve up to 3 photos for a hotel listing from uploads, URLs, and existing data.
+     *
+     * @return array<int, string>
+     */
+    private function resolveHotelPhotos(?int $listingId = null): array
+    {
+        $existing = $listingId !== null ? Listing::getPhotos($listingId) : [];
+        $photos = [];
+
+        for ($i = 0; $i < 3; $i++) {
+            $isRemoved = !empty($_POST['photo_removed_' . $i]) || !empty($_POST['photos_removed'][$i]);
+            if ($isRemoved) {
+                continue;
+            }
+
+            $file = null;
+            if (isset($_FILES['photo_file_' . $i]) && Upload::present($_FILES['photo_file_' . $i])) {
+                $file = $_FILES['photo_file_' . $i];
+            } elseif (isset($_FILES['photos_file']['name'][$i]) && ($_FILES['photos_file']['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $file = [
+                    'name' => $_FILES['photos_file']['name'][$i],
+                    'type' => $_FILES['photos_file']['type'][$i],
+                    'tmp_name' => $_FILES['photos_file']['tmp_name'][$i],
+                    'error' => $_FILES['photos_file']['error'][$i],
+                    'size' => $_FILES['photos_file']['size'][$i],
+                ];
+            } elseif ($i === 0 && isset($_FILES['cover_file']) && Upload::present($_FILES['cover_file'])) {
+                $file = $_FILES['cover_file'];
+            }
+
+            if ($file !== null) {
+                try {
+                    $uploadedPath = Upload::store($file, 'listings/' . Auth::id(), ['jpg', 'jpeg', 'png', 'webp']);
+                    $photos[] = $uploadedPath;
+                    continue;
+                } catch (\RuntimeException $e) {
+                    // skip invalid image
+                }
+            }
+
+            $url = null;
+            if (!empty($_POST['photo_url_' . $i])) {
+                $url = trim((string) $_POST['photo_url_' . $i]);
+            } elseif (!empty($_POST['photos_url'][$i])) {
+                $url = trim((string) $_POST['photos_url'][$i]);
+            } elseif ($i === 0 && !empty($_POST['cover_image'])) {
+                $url = trim((string) $_POST['cover_image']);
+            }
+
+            if ($url !== null && $url !== '') {
+                if (!str_starts_with($url, 'data:image/')) {
+                    $photos[] = $url;
+                    continue;
+                }
+            }
+
+            if (isset($existing[$i]) && $existing[$i] !== '') {
+                $photos[] = $existing[$i];
+            }
+        }
+
+        $clean = [];
+        foreach ($photos as $p) {
+            $p = trim((string) $p);
+            if ($p !== '' && !in_array($p, $clean, true)) {
+                $clean[] = $p;
+            }
+        }
+
+        return array_values(array_slice($clean, 0, 3));
+    }
+
+    /**
+     * Resolve up to 3 photos for a hotel room from uploads, URLs, and existing data.
+     *
+     * @return array<int, string>
+     */
+    private function resolveRoomPhotos(?int $roomId = null): array
+    {
+        $existing = [];
+        if ($roomId !== null) {
+            $r = HotelRoom::find($roomId);
+            if ($r !== null) {
+                $existing = HotelRoom::getPhotos($r);
+            }
+        }
+
+        $photos = [];
+
+        for ($i = 0; $i < 3; $i++) {
+            $isRemoved = !empty($_POST['room_photo_removed_' . $i]) || !empty($_POST['room_photos_removed'][$i]);
+            if ($isRemoved) {
+                continue;
+            }
+
+            $file = null;
+            if (isset($_FILES['room_photo_file_' . $i]) && Upload::present($_FILES['room_photo_file_' . $i])) {
+                $file = $_FILES['room_photo_file_' . $i];
+            } elseif (isset($_FILES['room_photos_file']['name'][$i]) && ($_FILES['room_photos_file']['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $file = [
+                    'name' => $_FILES['room_photos_file']['name'][$i],
+                    'type' => $_FILES['room_photos_file']['type'][$i],
+                    'tmp_name' => $_FILES['room_photos_file']['tmp_name'][$i],
+                    'error' => $_FILES['room_photos_file']['error'][$i],
+                    'size' => $_FILES['room_photos_file']['size'][$i],
+                ];
+            } elseif ($i === 0 && isset($_FILES['room_image_file']) && Upload::present($_FILES['room_image_file'])) {
+                $file = $_FILES['room_image_file'];
+            }
+
+            if ($file !== null) {
+                try {
+                    $uploadedPath = Upload::store($file, 'rooms/' . Auth::id(), ['jpg', 'jpeg', 'png', 'webp']);
+                    $photos[] = $uploadedPath;
+                    continue;
+                } catch (\RuntimeException $e) {
+                    // skip invalid image
+                }
+            }
+
+            $url = null;
+            if (!empty($_POST['room_photo_url_' . $i])) {
+                $url = trim((string) $_POST['room_photo_url_' . $i]);
+            } elseif (!empty($_POST['room_photos_url'][$i])) {
+                $url = trim((string) $_POST['room_photos_url'][$i]);
+            } elseif ($i === 0 && !empty($_POST['image'])) {
+                $url = trim((string) $_POST['image']);
+            }
+
+            if ($url !== null && $url !== '') {
+                if (!str_starts_with($url, 'data:image/')) {
+                    $photos[] = $url;
+                    continue;
+                }
+            }
+
+            if (isset($existing[$i]) && $existing[$i] !== '') {
+                $photos[] = $existing[$i];
+            }
+        }
+
+        $clean = [];
+        foreach ($photos as $p) {
+            $p = trim((string) $p);
+            if ($p !== '' && !in_array($p, $clean, true)) {
+                $clean[] = $p;
+            }
+        }
+
+        return array_values(array_slice($clean, 0, 3));
+    }
+
 }

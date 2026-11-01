@@ -77,9 +77,27 @@ export default function WishlistScreen() {
           </View>
         ) : null}
         <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
-        <Text style={[styles.price, { color: colors.accent }]}>
-          {item.price > 0 ? formatPrice(item.price) : t('free')}
-        </Text>
+        {item.category_slug === 'hotels' ? (
+          item.price > 0 ? (
+            <View>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.textMute, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>
+                Lowest price room
+              </Text>
+              <Text style={[styles.price, { color: colors.accent, marginTop: 2 }]}>
+                {formatPrice(item.price)}
+                <Text style={{ fontSize: 12, fontWeight: '400', color: colors.textMute }}> / per night</Text>
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textMute, fontStyle: 'italic', marginTop: 4 }}>
+              Price unavailable
+            </Text>
+          )
+        ) : (
+          <Text style={[styles.price, { color: colors.accent }]}>
+            {item.price > 0 ? formatPrice(item.price) : t('free')}
+          </Text>
+        )}
       </View>
       <FavoriteHeart
         listingId={item.id}

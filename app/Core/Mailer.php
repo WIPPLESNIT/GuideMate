@@ -15,6 +15,9 @@ final class Mailer
     /** @var bool Whether to force failure for testing */
     private static bool $simulateFailure = false;
 
+    /** @var bool Fast-fail flag when SMTP host is down or timing out in current request */
+    private static bool $smtpUnavailable = false;
+
     /**
      * Send an email to a recipient.
      *
@@ -127,12 +130,18 @@ final class Mailer
         string $from,
         string $fromName
     ): bool {
+        if (self::$smtpUnavailable) {
+            self::logMailLocally($to, $subject, $body, $htmlBody);
+            return false;
+        }
+
         $host = (string) ($config['host'] ?? '');
         $port = (int) ($config['port'] ?? 587);
         $user = (string) ($config['username'] ?? '');
         $pass = (string) ($config['password'] ?? '');
         $encryption = strtolower((string) ($config['encryption'] ?? ($port === 465 ? 'ssl' : 'tls')));
         $timeout = (int) ($config['timeout'] ?? 15);
+        $connectTimeout = min(3, max(1, (int) ($config['connect_timeout'] ?? 3)));
 
         $socket = null;
 
@@ -145,12 +154,13 @@ final class Mailer
 
             $errno = 0;
             $errstr = '';
-            $socket = @fsockopen($connectHost, $port, $errno, $errstr, $timeout);
+            $socket = @fsockopen($connectHost, $port, $errno, $errstr, $connectTimeout);
             if ($socket === false) {
+                self::$smtpUnavailable = true;
                 throw new \RuntimeException("Could not connect to SMTP host {$host}:{$port} - {$errstr} ({$errno})");
             }
 
-            stream_set_timeout($socket, $timeout);
+            stream_set_timeout($socket, min(5, $timeout));
 
             // 1. Initial greeting
             self::smtpReadReply($socket, '220');
@@ -209,6 +219,7 @@ final class Mailer
 
             return true;
         } catch (\Throwable $e) {
+            self::$smtpUnavailable = true;
             self::logMailFailure($to, $subject, $e->getMessage());
             return false;
         } finally {
@@ -258,6 +269,7 @@ final class Mailer
             }
             return $success;
         } catch (\Throwable $e) {
+            self::$smtpUnavailable = true;
             self::logMailFailure($to, $subject, $e->getMessage());
             return false;
         }

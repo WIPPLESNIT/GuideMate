@@ -116,19 +116,21 @@ assertCondition($booking['hotel_status'] === 'pending', "Initial hotel status is
 // ── Test 2: Hotel Staff Confirms Reservation and Checks In Guest ──
 echo "\n--- Test 2: Front Desk Changes Status to 'Checked In' ---\n";
 
-// HotelController check_in logic simulation:
-// Front desk sets status to checked_in, transitions payment_stage to balance_due
+// HotelController check_in logic:
 $balance = (float) ($booking['balance_amount'] ?? 0);
 if ($balance <= 0 && (float) ($booking['total_amount'] ?? 0) > (float) ($booking['deposit_amount'] ?? 0)) {
     $balance = max(0.0, round((float) $booking['total_amount'] - (float) ($booking['deposit_amount'] ?? 0), 2));
 }
+if ($balance > 0) {
+    Payment::create($bookingId, $balance, 'front_desk_checkin', 'paid');
+}
 
-$db->prepare("UPDATE bookings SET hotel_status = 'checked_in', payment_stage = 'balance_due', balance_amount = ? WHERE id = ?")->execute([$balance, $bookingId]);
+$db->prepare("UPDATE bookings SET hotel_status = 'checked_in', payment_stage = 'paid', balance_amount = 0.00 WHERE id = ?")->execute([$bookingId]);
 
 $checkedInBooking = Booking::find($bookingId);
 assertCondition($checkedInBooking['hotel_status'] === 'checked_in', "Reservation status updated to 'checked_in'");
-assertCondition($checkedInBooking['payment_stage'] === 'balance_due', "Reservation payment stage set to 'balance_due'");
-assertCondition((float) $checkedInBooking['balance_amount'] === 6400.00, "Remaining balance ₱6,400.00 is active and payable");
+assertCondition($checkedInBooking['payment_stage'] === 'paid', "Reservation payment stage set to 'paid'");
+assertCondition((float) $checkedInBooking['balance_amount'] === 0.00, "Remaining balance updated to 0.00");
 
 // ── Test 3: API Balance Payment Endpoint Validation ──
 echo "\n--- Test 3: API Endpoint Balance Payment Validation ---\n";
@@ -156,64 +158,27 @@ $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $otherToken;
 $res = invokeApiPayBalance($bookingId);
 assertCondition($res['status'] === 404, "Endpoint rejects unauthorized booking owner with 404");
 
-// 3c. Valid user but booking not checked in (temporarily set to pending)
+// 3c. Valid user - checked-in reservation balance payment blocked (already paid)
 $guestToken = \App\Core\ApiAuth::issue($guestId);
 $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $guestToken;
-$db->prepare("UPDATE bookings SET hotel_status = 'confirmed' WHERE id = ?")->execute([$bookingId]);
 $res = invokeApiPayBalance($bookingId);
-assertCondition($res['status'] === 422, "Endpoint rejects payment if guest is not yet checked in (status: confirmed)");
-assertCondition(str_contains($res['data']['error'] ?? '', 'checked in'), "Error explains balance payment is available once checked in");
+assertCondition($res['status'] === 422, "Endpoint blocks balance payment for checked-in reservation with HTTP 422");
+assertCondition(str_contains($res['data']['error'] ?? '', 'no outstanding balance'), "Error explains reservation has no outstanding balance due");
 
-// Reset back to checked_in
-$db->prepare("UPDATE bookings SET hotel_status = 'checked_in' WHERE id = ?")->execute([$bookingId]);
-
-// 3d. Missing or short reference for GCash payment
-$res = invokeApiPayBalance($bookingId, [
-    'payment_method' => 'gcash',
-    'payment_reference' => '12', // too short (< 4)
-]);
-assertCondition($res['status'] === 422, "Rejects GCash payment with reference < 4 characters");
-
-// ── Test 4: Successful Balance Payment via GCash ──
-echo "\n--- Test 4: Successful Balance Payment via Mobile App ---\n";
-$gcashRef = 'GCASH-REF-' . strtoupper(bin2hex(random_bytes(4)));
-$res = invokeApiPayBalance($bookingId, [
-    'payment_method' => 'gcash',
-    'payment_reference' => $gcashRef,
-]);
-
-assertCondition($res['status'] === 200, "Balance payment succeeded with HTTP 200");
-assertCondition(($res['data']['success'] ?? false) === true, "Response reports success = true");
-assertCondition((float) ($res['data']['amount_paid'] ?? 0) === 6400.00, "Amount paid matches remaining balance: ₱6,400.00");
-
-// Verify booking state in database
-$settledBooking = Booking::find($bookingId);
-assertCondition($settledBooking['payment_stage'] === 'settled', "Booking payment_stage is now 'settled'");
-assertCondition((float) $settledBooking['balance_amount'] === 0.00, "Booking balance_amount is now 0.00");
-assertCondition($settledBooking['hotel_status'] === 'checked_in', "Booking remains 'checked_in' while guest stay is ongoing");
-
-// Verify payments table record
-$paymentRecord = Database::first("SELECT * FROM payments WHERE booking_id = ? AND method = 'gcash' ORDER BY id DESC LIMIT 1", [$bookingId]);
+// ── Test 4: Verify Payment Record Created at Check-in ──
+echo "\n--- Test 4: Verified Front Desk Check-in Payment Record ---\n";
+$paymentRecord = Database::first("SELECT * FROM payments WHERE booking_id = ? AND method = 'front_desk_checkin' ORDER BY id DESC LIMIT 1", [$bookingId]);
 assertCondition($paymentRecord !== null, "Payment record created in payments table");
 assertCondition((float) $paymentRecord['amount'] === 6400.00, "Payment record amount is ₱6,400.00");
 assertCondition($paymentRecord['status'] === 'paid', "Payment record status is 'paid'");
-assertCondition($paymentRecord['reference'] === $gcashRef, "Payment record reference matches user reference: {$gcashRef}");
 
-// ── Test 5: Re-paying Settled Balance is Prevented ──
-echo "\n--- Test 5: Prevention of Double Balance Payment ---\n";
-$res = invokeApiPayBalance($bookingId, [
-    'payment_method' => 'card',
-]);
-assertCondition($res['status'] === 422, "Prevents duplicate balance payment with 422");
-assertCondition(str_contains($res['data']['error'] ?? '', 'no outstanding balance'), "Error correctly indicates no balance due");
-
-// ── Test 6: Front Desk Settle & Check Out ──
-echo "\n--- Test 6: Front Desk Checkout of Settled Reservation ---\n";
+// ── Test 5: Front Desk Checkout Transitions to 'Settled' ──
+echo "\n--- Test 5: Front Desk Checkout Transitions to Settled ---\n";
 // When front desk performs settle_balance / checkout
-$balance = (float) ($settledBooking['balance_amount'] ?? 0);
+$balance = (float) ($checkedInBooking['balance_amount'] ?? 0);
 $initialPaymentCount = (int) Database::first("SELECT COUNT(*) as c FROM payments WHERE booking_id = ?", [$bookingId])['c'];
 
-if ($balance > 0 && ($settledBooking['payment_stage'] ?? '') !== 'settled') {
+if ($balance > 0 && !in_array(($checkedInBooking['payment_stage'] ?? ''), ['settled', 'paid'], true)) {
     Payment::create($bookingId, $balance, 'front_desk_cash', 'paid');
 }
 $db->prepare("UPDATE bookings SET hotel_status = 'completed', payment_stage = 'settled', balance_amount = 0.00, status = 'completed', unit_completed_at = NOW() WHERE id = ?")->execute([$bookingId]);
@@ -222,8 +187,8 @@ $completedBooking = Booking::find($bookingId);
 $newPaymentCount = (int) Database::first("SELECT COUNT(*) as c FROM payments WHERE booking_id = ?", [$bookingId])['c'];
 
 assertCondition($completedBooking['hotel_status'] === 'completed', "Front desk successfully completed check-out");
-assertCondition($completedBooking['payment_stage'] === 'settled', "Booking remains settled");
-assertCondition($newPaymentCount === $initialPaymentCount, "No duplicate cash payment created because balance was already settled via mobile app");
+assertCondition($completedBooking['payment_stage'] === 'settled', "Booking payment_stage transitioned to 'settled'");
+assertCondition($newPaymentCount === $initialPaymentCount, "No duplicate cash payment created because balance was already recorded at check-in");
 
 // Cleanup test booking
 Database::run("DELETE FROM payments WHERE booking_id = ?", [$bookingId]);

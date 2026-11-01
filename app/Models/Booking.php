@@ -63,13 +63,21 @@ final class Booking
         float $totalAmount,
         float $depositAmount,
         float $balanceAmount,
-        string $notes = ""
+        string $notes = "",
+        ?string $checkInTime = null,
+        ?string $checkOutTime = null
     ): int {
+        if ($checkInTime === null || $checkOutTime === null) {
+            $listing = Listing::find($listingId);
+            $parsed = Listing::parseCheckInOutTimes($listing['duration'] ?? null);
+            $checkInTime = $checkInTime ?? $parsed['check_in_time'];
+            $checkOutTime = $checkOutTime ?? $parsed['check_out_time'];
+        }
         $token = bin2hex(random_bytes(16));
         return Database::insert(
             "INSERT INTO bookings 
-                (listing_id, room_id, user_id, booking_date, check_in_date, check_out_date, nights, guests, total_amount, deposit_amount, balance_amount, payment_stage, hotel_status, status, notes, verify_token)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \"deposit_paid\", \"pending\", \"pending\", ?, ?)",
+                (listing_id, room_id, user_id, booking_date, check_in_date, check_out_date, booking_time, booking_end_time, nights, guests, total_amount, deposit_amount, balance_amount, payment_stage, hotel_status, status, notes, verify_token)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \"deposit_paid\", \"pending\", \"pending\", ?, ?)",
             [
                 $listingId,
                 $roomId,
@@ -77,6 +85,8 @@ final class Booking
                 $checkIn,
                 $checkIn,
                 $checkOut,
+                $checkInTime,
+                $checkOutTime,
                 $nights,
                 $guests,
                 $totalAmount,
@@ -143,7 +153,7 @@ final class Booking
     {
         return Database::first(
             'SELECT b.*, l.title AS listing_title, l.slug AS listing_slug, l.cover_image, l.user_id AS guide_id,
-                    l.price_unit, hr.name AS room_name, hr.price_per_night AS room_price,
+                    l.price_unit, l.duration AS listing_duration, hr.name AS room_name, hr.price_per_night AS room_price,
                     u.name AS customer_name, u.email AS customer_email
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
@@ -163,6 +173,7 @@ final class Booking
     {
         return Database::all(
             'SELECT b.*, l.title AS listing_title, l.slug AS listing_slug, l.cover_image, l.area,
+                    l.duration AS listing_duration,
                     hr.name AS room_name,
                     (SELECT status FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_status,
                     (SELECT id FROM disputes WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS dispute_id,
@@ -292,12 +303,12 @@ final class Booking
     {
         return Database::all(
             'SELECT b.*, l.title AS listing_title, l.slug AS listing_slug, hr.name AS room_name,
-                    u.name AS customer_name, u.email AS customer_email, p.status AS payment_status
+                    u.name AS customer_name, u.email AS customer_email,
+                    (SELECT status FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_status
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
              JOIN users u ON u.id = b.user_id
              LEFT JOIN hotel_rooms hr ON hr.id = b.room_id
-             LEFT JOIN payments p ON p.booking_id = b.id
              WHERE l.user_id = ?
              ORDER BY FIELD(b.status, "pending", "confirmed", "completed", "disputed", "cancelled", "refunded"), b.created_at DESC',
             [$guideId]
@@ -738,17 +749,37 @@ final class Booking
         return (int) ($row['c'] ?? 0);
     }
 
-    public static function revenueForGuide(int $guideId): float
+    /**
+     * Total revenue generated for a service provider (guide or hotel owner)
+     * from applicable confirmed, checked-in, or completed bookings with verified payments.
+     */
+    public static function revenueForProvider(int $providerId): float
     {
         $row = Database::first(
-            'SELECT COALESCE(SUM(b.total_amount),0) AS total
+            'SELECT COALESCE(SUM(b.total_amount), 0) AS total
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
-             JOIN payments p ON p.booking_id = b.id
-             WHERE l.user_id = ? AND p.status = "paid" AND b.status IN ("confirmed", "completed")',
-            [$guideId]
+             WHERE l.user_id = ?
+               AND (
+                   b.status IN ("confirmed", "completed")
+                   OR b.hotel_status IN ("confirmed", "checked_in", "completed")
+               )
+               AND b.status NOT IN ("cancelled", "refunded")
+               AND (b.hotel_status IS NULL OR b.hotel_status NOT IN ("cancelled", "refunded"))
+               AND EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.status = "paid")',
+            [$providerId]
         );
         return (float) ($row['total'] ?? 0);
+    }
+
+    public static function revenueForGuide(int $guideId): float
+    {
+        return self::revenueForProvider($guideId);
+    }
+
+    public static function revenueForHotelOwner(int $ownerId): float
+    {
+        return self::revenueForProvider($ownerId);
     }
 
     /**
@@ -762,9 +793,9 @@ final class Booking
             'SELECT DATE_FORMAT(b.created_at, "%Y-%m") AS month, COALESCE(SUM(b.total_amount),0) AS total
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
-             JOIN payments p ON p.booking_id = b.id
-             WHERE l.user_id = ? AND p.status = "paid" AND b.status IN ("confirmed", "completed")
+             WHERE l.user_id = ? AND b.status IN ("confirmed", "completed")
                AND b.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+               AND EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.status = "paid")
              GROUP BY month ORDER BY month ASC',
             [$guideId, $months]
         );

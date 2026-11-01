@@ -365,6 +365,7 @@ final class RentalController extends Controller
 
     public function requests(): void
     {
+        Auth::refreshUser();
         $user = Auth::user();
         $isGlobalAdmin = ($user['role'] ?? '') === 'admin';
         $requests = $isGlobalAdmin
@@ -374,12 +375,26 @@ final class RentalController extends Controller
         $this->view('rental/requests', [
             'title' => 'Rental Requests',
             'requests' => $requests,
+            'isWarned' => User::isGuideWarned((int) ($user['id'] ?? 0)),
+            'warningNote' => (string) ($user['guide_warning_note'] ?? ''),
         ]);
     }
 
     public function updateStatus(string $id): void
     {
         $this->verifyCsrf();
+        Auth::refreshUser();
+        if (User::isGuideWarned((int) Auth::id())) {
+            $msg = 'Your account has an active administrator warning. Rental actions (Confirm, Complete, and Cancel) are restricted until an administrator clears this warning.';
+            if ($this->isJson() || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
+                $this->json(['error' => $msg, 'restricted' => true], 403);
+                return;
+            }
+            flash('error', $msg);
+            redirect('/dashboard/rentals');
+            return;
+        }
+
         $status = (string) $this->input('status', '');
         if (!in_array($status, ['pending', 'approved', 'contacted', 'cancelled', 'completed'], true)) {
             flash('error', 'Invalid rental status.');
@@ -429,6 +444,18 @@ final class RentalController extends Controller
     public function refund(string $id): void
     {
         $this->verifyCsrf();
+        Auth::refreshUser();
+        if (User::isGuideWarned((int) Auth::id())) {
+            $msg = 'Your account has an active administrator warning. Refund actions are restricted until an administrator clears this warning.';
+            if ($this->isJson() || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
+                $this->json(['error' => $msg, 'restricted' => true], 403);
+                return;
+            }
+            flash('error', $msg);
+            redirect('/dashboard/rentals');
+            return;
+        }
+
         $rental = RentalRequest::find((int) $id);
         if ($rental === null) {
             flash('error', 'Reservation not found.');
@@ -450,6 +477,18 @@ final class RentalController extends Controller
     public function rejectReport(string $id): void
     {
         $this->verifyCsrf();
+        Auth::refreshUser();
+        if (User::isGuideWarned((int) Auth::id())) {
+            $msg = 'Your account has an active administrator warning. Report actions are restricted until an administrator clears this warning.';
+            if ($this->isJson() || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
+                $this->json(['error' => $msg, 'restricted' => true], 403);
+                return;
+            }
+            flash('error', $msg);
+            redirect('/dashboard/rentals');
+            return;
+        }
+
         $note = trim((string) $this->input('owner_note', ''));
         RentalRequest::rejectReport((int) $id, $note !== '' ? $note : null);
         flash('success', 'Report marked as reviewed.');

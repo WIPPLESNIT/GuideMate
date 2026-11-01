@@ -57,15 +57,17 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                     $propertyName = (string) ($b['listing_title'] ?? 'Hotel Property');
                                     $roomName = (string) (!empty($b['room_name']) ? $b['room_name'] : 'Standard Room');
 
+                                    $isCancelled = in_array($hotelStatus, ['cancelled', 'refunded'], true) || in_array((string) ($b['status'] ?? ''), ['cancelled', 'refunded'], true) || !empty($b['cancelled_at']);
+
                                     $resPillClass = match ($hotelStatus) {
                                         'confirmed' => 'pill-approved',
                                         'deposit_paid' => 'pill-paid',
                                         'accepted' => 'pill-completed',
                                         'checked_in' => 'pill-completed',
                                         'pending' => 'pill-pending',
-                                        'cancelled' => 'pill-cancelled',
+                                        'cancelled', 'refunded' => 'pill-cancelled',
                                         'no_show' => 'pill-refunded',
-                                        default => 'pill-secondary',
+                                        default => ($isCancelled ? 'pill-cancelled' : 'pill-secondary'),
                                     };
                                     $resPillLabel = match ($hotelStatus) {
                                         'pending' => 'Pending',
@@ -74,9 +76,9 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                         'confirmed' => 'Confirmed',
                                         'checked_in' => 'Checked In',
                                         'completed' => 'Completed',
-                                        'cancelled' => 'Cancelled',
+                                        'cancelled', 'refunded' => 'Cancelled',
                                         'no_show' => 'No-Show',
-                                        default => ucfirst($hotelStatus),
+                                        default => ($isCancelled ? 'Cancelled' : ucfirst($hotelStatus)),
                                     };
                                     ?>
                                     <tr>
@@ -106,19 +108,30 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
 
                                         <!-- 4. BALANCE DUE AT HOTEL -->
                                         <td>
-                                            <?php if ($balance > 0 && !in_array($hotelStatus, ['completed', 'cancelled', 'no_show'], true)): ?>
+                                            <?php if ($isCancelled): ?>
+                                                <span class="hint" style="font-weight:600;color:var(--ink-200,#6B7280);">-</span>
+                                            <?php elseif ($balance > 0 && !in_array($hotelStatus, ['completed', 'cancelled', 'refunded', 'no_show', 'checked_in'], true) && ($b['payment_stage'] ?? '') !== 'settled' && ($b['payment_stage'] ?? '') !== 'paid'): ?>
                                                 <strong style="font-size:0.92rem;color:#D97706;display:block;line-height:1.2;"><?= money($balance) ?></strong>
                                                 <small class="hint" style="font-size:0.72rem;color:#B45309;font-weight:600;white-space:nowrap;display:block;margin-top:2px;">At front desk</small>
-                                            <?php elseif ($hotelStatus === 'completed'): ?>
+                                            <?php elseif ($hotelStatus === 'checked_in' || ($b['payment_stage'] ?? '') === 'paid'): ?>
+                                                <span class="pill pill-paid" style="font-size:0.74rem;padding:2px 7px;background:#DCFCE7;color:#15803D;border:1px solid #86EFAC;">Paid</span>
+                                            <?php elseif ($hotelStatus === 'completed' || ($b['payment_stage'] ?? '') === 'settled'): ?>
                                                 <span class="pill pill-approved" style="font-size:0.74rem;padding:2px 7px;">Settled</span>
                                             <?php else: ?>
-                                                <span class="hint">—</span>
+                                                <span class="hint">-</span>
                                             <?php endif; ?>
                                         </td>
 
                                         <!-- 5. STATUS -->
-                                        <td>
-                                            <span class="pill <?= $resPillClass ?>" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;"><?= e($resPillLabel) ?></span>
+                                        <td style="vertical-align:middle;">
+                                            <div style="display:inline-flex;flex-direction:column;align-items:center;gap:6px;">
+                                                <span class="pill <?= $resPillClass ?>" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;"><?= e($resPillLabel) ?></span>
+                                                <?php if ($isCancelled && !empty($b['refund_amount']) && (float) $b['refund_amount'] > 0): ?>
+                                                    <span class="res-refund-amount" style="font-size:0.74rem;color:#2563EB;font-weight:700;line-height:1.2;white-space:nowrap;letter-spacing:0.01em;">
+                                                        Refunded <?= money((float) $b['refund_amount']) ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
                                         </td>
 
                                         <!-- 6. ACTIONS (3-DOT DROPDOWN MENU) -->
@@ -138,7 +151,44 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                      id="resActionMenuBk_<?= (int) $b['id'] ?>"
                                                      role="menu"
                                                      aria-labelledby="resActionBtnBk_<?= (int) $b['id'] ?>">
-                                                    <?php if ($hotelStatus === 'pending'): ?>
+                                                    <?php if ($isWarned): ?>
+                                                        <div class="res-action-restricted-notice" title="Action unavailable: Active administrator warning on your account.">
+                                                            <span class="res-action-restricted-badge"><?= admin_icon('alert-triangle', 13) ?> Actions Restricted</span>
+                                                            <span>Unavailable due to an active administrator warning.</span>
+                                                        </div>
+                                                        <?php if ($hotelStatus === 'pending'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Accept Reservation
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-confirm" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Confirm Deposit
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Cancel Reservation
+                                                            </button>
+                                                        <?php elseif ($hotelStatus === 'accepted' || $hotelStatus === 'deposit_paid'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-confirm" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Confirm Deposit
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Cancel Reservation
+                                                            </button>
+                                                        <?php elseif ($hotelStatus === 'confirmed'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-checkin" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Check In
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Cancel Reservation
+                                                            </button>
+                                                        <?php elseif ($hotelStatus === 'checked_in'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-settle" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                Complete Check Out
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <div style="padding: 8px 12px; font-size: 0.8rem; color: #94a3b8; font-weight: 500;">No actions available</div>
+                                                        <?php endif; ?>
+
+                                                    <?php elseif ($hotelStatus === 'pending'): ?>
                                                         <!-- Accept Reservation -->
                                                         <form method="post" action="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form">
                                                             <?= csrf_field() ?>
@@ -201,12 +251,12 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                         </form>
 
                                                     <?php elseif ($hotelStatus === 'checked_in'): ?>
-                                                        <!-- Settle Balance & Check Out -->
-                                                        <form method="post" action="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Collect outstanding balance of <?= money($balance) ?> and complete check-out?');">
+                                                        <!-- Complete Check Out (Transitions to Settled & Completed) -->
+                                                        <form method="post" action="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Complete check-out for this guest? Reservation will be marked Settled and Completed.');">
                                                             <?= csrf_field() ?>
                                                             <input type="hidden" name="redirect_to" value="/dashboard/bookings">
                                                             <button type="submit" name="action" value="settle_balance" class="res-action-item action-settle" role="menuitem">
-                                                                Settle &amp; Check Out
+                                                                Complete Check Out
                                                             </button>
                                                         </form>
 
@@ -296,9 +346,25 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                      role="menu"
                                                      aria-labelledby="bookingActionBtn_<?= (int) $b['id'] ?>">
                                                     <?php if ($isWarned): ?>
-                                                        <div style="padding:8px 12px;font-size:0.8rem;color:#dc2626;font-weight:600;display:flex;align-items:center;gap:6px;">
-                                                            <?= admin_icon('alert-triangle', 14) ?> <?= e(__('g_restricted', 'Actions restricted')) ?>
+                                                        <div class="res-action-restricted-notice" title="Action unavailable: Active administrator warning on your account.">
+                                                            <span class="res-action-restricted-badge"><?= admin_icon('alert-triangle', 13) ?> Actions Restricted</span>
+                                                            <span>Unavailable due to an active administrator warning.</span>
                                                         </div>
+                                                        <?php if ($b['status'] === 'pending'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('check-circle', 14) ?> <?= e(__('g_confirm', 'Confirm')) ?>
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
+                                                            </button>
+                                                        <?php elseif ($b['status'] === 'confirmed'): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('check-circle', 14) ?> <?= e(__('g_complete', 'Complete')) ?>
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
+                                                            </button>
+                                                        <?php endif; ?>
                                                     <?php elseif ($b['status'] === 'pending'): ?>
                                                         <form method="post" action="<?= e(url('/dashboard/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form guide-booking-action" data-action="confirm">
                                                             <?= csrf_field() ?>

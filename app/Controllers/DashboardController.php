@@ -96,15 +96,22 @@ final class DashboardController extends Controller
         $user = Auth::user() ?? $user;
         $uid = (int) $user['id'];
         $stats = Booking::guideRatingStats($uid);
+        $revenue = Booking::revenueForHotelOwner($uid);
+        if ($revenue === 0.0 && isset($user['revenue']) && (float) $user['revenue'] > 0) {
+            $revenue = (float) $user['revenue'];
+        }
         $this->view('dashboard/hotel', [
             'title' => 'Hotel Dashboard',
             'user' => $user,
             'isFirstLogin' => User::isFirstLogin($user),
+            'isWarned' => User::isGuideWarned($uid),
+            'warningNote' => (string) ($user['guide_warning_note'] ?? ''),
             'rooms' => HotelRoom::forOwner($uid),
             'reservations' => Booking::forGuide($uid),
             'listings' => Listing::forHotelOwner($uid),
             'inquiries' => array_slice(Message::conversations($uid), 0, 6),
             'unread' => Message::unreadCount($uid),
+            'revenue' => $revenue,
             'reviewStats' => [
                 'avg_rating' => $stats['avg_rating'] ?? 0,
                 'review_count' => $stats['review_count'] ?? 0,
@@ -144,6 +151,8 @@ final class DashboardController extends Controller
             'title' => 'Rental Dashboard',
             'user' => $user,
             'isFirstLogin' => User::isFirstLogin($user),
+            'isWarned' => User::isGuideWarned($providerId),
+            'warningNote' => (string) ($user['guide_warning_note'] ?? ''),
             'requests' => array_slice($requests, 0, 6),
             'vehicles' => array_slice(Vehicle::forOwner($providerId), 0, 5),
             'vehicleStats' => Vehicle::countForOwner($providerId),

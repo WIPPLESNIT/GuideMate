@@ -143,3 +143,23 @@ To: test_reset_user@example.com
 Subject: Reset your GuideMate password
 Error: Simulated email delivery failure
 ----------------------------------------
+[2026-11-01 14:59:50] MAIL FAILURE
+To: christianyongzon143@gmail.com
+Subject: GuideMate Live SMTP Test (2026-11-01 14:59:50)
+Error: Could not connect to SMTP host smtp.gmail.com:587 - php_network_getaddresses: getaddrinfo for smtp.gmail.com failed: No such host is known.  (0)
+----------------------------------------
+[2026-11-01 16:09:39] MAIL FAILURE
+To: strict_adm_aca6740f@example.com
+Subject: New booking awaiting your confirmation — Hotel-Test
+Error: Could not connect to SMTP host smtp.gmail.com:587 - A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond (10060)
+----------------------------------------
+[2026-11-01 16:11:21] MAIL FAILURE
+To: strict_adm_50b5c0d5@example.com
+Subject: New booking awaiting your confirmation — La Joya Farm Resort & Spa
+Error: Could not connect to SMTP host smtp.gmail.com:587 - A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond (10060)
+----------------------------------------
+[2026-11-01 16:12:09] MAIL FAILURE
+To: chrisyongzon112@gmail.com
+Subject: New booking awaiting your confirmation — La Joya Farm Resort & Spa
+Error: Could not connect to SMTP host smtp.gmail.com:587 - A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond (10060)
+----------------------------------------

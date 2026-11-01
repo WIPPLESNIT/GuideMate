@@ -147,13 +147,6 @@ foreach ($users as $u) {
                         <span class="filter-item-text">Admins</span>
                         <span class="filter-item-count"><?= (int) ($roleCounts['admin'] ?? 0) ?></span>
                     </div>
-                    <?php if ($warnedCount > 0): ?>
-                        <div class="filter-popover-item" role="option" aria-selected="false" data-value="warned" tabindex="-1">
-                            <span class="filter-item-indicator" aria-hidden="true"></span>
-                            <span class="filter-item-text">Restricted</span>
-                            <span class="filter-item-count"><?= (int) $warnedCount ?></span>
-                        </div>
-                    <?php endif; ?>
                 </div>
             </div>
             <!-- Synchronized backing select for accessibility and automated test compatibility -->
@@ -164,9 +157,6 @@ foreach ($users as $u) {
                 <option value="hotel_provider">Hotel Partners</option>
                 <option value="rental_provider">Rental Partners</option>
                 <option value="admin">Admins</option>
-                <?php if ($warnedCount > 0): ?>
-                    <option value="warned">Restricted</option>
-                <?php endif; ?>
             </select>
         </div>
 
@@ -307,8 +297,8 @@ foreach ($users as $u) {
     </div>
 </div>
 
-<div class="panel">
-    <div class="panel-body users-table-wrap" style="padding:0;">
+<div class="panel users-table-panel" style="overflow:visible;">
+    <div class="panel-body users-table-wrap" style="padding:0;overflow:visible;">
         <table class="table table-users">
             <thead>
                 <tr>
@@ -396,16 +386,28 @@ foreach ($users as $u) {
                                     </a>
                                 <?php endif; ?>
 
-                                <!-- Unrestrict (if restricted/warned) -->
-                                <?php if ($isWarned): ?>
-                                    <form method="post" action="<?= e(url('/admin/users/' . (int) $u['id'] . '/clear-warning')) ?>" class="user-action-form js-unrestrict" data-name="<?= e($u['name']) ?>">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="return" value="/admin/users">
-                                        <button type="submit" class="user-action-item user-action-unrestrict" role="menuitem">
-                                            <span class="action-item-icon" aria-hidden="true"><?= admin_icon('unlock', 15) ?></span>
-                                            <span class="action-item-label">Remove Restriction</span>
+                                <!-- Unrestrict or Issue Warning (for service providers) -->
+                                <?php if (\App\Models\User::isProviderRole($role)): ?>
+                                    <?php if ($isWarned): ?>
+                                        <form method="post" action="<?= e(url('/admin/users/' . (int) $u['id'] . '/clear-warning')) ?>" class="user-action-form js-unrestrict" data-name="<?= e($u['name']) ?>">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="return" value="/admin/users">
+                                            <button type="submit" class="user-action-item user-action-unrestrict" role="menuitem">
+                                                <span class="action-item-icon" aria-hidden="true"><?= admin_icon('unlock', 15) ?></span>
+                                                <span class="action-item-label">Remove Restriction</span>
+                                            </button>
+                                        </form>
+                                    <?php else: ?>
+                                        <button type="button"
+                                                class="user-action-item user-action-warn btn-warn-user"
+                                                role="menuitem"
+                                                data-user-id="<?= (int) $u['id'] ?>"
+                                                data-user-name="<?= e($u['name']) ?>"
+                                                data-user-email="<?= e($u['email']) ?>">
+                                            <span class="action-item-icon" aria-hidden="true"><?= admin_icon('alert-triangle', 15) ?></span>
+                                            <span class="action-item-label">Issue Warning</span>
                                         </button>
-                                    </form>
+                                    <?php endif; ?>
                                 <?php endif; ?>
 
                                 <!-- Suspend or Reactivate (non-admin, not self) -->
@@ -512,6 +514,58 @@ foreach ($users as $u) {
     </div>
 </div>
 
+<!-- Warn User Modal -->
+<div class="gm-modal" id="warnUserModal" hidden aria-hidden="true">
+    <div class="gm-modal-backdrop" data-close-warn-modal></div>
+    <div class="gm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="warnUserTitle" style="max-width:520px;border-radius:14px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.25);">
+        <div class="gm-modal-head" style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;background:#ffffff;display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:0.65rem;">
+                <div style="width:36px;height:36px;border-radius:8px;background:#fef2f2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex-shrink:0;">
+                    ⚠️
+                </div>
+                <div>
+                    <h3 id="warnUserTitle" style="margin:0;font-size:1.05rem;font-weight:700;color:#0f172a;">Issue Administrator Warning</h3>
+                    <small class="hint" style="font-size:0.75rem;">Restricts booking actions until cleared</small>
+                </div>
+            </div>
+            <button type="button" class="gm-modal-close" data-close-warn-modal aria-label="Close" style="color:#94a3b8;font-size:1.5rem;cursor:pointer;background:none;border:none;padding:0 4px;line-height:1;">&times;</button>
+        </div>
+        <form method="post" id="warnUserForm" action="" novalidate>
+            <?= csrf_field() ?>
+            <input type="hidden" name="return" value="/admin/users">
+            <div class="gm-modal-body" style="padding:1.25rem 1.25rem;">
+                <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:.85rem 1rem;margin-bottom:1.15rem;">
+                    <p style="margin:0;font-size:.87rem;color:#9a3412;line-height:1.45;">
+                        Issuing a warning to <strong id="warnUserName" style="color:#431407;font-weight:700;"></strong> (<span id="warnUserEmail" style="color:#9a3412;"></span>) will restrict them from performing booking actions (Confirm, Complete, Cancel, Refund) across all dashboards and APIs until you remove the restriction.
+                    </p>
+                </div>
+
+                <div class="field-row" style="margin-bottom:0;">
+                    <label for="warningNoteInput" style="display:block;margin-bottom:.45rem;font-weight:700;color:#0f172a;font-size:.9rem;">
+                        Reason for warning <span class="req" style="color:#ef4444;">*</span>
+                    </label>
+                    <textarea class="input"
+                              id="warningNoteInput"
+                              name="note"
+                              rows="3"
+                              style="width:100%;box-sizing:border-box;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;color:#0f172a;font-size:.9rem;padding:.55rem .75rem;resize:vertical;line-height:1.4;"
+                              placeholder="Please provide the reason for warning this partner..."
+                              required></textarea>
+                    <div id="warningNoteError" style="color:#ef4444;font-size:.82rem;margin-top:.35rem;display:none;font-weight:600;">A reason for the warning is required.</div>
+                </div>
+            </div>
+            <div class="gm-modal-foot" style="border-top:1px solid #e2e8f0;padding:.85rem 1.25rem;display:flex;justify-content:flex-end;align-items:center;gap:.6rem;margin:0;background:#f8fafc;">
+                <button type="button" class="btn btn-ghost btn-sm" data-close-warn-modal style="color:#475569;border:1px solid #cbd5e1;background:#ffffff;font-size:.84rem;padding:.35rem .85rem;border-radius:6px;font-weight:600;min-width:auto;cursor:pointer;">
+                    Cancel
+                </button>
+                <button type="submit" class="btn btn-sm" style="background:#ea580c;color:#ffffff;border:none;font-weight:600;font-size:.84rem;padding:.35rem .85rem;border-radius:6px;min-width:auto;cursor:pointer;box-shadow:0 1px 2px rgba(234,88,12,.2);">
+                    Issue Warning
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 (function () {
     var searchInput = document.getElementById('userSearchInput');
@@ -525,10 +579,123 @@ foreach ($users as $u) {
 
     var rows = Array.prototype.slice.call(document.querySelectorAll('tr[data-role]'));
 
+    function rowMatchesRole(row, selRole) {
+        if (!selRole || selRole === 'all') return true;
+        var r = row.getAttribute('data-role') || '';
+        if (selRole === 'hotel_provider' || selRole === 'hotel_admin') {
+            return r === 'hotel_provider' || r === 'hotel_admin';
+        }
+        if (selRole === 'rental_provider' || selRole === 'rental_admin') {
+            return r === 'rental_provider' || r === 'rental_admin';
+        }
+        return r === selRole;
+    }
+
+    function updateStatusFilterForRole(selRole) {
+        var totalCount = 0;
+        var counts = {
+            active: 0,
+            suspended: 0,
+            warned: 0,
+            appeal: 0
+        };
+
+        rows.forEach(function (row) {
+            if (!rowMatchesRole(row, selRole)) return;
+            totalCount++;
+            var st = row.getAttribute('data-status') || '';
+            var isW = row.getAttribute('data-warned') === '1';
+            var hasApp = row.getAttribute('data-has-appeal') === '1';
+
+            if (isW || st === 'warned') {
+                counts.warned++;
+            } else if (st === 'active') {
+                counts.active++;
+            } else if (st === 'suspended') {
+                counts.suspended++;
+            }
+
+            if (hasApp) {
+                counts.appeal++;
+            }
+        });
+
+        var statusPop = document.getElementById('statusFilterPopover');
+        var statusSel = document.getElementById('userStatusFilter');
+
+        // Update custom dropdown popover options and totals
+        if (statusPop) {
+            var allItem = statusPop.querySelector('.filter-popover-item[data-value="all"]');
+            if (allItem) {
+                var cntEl = allItem.querySelector('.filter-item-count');
+                if (cntEl) cntEl.textContent = totalCount;
+            }
+
+            ['active', 'suspended', 'warned', 'appeal'].forEach(function (key) {
+                var item = statusPop.querySelector('.filter-popover-item[data-value="' + key + '"]');
+                if (!item) return;
+                var cnt = counts[key] || 0;
+                var cntEl = item.querySelector('.filter-item-count');
+                if (cntEl) cntEl.textContent = cnt;
+
+                // Display only user statuses whose role matches the selected role and total count > 0
+                if (cnt > 0) {
+                    item.style.display = '';
+                    item.hidden = false;
+                } else {
+                    item.style.display = 'none';
+                    item.hidden = true;
+                }
+            });
+        }
+
+        // Update backing select options
+        if (statusSel) {
+            Array.prototype.slice.call(statusSel.options).forEach(function (opt) {
+                var val = opt.value;
+                if (val === 'all') {
+                    opt.hidden = false;
+                    opt.disabled = false;
+                } else if (counts[val] !== undefined) {
+                    var cnt = counts[val];
+                    if (cnt > 0) {
+                        opt.hidden = false;
+                        opt.disabled = false;
+                    } else {
+                        opt.hidden = true;
+                        opt.disabled = true;
+                    }
+                }
+            });
+
+            // If the currently selected status is not valid for this role, reset to 'all'
+            if (statusSel.value !== 'all' && (!counts[statusSel.value] || counts[statusSel.value] === 0)) {
+                statusSel.value = 'all';
+                var statusBtn = document.getElementById('statusFilterBtn');
+                var statusLabel = document.getElementById('statusFilterLabel');
+                if (statusBtn) statusBtn.classList.remove('is-filtered');
+                if (statusLabel) statusLabel.textContent = 'Status';
+
+                if (statusPop) {
+                    statusPop.querySelectorAll('.filter-popover-item').forEach(function (el) {
+                        var isAll = el.getAttribute('data-value') === 'all';
+                        el.classList.toggle('is-selected', isAll);
+                        el.setAttribute('aria-selected', isAll ? 'true' : 'false');
+                        el.setAttribute('tabindex', isAll ? '0' : '-1');
+                    });
+                }
+            }
+        }
+    }
+
     function applyFilter() {
         closeUserMenu();
         var q = searchInput ? searchInput.value.trim().toLowerCase() : '';
         var selectedRole = roleFilter ? roleFilter.value : 'all';
+
+        // Keep status filter options and totals synchronized with the selected role
+        updateStatusFilterForRole(selectedRole);
+
         var selectedStatus = statusFilter ? statusFilter.value : 'all';
         var selectedDate = dateFilter ? dateFilter.value : 'all';
 
@@ -550,21 +717,14 @@ foreach ($users as $u) {
 
         rows.forEach(function (row) {
             // 1. Role match
-            var role = row.getAttribute('data-role') || '';
-            var isWarned = row.getAttribute('data-warned') === '1';
-            var matchesRole = selectedRole === 'all'
-                || (selectedRole === 'warned' && isWarned)
-                || role === selectedRole
-                || ((selectedRole === 'hotel_provider' || selectedRole === 'hotel_admin') && (role === 'hotel_provider' || role === 'hotel_admin'))
-                || ((selectedRole === 'rental_provider' || selectedRole === 'rental_admin') && (role === 'rental_provider' || role === 'rental_admin'));
-
-            if (!matchesRole) {
+            if (!rowMatchesRole(row, selectedRole)) {
                 row.hidden = true;
                 return;
             }
 
             // 2. Status match
             var status = row.getAttribute('data-status') || '';
+            var isWarned = row.getAttribute('data-warned') === '1';
             var hasAppeal = row.getAttribute('data-has-appeal') === '1';
             var matchesStatus = selectedStatus === 'all'
                 || (selectedStatus === 'appeal' && hasAppeal)
@@ -846,6 +1006,10 @@ foreach ($users as $u) {
     function closeUserMenu() {
         if (activeDropdown) {
             activeDropdown.classList.remove('open', 'drop-up');
+            activeDropdown.style.top = '';
+            activeDropdown.style.bottom = '';
+            activeDropdown.style.left = '';
+            activeDropdown.style.right = '';
             if (activeBtn) {
                 activeBtn.setAttribute('aria-expanded', 'false');
             }
@@ -855,6 +1019,50 @@ foreach ($users as $u) {
             activeDropdown = null;
             activeBtn = null;
             activeRow = null;
+        }
+    }
+
+    function positionUserMenu(btn, menu) {
+        var btnRect = btn.getBoundingClientRect();
+
+        // Accurately measure rendered dimensions without flicker
+        var prevDisplay = menu.style.display;
+        var prevVis = menu.style.visibility;
+        menu.style.visibility = 'hidden';
+        menu.style.display = 'flex';
+        var menuHeight = menu.offsetHeight || 220;
+        var menuWidth = menu.offsetWidth || 195;
+        menu.style.visibility = prevVis;
+        menu.style.display = prevDisplay;
+
+        var spaceBelow = window.innerHeight - btnRect.bottom;
+        var spaceAbove = btnRect.top;
+
+        // Open upward if space below cannot fit the full menu and more space is available above
+        var openUpward = (spaceBelow < (menuHeight + 12)) && (spaceAbove > spaceBelow);
+
+        // Horizontal positioning: align right edge of menu to right edge of button
+        var rightEdge = window.innerWidth - btnRect.right;
+        if (rightEdge < 10) {
+            rightEdge = 10;
+        }
+        // Protect against left-edge clipping on mobile viewports
+        if ((window.innerWidth - rightEdge - menuWidth) < 10) {
+            menu.style.right = 'auto';
+            menu.style.left = '10px';
+        } else {
+            menu.style.left = 'auto';
+            menu.style.right = rightEdge + 'px';
+        }
+
+        if (openUpward) {
+            menu.classList.add('drop-up');
+            menu.style.top = 'auto';
+            menu.style.bottom = Math.max(8, (window.innerHeight - btnRect.top + 6)) + 'px';
+        } else {
+            menu.classList.remove('drop-up');
+            menu.style.bottom = 'auto';
+            menu.style.top = Math.max(8, (btnRect.bottom + 6)) + 'px';
         }
     }
 
@@ -872,14 +1080,7 @@ foreach ($users as $u) {
 
             closeUserMenu();
 
-            // Determine if dropdown should open upwards (near viewport bottom)
-            var btnRect = btn.getBoundingClientRect();
-            var spaceBelow = window.innerHeight - btnRect.bottom;
-            if (spaceBelow < 230) {
-                menu.classList.add('drop-up');
-            } else {
-                menu.classList.remove('drop-up');
-            }
+            positionUserMenu(btn, menu);
 
             menu.classList.add('open');
             btn.setAttribute('aria-expanded', 'true');
@@ -906,6 +1107,9 @@ foreach ($users as $u) {
             if (b) b.focus();
         }
     });
+
+    window.addEventListener('scroll', closeUserMenu, true);
+    window.addEventListener('resize', closeUserMenu);
 
     // Suspend Modal Handling
     var suspendModal = document.getElementById('suspendUserModal');
@@ -970,5 +1174,74 @@ foreach ($users as $u) {
             suspendReasonError.style.display = 'none';
         }
     });
+
+    // Warn Modal Handling
+    var warnModal = document.getElementById('warnUserModal');
+    var warnForm = document.getElementById('warnUserForm');
+    var warnNameEl = document.getElementById('warnUserName');
+    var warnEmailEl = document.getElementById('warnUserEmail');
+    var warningNoteInput = document.getElementById('warningNoteInput');
+    var warningNoteError = document.getElementById('warningNoteError');
+
+    function openWarnModal(userId, userName, userEmail) {
+        closeUserMenu();
+        warnForm.action = '<?= e(url('/admin/users')) ?>/' + userId + '/warn';
+        warnNameEl.textContent = userName;
+        warnEmailEl.textContent = userEmail;
+        warningNoteInput.value = '';
+        warningNoteInput.classList.remove('is-invalid');
+        warningNoteError.style.display = 'none';
+
+        warnModal.hidden = false;
+        warnModal.setAttribute('aria-hidden', 'false');
+        setTimeout(function () {
+            warningNoteInput.focus();
+        }, 50);
+    }
+
+    function closeWarnModal() {
+        warnModal.hidden = true;
+        warnModal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.querySelectorAll('.btn-warn-user').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-user-id');
+            var name = btn.getAttribute('data-user-name');
+            var email = btn.getAttribute('data-user-email');
+            openWarnModal(id, name, email);
+        });
+    });
+
+    if (warnModal) {
+        warnModal.querySelectorAll('[data-close-warn-modal]').forEach(function (el) {
+            el.addEventListener('click', closeWarnModal);
+        });
+
+        warnForm.addEventListener('submit', function (e) {
+            if (!warningNoteInput.value.trim()) {
+                e.preventDefault();
+                warningNoteInput.classList.add('is-invalid');
+                warningNoteError.style.display = 'block';
+                warningNoteInput.focus();
+            }
+        });
+
+        warningNoteInput.addEventListener('input', function () {
+            if (warningNoteInput.value.trim()) {
+                warningNoteInput.classList.remove('is-invalid');
+                warningNoteError.style.display = 'none';
+            }
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !warnModal.hidden) {
+                closeWarnModal();
+            }
+        });
+    }
+
+    // Initial sync of status filter options with the initial role selection
+    updateStatusFilterForRole(roleFilter ? roleFilter.value : 'all');
 })();
 </script>

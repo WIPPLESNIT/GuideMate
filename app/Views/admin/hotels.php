@@ -71,7 +71,11 @@
                         </td>
                         <td class="col-type" data-label="Location / Rate">
                             <div><?= e($h['area']) ?></div>
-                            <strong><?= money((float) $h['price']) ?></strong> <small class="hint">/ night</small>
+                            <?php if ((float) ($h['price'] ?? 0) > 0): ?>
+                                <strong><?= money((float) $h['price']) ?></strong> <small class="hint">/ night</small>
+                            <?php else: ?>
+                                <span class="hint" style="color:var(--text-muted, #64748B);font-style:italic;">Price unavailable</span>
+                            <?php endif; ?>
                             <div style="margin-top:3px;">
                                 <span class="pill <?= $roomCount > 0 ? 'pill-approved' : 'pill-pending' ?>" style="font-size:0.7rem;padding:2px 6px;">
                                     <?= $roomCount ?> <?= $roomCount === 1 ? 'room' : 'rooms' ?>

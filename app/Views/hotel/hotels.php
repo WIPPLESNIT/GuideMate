@@ -45,6 +45,16 @@ $errors = $errors ?? [];
                 </div>
             <?php endif; ?>
 
+            <?php if (!empty($errors)): ?>
+                <div class="status-banner banner-red" style="margin-bottom:1.2rem;">
+                    <span class="status-icon">⚠️</span>
+                    <div>
+                        <strong>Unable to save hotel listing</strong>
+                        <p class="mb-0"><?= e(implode(' ', (array) $errors)) ?></p>
+                    </div>
+                </div>
+            <?php endif; ?>
+
 
 
             <div class="panel">
@@ -131,8 +141,12 @@ $errors = $errors ?? [];
                                             </div>
                                         </td>
                                         <td>
-                                            <strong style="color:var(--brand, #059669);"><?= money($h['price']) ?></strong>
-                                            <small class="hint">/ night</small>
+                                            <?php if ((float) ($h['price'] ?? 0) > 0): ?>
+                                                <strong style="color:var(--brand, #059669);"><?= money($h['price']) ?></strong>
+                                                <small class="hint">/ night</small>
+                                            <?php else: ?>
+                                                <span class="hint" style="color:var(--text-muted, #64748B);font-style:italic;">Price unavailable</span>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <span class="pill <?= $roomCount > 0 ? 'pill-approved' : 'pill-pending' ?>" style="font-size:0.75rem;padding:3px 8px;">
@@ -264,19 +278,12 @@ $errors = $errors ?? [];
                 </div>
             </div>
 
-            <div class="form-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
-                <div class="field-row">
-                    <label for="hf_price" style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:0.35rem;">
-                        Starting Rate per Night (₱) <span class="req" style="color:#ef4444;">*</span>
-                    </label>
-                    <input type="number" id="hf_price" name="price" class="input" min="0" step="50" placeholder="e.g. 3200" required style="width:100%;">
-                </div>
-                <div class="field-row">
-                    <label for="hf_duration" style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:0.35rem;">
-                        Check-in &amp; Check-out Times
-                    </label>
-                    <input type="text" id="hf_duration" name="duration" class="input" value="Check-in 2:00 PM / Check-out 12:00 PM" style="width:100%;">
-                </div>
+            <div class="field-row">
+                <label for="hf_duration" style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:0.35rem;">
+                    Check-in &amp; Check-out Times
+                </label>
+                <input type="text" id="hf_duration" name="duration" class="input" placeholder="e.g. Check-in 2:00 PM / Check-out 12:00 PM" style="width:100%;">
+                <span class="hint" style="display:block;margin-top:0.25rem;font-size:0.8rem;color:var(--text-muted,#64748B);">Starting nightly rate is automatically calculated from your lowest-priced room.</span>
             </div>
 
             <div class="field-row">
@@ -307,21 +314,64 @@ $errors = $errors ?? [];
                 <textarea id="hf_not_included" name="not_included" class="input" rows="2" placeholder="Airport Transfer (₱800)&#10;Extra Bed (₱1,200/night)&#10;No Smoking Indoors" style="width:100%;resize:vertical;"></textarea>
             </div>
 
-            <div class="field-row" style="background:#f8fafc;padding:0.85rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:1rem;">
-                <label for="hf_cover_file" style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:0.35rem;">
-                    Cover Photo Upload
+            <div class="field-row" style="background:#f8fafc;padding:0.85rem 1rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:1rem;">
+                <label style="font-weight:700;font-size:0.92rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;color:var(--text, #0f172a);">
+                    <span>📸 Property Photos (Upload up to 3 photos)</span>
+                    <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">Max 3 Photos</span>
                 </label>
-                <input type="file" id="hf_cover_file" name="cover_file" class="file-input" accept=".jpg,.jpeg,.png,.webp">
-                <span class="hint" style="display:block;margin-top:0.25rem;font-size:0.8rem;">Upload a high-quality JPG, PNG, or WEBP image (up to 5MB).</span>
+                <span class="hint" style="display:block;margin-bottom:0.75rem;font-size:0.8rem;color:#64748b;">
+                    Upload high-quality JPG, PNG, or WEBP images (up to 5MB each) or paste direct photo URLs. Photo 1 will be used as the primary cover photo.
+                </span>
 
-                <div style="margin-top:0.6rem;">
-                    <label for="hf_cover_image" style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.25rem;">…or paste a direct photo URL:</label>
-                    <input type="url" id="hf_cover_image" name="cover_image" class="input" placeholder="https://images.unsplash.com/photo-..." style="width:100%;">
-                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:0.75rem;">
+                    <!-- Slot 0: Primary Cover -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.8rem;color:#0f172a;">Photo 1 (Cover) *</strong>
+                            <span style="font-size:0.68rem;background:#dcfce7;color:#166534;font-weight:700;padding:1px 6px;border-radius:4px;">Cover</span>
+                        </div>
+                        <div id="hf_preview_wrap_0" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="hf_preview_img_0" src="" alt="Photo 1" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="hf_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="hf_remove_btn_0" onclick="removeHotelPhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="photo_file_0" id="hf_file_0" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleHotelFileChange(0, this)">
+                        <input type="url" name="photo_url_0" id="hf_url_0" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(0, this.value)">
+                        <input type="hidden" name="photo_removed_0" id="hf_removed_0" value="0">
+                        <input type="hidden" name="cover_image" id="hf_cover_image" value="">
+                    </div>
 
-                <div id="hf_image_preview_wrap" style="display:none;margin-top:0.75rem;">
-                    <span class="hint" style="font-size:0.8rem;display:block;margin-bottom:0.25rem;">Current Photo Preview:</span>
-                    <img id="hf_image_preview" src="" alt="Cover preview" style="max-height:120px;border-radius:6px;object-fit:cover;border:1px solid #e2e8f0;">
+                    <!-- Slot 1: Gallery 2 -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.8rem;color:#0f172a;">Photo 2 (Gallery)</strong>
+                            <span style="font-size:0.68rem;background:#f1f5f9;color:#64748b;font-weight:600;padding:1px 6px;border-radius:4px;">Optional</span>
+                        </div>
+                        <div id="hf_preview_wrap_1" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="hf_preview_img_1" src="" alt="Photo 2" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="hf_placeholder_1" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="hf_remove_btn_1" onclick="removeHotelPhoto(1)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="photo_file_1" id="hf_file_1" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleHotelFileChange(1, this)">
+                        <input type="url" name="photo_url_1" id="hf_url_1" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(1, this.value)">
+                        <input type="hidden" name="photo_removed_1" id="hf_removed_1" value="0">
+                    </div>
+
+                    <!-- Slot 2: Gallery 3 -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.8rem;color:#0f172a;">Photo 3 (Gallery)</strong>
+                            <span style="font-size:0.68rem;background:#f1f5f9;color:#64748b;font-weight:600;padding:1px 6px;border-radius:4px;">Optional</span>
+                        </div>
+                        <div id="hf_preview_wrap_2" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="hf_preview_img_2" src="" alt="Photo 3" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="hf_placeholder_2" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="hf_remove_btn_2" onclick="removeHotelPhoto(2)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="photo_file_2" id="hf_file_2" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleHotelFileChange(2, this)">
+                        <input type="url" name="photo_url_2" id="hf_url_2" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(2, this.value)">
+                        <input type="hidden" name="photo_removed_2" id="hf_removed_2" value="0">
+                    </div>
                 </div>
             </div>
 
@@ -359,6 +409,78 @@ $errors = $errors ?? [];
         }
     }
 
+        window.handleHotelFileChange = function(slot, input) {
+        if (input.files && input.files[0]) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                setHotelSlotPreview(slot, e.target.result);
+                if (slot === 0) {
+                    var cov = document.getElementById('hf_cover_image');
+                    if (cov) cov.value = ''; // File upload takes precedence; do not send base64 data URI
+                }
+            };
+            reader.readAsDataURL(input.files[0]);
+            var remIn = document.getElementById('hf_removed_' + slot);
+            if (remIn) remIn.value = '0';
+        }
+    };
+
+    window.handleHotelUrlChange = function(slot, val) {
+        val = (val || '').trim();
+        if (val) {
+            setHotelSlotPreview(slot, val);
+            var remIn = document.getElementById('hf_removed_' + slot);
+            if (remIn) remIn.value = '0';
+            if (slot === 0) {
+                var cov = document.getElementById('hf_cover_image');
+                if (cov) cov.value = val;
+            }
+        } else {
+            var fileIn = document.getElementById('hf_file_' + slot);
+            if (!fileIn || !fileIn.files || !fileIn.files[0]) {
+                clearHotelSlotPreview(slot);
+            }
+        }
+    };
+
+    window.removeHotelPhoto = function(slot) {
+        var fileIn = document.getElementById('hf_file_' + slot);
+        if (fileIn) fileIn.value = '';
+        var urlIn = document.getElementById('hf_url_' + slot);
+        if (urlIn) urlIn.value = '';
+        var remIn = document.getElementById('hf_removed_' + slot);
+        if (remIn) remIn.value = '1';
+        if (slot === 0) {
+            var cov = document.getElementById('hf_cover_image');
+            if (cov) cov.value = '';
+        }
+        clearHotelSlotPreview(slot);
+    };
+
+    function setHotelSlotPreview(slot, src) {
+        var img = document.getElementById('hf_preview_img_' + slot);
+        var ph = document.getElementById('hf_placeholder_' + slot);
+        var btn = document.getElementById('hf_remove_btn_' + slot);
+        if (img && ph && btn) {
+            img.src = src;
+            img.style.display = 'block';
+            ph.style.display = 'none';
+            btn.style.display = 'flex';
+        }
+    }
+
+    function clearHotelSlotPreview(slot) {
+        var img = document.getElementById('hf_preview_img_' + slot);
+        var ph = document.getElementById('hf_placeholder_' + slot);
+        var btn = document.getElementById('hf_remove_btn_' + slot);
+        if (img && ph && btn) {
+            img.src = '';
+            img.style.display = 'none';
+            ph.style.display = 'block';
+            btn.style.display = 'none';
+        }
+    }
+
     window.openCreateHotelModal = function () {
         clearError();
         modalTitle.textContent = 'Add New Hotel';
@@ -372,13 +494,14 @@ $errors = $errors ?? [];
         document.getElementById('hf_address').value = '';
         document.getElementById('hf_summary').value = '';
         document.getElementById('hf_description').value = '';
-        document.getElementById('hf_price').value = '';
-        document.getElementById('hf_duration').value = 'Check-in 2:00 PM / Check-out 12:00 PM';
+        document.getElementById('hf_duration').value = '';
         document.getElementById('hf_included').value = '';
         document.getElementById('hf_not_included').value = '';
-        document.getElementById('hf_cover_file').value = '';
-        document.getElementById('hf_cover_image').value = '';
-        if (previewWrap) previewWrap.style.display = 'none';
+        for (var i = 0; i < 3; i++) {
+            removeHotelPhoto(i);
+            var remIn = document.getElementById('hf_removed_' + i);
+            if (remIn) remIn.value = '0';
+        }
 
         modal.hidden = false;
         modal.setAttribute('aria-hidden', 'false');
@@ -390,7 +513,7 @@ $errors = $errors ?? [];
     window.openEditHotelModal = function (hotel) {
         clearError();
         modalTitle.textContent = 'Edit Hotel Listing';
-        modalSubtitle.textContent = 'Update your property details, starting rates, and amenities.';
+        modalSubtitle.textContent = 'Update your property details, description, and amenities.';
         submitBtn.textContent = 'Save Changes';
         submitBtn.disabled = false;
         form.action = '<?= e(url("/dashboard/hotels/")) ?>' + hotel.id;
@@ -400,18 +523,27 @@ $errors = $errors ?? [];
         document.getElementById('hf_address').value = hotel.address || '';
         document.getElementById('hf_summary').value = hotel.summary || '';
         document.getElementById('hf_description').value = hotel.description || '';
-        document.getElementById('hf_price').value = hotel.price || '';
-        document.getElementById('hf_duration').value = hotel.duration || 'Check-in 2:00 PM / Check-out 12:00 PM';
+        document.getElementById('hf_duration').value = hotel.duration || '';
         document.getElementById('hf_included').value = hotel.included || '';
         document.getElementById('hf_not_included').value = hotel.not_included || '';
-        document.getElementById('hf_cover_file').value = '';
-        document.getElementById('hf_cover_image').value = hotel.cover_image || '';
-
-        if (hotel.cover_image && previewWrap && previewImg) {
-            previewImg.src = hotel.cover_image;
-            previewWrap.style.display = 'block';
-        } else if (previewWrap) {
-            previewWrap.style.display = 'none';
+        var photos = hotel.photos || (hotel.cover_image ? [hotel.cover_image] : []);
+        for (var i = 0; i < 3; i++) {
+            var fileIn = document.getElementById('hf_file_' + i);
+            if (fileIn) fileIn.value = '';
+            var urlIn = document.getElementById('hf_url_' + i);
+            var remIn = document.getElementById('hf_removed_' + i);
+            if (remIn) remIn.value = '0';
+            if (photos[i]) {
+                if (urlIn) urlIn.value = photos[i];
+                setHotelSlotPreview(i, photos[i]);
+                if (i === 0) {
+                    var covIn = document.getElementById('hf_cover_image');
+                    if (covIn) covIn.value = photos[0];
+                }
+            } else {
+                if (urlIn) urlIn.value = '';
+                clearHotelSlotPreview(i);
+            }
         }
 
         modal.hidden = false;
@@ -441,7 +573,6 @@ $errors = $errors ?? [];
             var title = (document.getElementById('hf_title').value || '').trim();
             var area = (document.getElementById('hf_area').value || '').trim();
             var desc = (document.getElementById('hf_description').value || '').trim();
-            var price = parseFloat(document.getElementById('hf_price').value || 0);
 
             if (!title) {
                 e.preventDefault();
@@ -455,12 +586,6 @@ $errors = $errors ?? [];
                 document.getElementById('hf_area').focus();
                 return;
             }
-            if (isNaN(price) || price <= 0) {
-                e.preventDefault();
-                showError('Please enter a valid starting nightly rate greater than 0.');
-                document.getElementById('hf_price').focus();
-                return;
-            }
             if (!desc) {
                 e.preventDefault();
                 showError('Hotel Description is required.');
@@ -468,16 +593,56 @@ $errors = $errors ?? [];
                 return;
             }
 
+            var durEl = document.getElementById('hf_duration');
+            if (durEl && !durEl.value.trim()) {
+                durEl.value = 'Check-in 2:00 PM / Check-out 12:00 PM';
+            }
+
             clearError();
-            submitBtn.disabled = true;
             submitBtn.textContent = 'Saving Hotel...';
+            setTimeout(function () {
+                submitBtn.disabled = true;
+            }, 100);
         });
     }
+
+    // Auto-reopen modal if validation errors occurred on submit
+    <?php if (!empty($errors)): ?>
+        try {
+            var hasOldId = <?= json_encode(!empty(old('hotel_id'))) ?>;
+            var oldId = <?= json_encode((string) old('hotel_id', '')) ?>;
+            if (hasOldId && oldId) {
+                modalTitle.textContent = 'Edit Hotel Listing';
+                modalSubtitle.textContent = 'Update your property details, description, and amenities.';
+                submitBtn.textContent = 'Save Changes';
+                form.action = '<?= e(url("/dashboard/hotels/")) ?>' + oldId;
+                document.getElementById('hf_hotel_id').value = oldId;
+            } else {
+                modalTitle.textContent = 'Add New Hotel';
+                modalSubtitle.textContent = 'Fill in your property details for travelers across Cebu.';
+                submitBtn.textContent = 'Save Hotel';
+                form.action = '<?= e(url("/dashboard/hotels")) ?>';
+                document.getElementById('hf_hotel_id').value = '';
+            }
+            document.getElementById('hf_title').value = <?= json_encode((string) old('title', '')) ?>;
+            document.getElementById('hf_area').value = <?= json_encode((string) old('area', '')) ?>;
+            document.getElementById('hf_address').value = <?= json_encode((string) old('address', '')) ?>;
+            document.getElementById('hf_duration').value = <?= json_encode((string) old('duration', '')) ?>;
+            document.getElementById('hf_summary').value = <?= json_encode((string) old('summary', '')) ?>;
+            document.getElementById('hf_description').value = <?= json_encode((string) old('description', '')) ?>;
+            document.getElementById('hf_included').value = <?= json_encode((string) old('included', '')) ?>;
+            document.getElementById('hf_not_included').value = <?= json_encode((string) old('not_included', '')) ?>;
+            showError(<?= json_encode(implode(' ', (array) $errors)) ?>);
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        } catch (e) {}
+    <?php endif; ?>
 
     // Auto-open modal if URL has ?create=1
     try {
         var params = new URLSearchParams(window.location.search);
-        if (params.get('create') === '1') {
+        if (params.get('create') === '1' && <?= json_encode(empty($errors)) ?>) {
             openCreateHotelModal();
             params.delete('create');
             var cleanSearch = params.toString() ? ('?' + params.toString()) : '';

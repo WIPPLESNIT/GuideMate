@@ -393,6 +393,27 @@ final class User
         return $row !== null && (int) ($row['guide_warned'] ?? 0) === 1;
     }
 
+    public static function isProviderWarned(int $id): bool
+    {
+        return self::isGuideWarned($id);
+    }
+
+    public static function warnProvider(int $id, string $note): void
+    {
+        self::warnGuide($id, $note);
+    }
+
+    public static function clearProviderWarning(int $id): void
+    {
+        self::clearGuideWarning($id);
+    }
+
+    public static function getWarningNote(int $id): string
+    {
+        $row = Database::first('SELECT guide_warning_note FROM users WHERE id = ?', [$id]);
+        return (string) ($row['guide_warning_note'] ?? '');
+    }
+
     public static function countWarnedProviders(): int
     {
         $row = Database::first(

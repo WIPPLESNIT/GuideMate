@@ -10,6 +10,7 @@ $rating = (float) ($l['avg_rating'] ?? 0);
 $reviewCount = (int) ($l['review_count'] ?? 0);
 $displayPrice = \App\Models\Listing::effectivePrice($l);
 $badge = guide_badge((int) ($l['user_id'] ?? 0));
+$isHotel = (($l['category_slug'] ?? '') === 'hotels') || (strtolower((string) ($l['category_name'] ?? '')) === 'hotels') || ((int) ($l['category_id'] ?? 0) === 3);
 ?>
 <article class="listing-card">
     <div class="listing-media">
@@ -39,7 +40,18 @@ $badge = guide_badge((int) ($l['user_id'] ?? 0));
                     <span class="count">New</span>
                 <?php endif; ?>
             </span>
-            <span class="price"><?= money($displayPrice) ?> <span><?= e($l['price_unit']) ?></span></span>
+            <?php if ($isHotel): ?>
+                <?php if ($displayPrice > 0): ?>
+                    <span class="price">
+                        <span class="price-prefix" style="display:block;font-size:0.75rem;font-weight:600;color:var(--text-muted,#64748B);line-height:1.2;">Lowest price room</span>
+                        <?= money($displayPrice) ?> <span class="price-unit">/ per night</span>
+                    </span>
+                <?php else: ?>
+                    <span class="price" style="font-size:0.95rem;color:var(--text-muted,#64748B);font-weight:600;">Price unavailable</span>
+                <?php endif; ?>
+            <?php else: ?>
+                <span class="price"><?= money($displayPrice) ?> <span><?= e($l['price_unit']) ?></span></span>
+            <?php endif; ?>
         </div>
     </div>
 </article>

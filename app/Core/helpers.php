@@ -75,10 +75,10 @@ if (!function_exists('request_snapshot')) {
      *
      * @return array{errors: array<string,string>, old: array<string,mixed>}
      */
-    function request_snapshot(): array
+    function request_snapshot(bool $reset = false): array
     {
         static $snapshot = null;
-        if ($snapshot === null) {
+        if ($reset || $snapshot === null) {
             $snapshot = [
                 'errors' => $_SESSION['_errors'] ?? [],
                 'old' => $_SESSION['_old'] ?? [],

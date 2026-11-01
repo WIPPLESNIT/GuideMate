@@ -168,7 +168,11 @@ $thumb = !empty($hotel['cover_image']) ? $hotel['cover_image'] : 'https://images
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border);">
                     <span class="hint">Starting Rate</span>
-                    <strong style="color:var(--primary);font-size:1.05rem;"><?= money((float) $hotel['price']) ?> / night</strong>
+                    <?php if ((float) ($hotel['price'] ?? 0) > 0): ?>
+                        <strong style="color:var(--primary);font-size:1.05rem;"><?= money((float) $hotel['price']) ?> / night</strong>
+                    <?php else: ?>
+                        <span class="hint" style="color:var(--text-muted, #64748B);font-style:italic;">Price unavailable</span>
+                    <?php endif; ?>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border);">
                     <span class="hint">Room Types</span>

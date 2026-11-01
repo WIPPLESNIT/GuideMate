@@ -115,7 +115,7 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
                             <div class="hint" style="font-size:0.85rem;margin-top:0.35rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
                                 <span><?= e($hotel['area'] ?? '') ?><?php if (!empty($hotel['address'])): ?> · <?= e($hotel['address']) ?><?php endif; ?></span>
                                 <span>•</span>
-                                <span>Starting rate: <strong style="color:var(--brand, #059669);"><?= money($hotel['price'] ?? 0) ?></strong>/night</span>
+                                <span>Starting rate: <?php if ((float) ($hotel['price'] ?? 0) > 0): ?><strong style="color:var(--brand, #059669);"><?= money($hotel['price'] ?? 0) ?></strong>/night<?php else: ?><span style="color:var(--text-muted, #64748B);font-style:italic;">Price unavailable</span><?php endif; ?></span>
                             </div>
                         </div>
                     </div>
@@ -233,8 +233,6 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
                                                 <?= e($rm['bed_type'] ?? '1 King Bed') ?>
                                             </div>
                                             <div class="hint" style="font-size:0.76rem;margin-top:2px;line-height:1.25;color:var(--ink-300, #64748b);display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-                                                <span><?= e($rm['room_size'] ?? '32 m²') ?></span>
-                                                <?php if (!empty($rm['room_size'])): ?><span style="user-select:none;">•</span><?php endif; ?>
                                                 <span style="white-space:nowrap;">Max <?= (int) ($rm['max_guests'] ?? 2) ?> guests</span>
                                             </div>
                                         </td>
@@ -336,7 +334,7 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
             <h3 class="mb-0">Add Room Type for <?= e($hotel['title'] ?? 'Hotel') ?></h3>
             <button type="button" onclick="closeAddPropertyRoomModal()" class="btn btn-ghost btn-sm" style="font-size:1.2rem;line-height:1;">✕</button>
         </div>
-        <form method="post" action="<?= e(url('/dashboard/hotel/rooms/create')) ?>">
+        <form method="post" action="<?= e(url('/dashboard/hotel/rooms/create')) ?>" enctype="multipart/form-data">
             <?= csrf_field() ?>
             <input type="hidden" name="listing_id" value="<?= $hotelId ?>">
             <input type="hidden" name="redirect_to" value="<?= e($currentUrl) ?>">
@@ -366,10 +364,7 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
                     <small class="hint">Remaining % paid at front desk</small>
                 </div>
             </div>
-            <div class="field-row">
-                <label>Room Size</label>
-                <input type="text" name="room_size" class="input" placeholder="e.g. 38 m² (409 sq ft)" value="38 m²">
-            </div>
+
             <div class="field-row">
                 <label>Availability Status</label>
                 <select name="status" class="input">
@@ -383,77 +378,64 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
                 <label>Key Amenities (comma separated)</label>
                 <input type="text" name="amenities" class="input" placeholder="Air Conditioning, Free Wi-Fi, Hot Shower, Private Balcony, Mini-Fridge">
             </div>
-            <div class="field-row">
-                <label>Photo URL (Optional)</label>
-                <input type="text" name="image" class="input" placeholder="https://images.unsplash.com/..." value="<?= e($thumb) ?>">
-            </div>
-            <div class="field-row">
-                <label>Description</label>
-                <textarea name="description" class="input" rows="3" placeholder="Brief description of the room, views, and unique features..."></textarea>
-            </div>
-            <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
-                <button type="button" onclick="closeAddPropertyRoomModal()" class="btn btn-ghost">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Room Type</button>
-            </div>
-        </form>
-    </div>
-</div>
+            <div class="field-row" style="background:#f8fafc;padding:0.85rem 1rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:1rem;">
+                <label style="font-weight:700;font-size:0.90rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;color:var(--text, #0f172a);">
+                    <span>📸 Room Photos (Upload up to 3 photos)</span>
+                    <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">Max 3 Photos</span>
+                </label>
+                <span class="hint" style="display:block;margin-bottom:0.75rem;font-size:0.8rem;color:#64748b;">
+                    Upload high-quality JPG, PNG, or WEBP images (up to 5MB each) or paste direct photo URLs. Photo 1 will be used as the primary room photo.
+                </span>
 
-<!-- ── MODAL: EDIT ROOM TYPE ── -->
-<div id="modal-edit-property-room" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:1rem;">
-    <div class="card-soft" style="background:#FFF;max-width:540px;width:100%;max-height:90vh;overflow-y:auto;border-radius:12px;padding:1.5rem;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-            <h3 class="mb-0">Edit Room Type</h3>
-            <button type="button" onclick="closeEditPropertyRoomModal()" class="btn btn-ghost btn-sm" style="font-size:1.2rem;line-height:1;">✕</button>
-        </div>
-        <form id="edit-property-room-form" method="post" action="">
-            <?= csrf_field() ?>
-            <input type="hidden" name="redirect_to" value="<?= e($currentUrl) ?>">
+                                                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:0.6rem;">
+                    <!-- Slot 0: Cover -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 1 (Cover) *</strong>
+                            <span style="font-size:0.65rem;background:#dcfce7;color:#166534;font-weight:700;padding:1px 5px;border-radius:4px;">Cover</span>
+                        </div>
+                        <div id="edit_room_preview_wrap_0" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="edit_room_preview_img_0" src="" alt="Photo 1" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="edit_room_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="edit_room_remove_btn_0" onclick="removeEdit_roomPhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="room_photo_file_0" id="edit_room_file_0" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleEdit_roomFileChange(0, this)">
+                        <input type="url" name="room_photo_url_0" id="edit_room_url_0" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleEdit_roomUrlChange(0, this.value)">
+                        <input type="hidden" name="room_photo_removed_0" id="edit_room_removed_0" value="0">
+                    </div>
 
-            <div class="field-row">
-                <label>Room Name *</label>
-                <input type="text" id="edit-prop-room-name" name="name" class="input" required>
-            </div>
-            <div class="form-grid-2">
-                <div class="field-row">
-                    <label>Bed Configuration *</label>
-                    <input type="text" id="edit-prop-room-bed" name="bed_type" class="input" required>
+                    <!-- Slot 1: Photo 2 -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 2</strong>
+                            <span style="font-size:0.65rem;background:#f1f5f9;color:#64748b;font-weight:700;padding:1px 5px;border-radius:4px;">Optional</span>
+                        </div>
+                        <div id="edit_room_preview_wrap_1" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="edit_room_preview_img_1" src="" alt="Photo 2" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="edit_room_placeholder_1" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="edit_room_remove_btn_1" onclick="removeEdit_roomPhoto(1)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="room_photo_file_1" id="edit_room_file_1" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleEdit_roomFileChange(1, this)">
+                        <input type="url" name="room_photo_url_1" id="edit_room_url_1" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleEdit_roomUrlChange(1, this.value)">
+                        <input type="hidden" name="room_photo_removed_1" id="edit_room_removed_1" value="0">
+                    </div>
+
+                    <!-- Slot 2: Photo 3 -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 3</strong>
+                            <span style="font-size:0.65rem;background:#f1f5f9;color:#64748b;font-weight:700;padding:1px 5px;border-radius:4px;">Optional</span>
+                        </div>
+                        <div id="edit_room_preview_wrap_2" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="edit_room_preview_img_2" src="" alt="Photo 3" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="edit_room_placeholder_2" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <button type="button" id="edit_room_remove_btn_2" onclick="removeEdit_roomPhoto(2)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="room_photo_file_2" id="edit_room_file_2" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleEdit_roomFileChange(2, this)">
+                        <input type="url" name="room_photo_url_2" id="edit_room_url_2" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleEdit_roomUrlChange(2, this.value)">
+                        <input type="hidden" name="room_photo_removed_2" id="edit_room_removed_2" value="0">
+                    </div>
                 </div>
-                <div class="field-row">
-                    <label>Max Guests *</label>
-                    <input type="number" id="edit-prop-room-guests" name="max_guests" class="input" min="1" max="10" required>
-                </div>
-            </div>
-            <div class="form-grid-2">
-                <div class="field-row">
-                    <label>Nightly Rate (₱) *</label>
-                    <input type="number" id="edit-prop-room-price" name="price_per_night" class="input" step="50" min="0" required>
-                </div>
-                <div class="field-row">
-                    <label>Deposit Percentage (%) *</label>
-                    <input type="number" id="edit-prop-room-deposit" name="deposit_percentage" class="input" min="5" max="100" required>
-                </div>
-            </div>
-            <div class="field-row">
-                <label>Room Size</label>
-                <input type="text" id="edit-prop-room-size" name="room_size" class="input">
-            </div>
-            <div class="field-row">
-                <label>Availability Status</label>
-                <select id="edit-prop-room-status" name="status" class="input">
-                    <option value="available">🟢 Available</option>
-                    <option value="blocked">🔒 Blocked (Maintenance / Hold)</option>
-                    <option value="fully_booked">🔴 Fully Booked</option>
-                    <option value="unavailable">⚪ Unavailable</option>
-                </select>
-            </div>
-            <div class="field-row">
-                <label>Key Amenities</label>
-                <input type="text" id="edit-prop-room-amenities" name="amenities" class="input">
-            </div>
-            <div class="field-row">
-                <label>Photo URL (Optional)</label>
-                <input type="text" id="edit-prop-room-image" name="image" class="input">
             </div>
             <div class="field-row">
                 <label>Description</label>
@@ -468,6 +450,128 @@ $currentUrl = url('/dashboard/hotels/' . $hotelId . '/rooms');
 </div>
 
 <script>
+
+// Room photo handlers
+window.handleAddRoomFileChange = function(slot, input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            setAddRoomSlotPreview(slot, e.target.result);
+        };
+        reader.readAsDataURL(input.files[0]);
+        var rem = document.getElementById('add_room_removed_' + slot);
+        if (rem) rem.value = '0';
+    }
+};
+
+window.handleAddRoomUrlChange = function(slot, val) {
+    val = (val || '').trim();
+    if (val) {
+        setAddRoomSlotPreview(slot, val);
+        var rem = document.getElementById('add_room_removed_' + slot);
+        if (rem) rem.value = '0';
+    } else {
+        var fileIn = document.getElementById('add_room_file_' + slot);
+        if (!fileIn || !fileIn.files || !fileIn.files[0]) {
+            clearAddRoomSlotPreview(slot);
+        }
+    }
+};
+
+window.removeAddRoomPhoto = function(slot) {
+    var fileIn = document.getElementById('add_room_file_' + slot);
+    if (fileIn) fileIn.value = '';
+    var urlIn = document.getElementById('add_room_url_' + slot);
+    if (urlIn) urlIn.value = '';
+    var rem = document.getElementById('add_room_removed_' + slot);
+    if (rem) rem.value = '1';
+    clearAddRoomSlotPreview(slot);
+};
+
+function setAddRoomSlotPreview(slot, src) {
+    var img = document.getElementById('add_room_preview_img_' + slot);
+    var ph = document.getElementById('add_room_placeholder_' + slot);
+    var btn = document.getElementById('add_room_remove_btn_' + slot);
+    if (img && ph && btn) {
+        img.src = src;
+        img.style.display = 'block';
+        ph.style.display = 'none';
+        btn.style.display = 'flex';
+    }
+}
+
+function clearAddRoomSlotPreview(slot) {
+    var img = document.getElementById('add_room_preview_img_' + slot);
+    var ph = document.getElementById('add_room_placeholder_' + slot);
+    var btn = document.getElementById('add_room_remove_btn_' + slot);
+    if (img && ph && btn) {
+        img.src = '';
+        img.style.display = 'none';
+        ph.style.display = 'block';
+        btn.style.display = 'none';
+    }
+}
+
+window.handleEditRoomFileChange = function(slot, input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            setEditRoomSlotPreview(slot, e.target.result);
+        };
+        reader.readAsDataURL(input.files[0]);
+        var rem = document.getElementById('edit_room_removed_' + slot);
+        if (rem) rem.value = '0';
+    }
+};
+
+window.handleEditRoomUrlChange = function(slot, val) {
+    val = (val || '').trim();
+    if (val) {
+        setEditRoomSlotPreview(slot, val);
+        var rem = document.getElementById('edit_room_removed_' + slot);
+        if (rem) rem.value = '0';
+    } else {
+        var fileIn = document.getElementById('edit_room_file_' + slot);
+        if (!fileIn || !fileIn.files || !fileIn.files[0]) {
+            clearEditRoomSlotPreview(slot);
+        }
+    }
+};
+
+window.removeEditRoomPhoto = function(slot) {
+    var fileIn = document.getElementById('edit_room_file_' + slot);
+    if (fileIn) fileIn.value = '';
+    var urlIn = document.getElementById('edit_room_url_' + slot);
+    if (urlIn) urlIn.value = '';
+    var rem = document.getElementById('edit_room_removed_' + slot);
+    if (rem) rem.value = '1';
+    clearEditRoomSlotPreview(slot);
+};
+
+function setEditRoomSlotPreview(slot, src) {
+    var img = document.getElementById('edit_room_preview_img_' + slot);
+    var ph = document.getElementById('edit_room_placeholder_' + slot);
+    var btn = document.getElementById('edit_room_remove_btn_' + slot);
+    if (img && ph && btn) {
+        img.src = src;
+        img.style.display = 'block';
+        ph.style.display = 'none';
+        btn.style.display = 'flex';
+    }
+}
+
+function clearEditRoomSlotPreview(slot) {
+    var img = document.getElementById('edit_room_preview_img_' + slot);
+    var ph = document.getElementById('edit_room_placeholder_' + slot);
+    var btn = document.getElementById('edit_room_remove_btn_' + slot);
+    if (img && ph && btn) {
+        img.src = '';
+        img.style.display = 'none';
+        ph.style.display = 'block';
+        btn.style.display = 'none';
+    }
+}
+
 function openAddPropertyRoomModal() {
     var gatingModal = document.getElementById('verificationGatingModal');
     var metaVerified = document.querySelector('meta[name="auth-user-verified"]');
@@ -506,10 +610,23 @@ function openEditPropertyRoomModal(room) {
     document.getElementById('edit-prop-room-guests').value = room.max_guests || 2;
     document.getElementById('edit-prop-room-price').value = room.price_per_night || 0;
     document.getElementById('edit-prop-room-deposit').value = room.deposit_percentage || 20;
-    document.getElementById('edit-prop-room-size').value = room.room_size || '';
     document.getElementById('edit-prop-room-status').value = room.status || 'available';
     document.getElementById('edit-prop-room-amenities').value = room.amenities || '';
-    document.getElementById('edit-prop-room-image').value = room.image || '';
+    var photos = room.photos || (room.image ? [room.image] : []);
+    for (var i = 0; i < 3; i++) {
+        var fileIn = document.getElementById('edit_room_file_' + i);
+        if (fileIn) fileIn.value = '';
+        var urlIn = document.getElementById('edit_room_url_' + i);
+        var remIn = document.getElementById('edit_room_removed_' + i);
+        if (remIn) remIn.value = '0';
+        if (photos[i]) {
+            if (urlIn) urlIn.value = photos[i];
+            setEditRoomSlotPreview(i, photos[i]);
+        } else {
+            if (urlIn) urlIn.value = '';
+            clearEditRoomSlotPreview(i);
+        }
+    }
     document.getElementById('edit-prop-room-desc').value = room.description || '';
     document.getElementById('modal-edit-property-room').style.display = 'flex';
 }
