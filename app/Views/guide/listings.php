@@ -191,45 +191,101 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                 <div class="form-grid-2">
                     <div class="field-row">
                         <label for="nl_price"><?= e(__('g_price_label', 'Price (₱)')) ?> <span class="req">*</span></label>
-                        <input class="input" id="nl_price" name="price" type="number" step="0.01" min="0" value="<?= e(old('price')) ?>">
+                        <input class="input" id="nl_price" name="price" type="number" step="0.01" min="0" value="<?= e(old('price')) ?>" placeholder="e.g. 2500">
                         <?php if (isset($errors['price'])): ?><div class="field-error"><?= e($errors['price']) ?></div><?php endif; ?>
                     </div>
                     <div class="field-row">
-                        <label for="nl_price_unit"><?= e(__('g_price_unit', 'Price unit')) ?></label>
-                        <select class="input" id="nl_price_unit" name="price_unit">
-                            <?php foreach (['per person','per night','per tour','per day','per table'] as $u): $sel = old('price_unit', 'per person') === $u; ?>
-                                <option value="<?= e($u) ?>" <?= $sel ? 'selected' : '' ?>><?= e(__('g_unit_' . str_replace(' ', '_', $u), $u)) ?></option>
-                            <?php endforeach; ?>
+                        <label for="nl_price_unit"><?= e(__('g_price_unit', 'Price unit')) ?> <span class="req">*</span></label>
+                        <?php $selectedUnit = strtolower((string) old('price_unit', 'per person')); ?>
+                        <select class="input" id="nl_price_unit" name="price_unit" onchange="updateGuidePriceUnitHint(this.value)">
+                            <option value="per person" <?= $selectedUnit === 'per person' ? 'selected' : '' ?>><?= e(__('g_unit_per_person', 'Per Person')) ?></option>
+                            <option value="per group" <?= $selectedUnit === 'per group' ? 'selected' : '' ?>><?= e(__('g_unit_per_group', 'Per Group')) ?></option>
                         </select>
+                        <span id="nl_price_unit_hint" class="hint" style="font-size:0.75rem;color:#64748b;display:block;margin-top:2px;"><?= $selectedUnit === 'per group' ? 'Fixed rate for the entire group/tour.' : 'Rate per individual tourist/guest.' ?></span>
                     </div>
                 </div>
 
                 <div class="form-grid-2">
                     <div class="field-row">
+                        <label for="nl_capacity">Slots / Capacity <span class="req">*</span></label>
+                        <input class="input" id="nl_capacity" name="capacity" type="number" min="1" max="100" value="<?= e(old('capacity', '10')) ?>" placeholder="e.g. 10">
+                        <span class="hint" style="font-size:0.75rem;color:#64748b;display:block;margin-top:2px;">Max participants allowed per booking session or group.</span>
+                        <?php if (isset($errors['capacity'])): ?><div class="field-error"><?= e($errors['capacity']) ?></div><?php endif; ?>
+                    </div>
+                    <div class="field-row">
                         <label for="nl_duration"><?= e(__('g_duration', 'Duration (optional)')) ?></label>
                         <input class="input" id="nl_duration" name="duration" value="<?= e(old('duration')) ?>" placeholder="<?= e(__('g_duration_ph', 'e.g. 4-5 hours')) ?>">
                     </div>
-                    <div class="field-row">
-                        <label for="nl_address"><?= e(__('g_address', 'Address (optional)')) ?></label>
-                        <input class="input" id="nl_address" name="address" value="<?= e(old('address')) ?>" placeholder="<?= e(__('g_address_ph', 'Landmark / address')) ?>">
+                </div>
+
+                <div class="field-row">
+                    <label for="nl_address"><?= e(__('g_address', 'Address / Departure Point (optional)')) ?></label>
+                    <input class="input" id="nl_address" name="address" value="<?= e(old('address')) ?>" placeholder="<?= e(__('g_address_ph', 'Landmark / meeting point')) ?>">
+                </div>
+
+                <!-- Structured 3-Photo Upload Section (Replicating Hotel Photo Upload Pattern) -->
+                <div class="field-row" style="background:#f8fafc;padding:0.85rem 1rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:1rem;">
+                    <label style="font-weight:700;font-size:0.92rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;color:var(--text, #0f172a);">
+                        <span>📸 Experience Photos (Upload up to 3 photos)</span>
+                        <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">Max 3 Photos</span>
+                    </label>
+                    <span class="hint" style="display:block;margin-bottom:0.75rem;font-size:0.8rem;color:#64748b;">
+                        Upload high-quality JPG, PNG, or WEBP images (up to 5MB each) or paste direct photo URLs. Photo 1 will be used as the primary cover photo.
+                    </span>
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:0.75rem;">
+                        <!-- Slot 0: Primary Cover -->
+                        <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <strong style="font-size:0.8rem;color:#0f172a;">Photo 1 (Cover) *</strong>
+                                <span style="font-size:0.68rem;background:#dcfce7;color:#166534;font-weight:700;padding:1px 6px;border-radius:4px;">Cover</span>
+                            </div>
+                            <div id="gl_preview_wrap_0" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                <img id="gl_preview_img_0" src="" alt="Photo 1" style="width:100%;height:100%;object-fit:cover;display:none;">
+                                <span id="gl_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                                <button type="button" id="gl_remove_btn_0" onclick="removeGuidePhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                            </div>
+                            <input type="file" name="photo_file_0" id="gl_file_0" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleGuideFileChange(0, this)">
+                            <input type="text" name="photo_url_0" id="gl_url_0" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleGuideUrlChange(0, this.value)">
+                            <input type="hidden" name="existing_photo_0" id="gl_existing_0" value="">
+                            <input type="hidden" name="photo_removed_0" id="gl_removed_0" value="0">
+                            <input type="hidden" name="cover_image" id="gl_cover_image" value="">
+                        </div>
+
+                        <!-- Slot 1: Gallery 2 -->
+                        <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <strong style="font-size:0.8rem;color:#0f172a;">Photo 2 (Gallery)</strong>
+                                <span style="font-size:0.68rem;background:#f1f5f9;color:#64748b;font-weight:600;padding:1px 6px;border-radius:4px;">Optional</span>
+                            </div>
+                            <div id="gl_preview_wrap_1" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                <img id="gl_preview_img_1" src="" alt="Photo 2" style="width:100%;height:100%;object-fit:cover;display:none;">
+                                <span id="gl_placeholder_1" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                                <button type="button" id="gl_remove_btn_1" onclick="removeGuidePhoto(1)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                            </div>
+                            <input type="file" name="photo_file_1" id="gl_file_1" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleGuideFileChange(1, this)">
+                            <input type="text" name="photo_url_1" id="gl_url_1" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleGuideUrlChange(1, this.value)">
+                            <input type="hidden" name="existing_photo_1" id="gl_existing_1" value="">
+                            <input type="hidden" name="photo_removed_1" id="gl_removed_1" value="0">
+                        </div>
+
+                        <!-- Slot 2: Gallery 3 -->
+                        <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <strong style="font-size:0.8rem;color:#0f172a;">Photo 3 (Gallery)</strong>
+                                <span style="font-size:0.68rem;background:#f1f5f9;color:#64748b;font-weight:600;padding:1px 6px;border-radius:4px;">Optional</span>
+                            </div>
+                            <div id="gl_preview_wrap_2" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                <img id="gl_preview_img_2" src="" alt="Photo 3" style="width:100%;height:100%;object-fit:cover;display:none;">
+                                <span id="gl_placeholder_2" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                                <button type="button" id="gl_remove_btn_2" onclick="removeGuidePhoto(2)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                            </div>
+                            <input type="file" name="photo_file_2" id="gl_file_2" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleGuideFileChange(2, this)">
+                            <input type="text" name="photo_url_2" id="gl_url_2" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleGuideUrlChange(2, this.value)">
+                            <input type="hidden" name="existing_photo_2" id="gl_existing_2" value="">
+                            <input type="hidden" name="photo_removed_2" id="gl_removed_2" value="0">
+                        </div>
                     </div>
-                </div>
-
-                <div class="field-row">
-                    <label for="nl_cover_file"><?= e(__('g_cover_photo', 'Cover photo')) ?></label>
-                    <input class="file-input" type="file" id="nl_cover_file" name="cover_file" accept=".jpg,.jpeg,.png,.webp">
-                    <span class="hint"><?= e(__('g_cover_hint', 'Upload a JPG, PNG or WEBP (up to 5MB).')) ?> <?= e(__('g_cover_placeholder', 'Leave blank to use an automatic placeholder.')) ?></span>
-                    <?php if (isset($errors['cover_file'])): ?><div class="field-error"><?= e($errors['cover_file']) ?></div><?php endif; ?>
-                </div>
-                <div class="field-row">
-                    <label for="nl_cover_image"><?= e(__('g_cover_url', '…or paste a direct image URL (optional)')) ?></label>
-                    <input class="input" id="nl_cover_image" name="cover_image" value="<?= e(old('cover_image')) ?>" placeholder="https://example.com/photo.jpg">
-                    <?php if (isset($errors['cover_image'])): ?><div class="field-error"><?= e($errors['cover_image']) ?></div><?php endif; ?>
-                </div>
-
-                <div id="nl_preview_wrap" style="display:none;margin-top:0.75rem;">
-                    <span class="hint" style="font-size:0.8rem;display:block;margin-bottom:0.25rem;">Current Photo Preview:</span>
-                    <img id="nl_preview_img" src="" alt="Cover preview" style="max-height:120px;border-radius:6px;object-fit:cover;border:1px solid #e2e8f0;">
                 </div>
 
                 <div id="newListingError" class="form-alert" role="alert" style="display:none;"></div>
@@ -356,6 +412,101 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
     var previewWrap = document.getElementById('nl_preview_wrap');
     var previewImg = document.getElementById('nl_preview_img');
 
+    function resolveImageUrl(src) {
+        if (!src) return '';
+        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) return src;
+        var clean = src.replace(/^\/+/, '');
+        var base = (window.APP_BASE_URL || '').replace(/\/+$/, '');
+        return base + '/' + clean;
+    }
+
+    window.handleGuideFileChange = function(slot, input) {
+        if (!input.files || !input.files[0]) return;
+        var file = input.files[0];
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            setGuideSlotPreview(slot, e.target.result);
+            var remIn = document.getElementById('gl_removed_' + slot);
+            if (remIn) remIn.value = '0';
+        };
+        reader.readAsDataURL(file);
+    };
+
+    window.handleGuideUrlChange = function(slot, val) {
+        val = (val || '').trim();
+        var remIn = document.getElementById('gl_removed_' + slot);
+        if (val) {
+            setGuideSlotPreview(slot, val);
+            if (remIn) remIn.value = '0';
+            if (slot === 0) {
+                var cov = document.getElementById('gl_cover_image');
+                if (cov) cov.value = val;
+            }
+        } else {
+            var exist = document.getElementById('gl_existing_' + slot);
+            if (exist && exist.value) {
+                setGuideSlotPreview(slot, exist.value);
+            } else {
+                clearGuideSlotPreview(slot);
+            }
+        }
+    };
+
+    window.removeGuidePhoto = function(slot) {
+        var fileIn = document.getElementById('gl_file_' + slot);
+        if (fileIn) fileIn.value = '';
+        var urlIn = document.getElementById('gl_url_' + slot);
+        if (urlIn) urlIn.value = '';
+        var existingIn = document.getElementById('gl_existing_' + slot);
+        if (existingIn) existingIn.value = '';
+        var remIn = document.getElementById('gl_removed_' + slot);
+        if (remIn) remIn.value = '1';
+        if (slot === 0) {
+            var cov = document.getElementById('gl_cover_image');
+            if (cov) cov.value = '';
+        }
+        clearGuideSlotPreview(slot);
+    };
+
+    function setGuideSlotPreview(slot, src) {
+        var img = document.getElementById('gl_preview_img_' + slot);
+        var ph = document.getElementById('gl_placeholder_' + slot);
+        var btn = document.getElementById('gl_remove_btn_' + slot);
+        if (img && ph && btn) {
+            var resolved = resolveImageUrl(src);
+            img.onload = function() {
+                img.style.display = 'block';
+                ph.style.display = 'none';
+                btn.style.display = 'flex';
+            };
+            img.onerror = function() {
+                img.style.display = 'none';
+                ph.textContent = '⚠️ Image not found';
+                ph.style.display = 'block';
+                btn.style.display = 'flex';
+            };
+            img.src = resolved;
+            img.style.display = 'block';
+            ph.style.display = 'none';
+            btn.style.display = 'flex';
+        }
+    }
+
+    function clearGuideSlotPreview(slot) {
+        var img = document.getElementById('gl_preview_img_' + slot);
+        var ph = document.getElementById('gl_placeholder_' + slot);
+        var btn = document.getElementById('gl_remove_btn_' + slot);
+        if (img && ph && btn) {
+            img.onload = null;
+            img.onerror = null;
+            img.src = '';
+            img.style.display = 'none';
+            ph.textContent = '📷 No photo uploaded';
+            ph.style.display = 'block';
+            btn.style.display = 'none';
+        }
+    }
+
     function clearListingError() {
         if (errorBox) {
             errorBox.textContent = '';
@@ -376,6 +527,17 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
         clearListingError();
     }
 
+    
+    window.updateGuidePriceUnitHint = function (val) {
+        var hint = document.getElementById('nl_price_unit_hint');
+        if (!hint) return;
+        if (val === 'per group') {
+            hint.textContent = 'Fixed rate for the entire group/tour.';
+        } else {
+            hint.textContent = 'Rate per individual tourist/guest.';
+        }
+    };
+
     window.openCreateListingModal = function () {
         if (!modal) return;
         clearListingError();
@@ -394,12 +556,18 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
         var incEl = document.getElementById('nl_included'); if (incEl) incEl.value = '';
         var nincEl = document.getElementById('nl_not_included'); if (nincEl) nincEl.value = '';
         var pEl = document.getElementById('nl_price'); if (pEl) pEl.value = '';
-        var puEl = document.getElementById('nl_price_unit'); if (puEl) puEl.value = 'per person';
+        var puEl = document.getElementById('nl_price_unit'); if (puEl) { puEl.value = 'per person'; updateGuidePriceUnitHint('per person'); }
+        var capEl = document.getElementById('nl_capacity'); if (capEl) capEl.value = '10';
         var durEl = document.getElementById('nl_duration'); if (durEl) durEl.value = '';
         var addEl = document.getElementById('nl_address'); if (addEl) addEl.value = '';
-        var cfEl = document.getElementById('nl_cover_file'); if (cfEl) cfEl.value = '';
-        var ciEl = document.getElementById('nl_cover_image'); if (ciEl) ciEl.value = '';
-        if (previewWrap) previewWrap.style.display = 'none';
+
+        for (var i = 0; i < 3; i++) {
+            removeGuidePhoto(i);
+            var remIn = document.getElementById('gl_removed_' + i);
+            if (remIn) remIn.value = '0';
+            var existingIn = document.getElementById('gl_existing_' + i);
+            if (existingIn) existingIn.value = '';
+        }
 
         modal.hidden = false;
         modal.setAttribute('aria-hidden', 'false');
@@ -426,17 +594,35 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
         var incEl = document.getElementById('nl_included'); if (incEl) incEl.value = listing.included || '';
         var nincEl = document.getElementById('nl_not_included'); if (nincEl) nincEl.value = listing.not_included || '';
         var pEl = document.getElementById('nl_price'); if (pEl) pEl.value = listing.price || '';
-        var puEl = document.getElementById('nl_price_unit'); if (puEl) puEl.value = listing.price_unit || 'per person';
+        var puEl = document.getElementById('nl_price_unit'); if (puEl) { puEl.value = 'per person'; updateGuidePriceUnitHint('per person'); }
+        var capEl = document.getElementById('nl_capacity'); if (capEl) capEl.value = listing.capacity || 10;
         var durEl = document.getElementById('nl_duration'); if (durEl) durEl.value = listing.duration || '';
         var addEl = document.getElementById('nl_address'); if (addEl) addEl.value = listing.address || '';
-        var cfEl = document.getElementById('nl_cover_file'); if (cfEl) cfEl.value = '';
-        var ciEl = document.getElementById('nl_cover_image'); if (ciEl) ciEl.value = listing.cover_image || '';
 
-        if (listing.cover_image && previewWrap && previewImg) {
-            previewImg.src = listing.cover_image;
-            previewWrap.style.display = 'block';
-        } else if (previewWrap) {
-            previewWrap.style.display = 'none';
+        for (var i = 0; i < 3; i++) {
+            clearGuideSlotPreview(i);
+            var remIn = document.getElementById('gl_removed_' + i);
+            if (remIn) remIn.value = '0';
+            var existingIn = document.getElementById('gl_existing_' + i);
+            if (existingIn) existingIn.value = '';
+            var fileIn = document.getElementById('gl_file_' + i);
+            if (fileIn) fileIn.value = '';
+            var urlIn = document.getElementById('gl_url_' + i);
+            if (urlIn) urlIn.value = '';
+        }
+
+        var photos = Array.isArray(listing.photos) && listing.photos.length > 0
+            ? listing.photos
+            : (listing.cover_image ? [listing.cover_image] : []);
+
+        photos.slice(0, 3).forEach(function(src, i) {
+            var exist = document.getElementById('gl_existing_' + i);
+            if (exist) exist.value = src;
+            setGuideSlotPreview(i, src);
+        });
+        if (listing.cover_image) {
+            var cov = document.getElementById('gl_cover_image');
+            if (cov) cov.value = listing.cover_image;
         }
 
         modal.hidden = false;
@@ -473,7 +659,8 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
             { id: 'nl_category', label: 'Category' },
             { id: 'nl_area', label: 'Area' },
             { id: 'nl_description', label: 'Description' },
-            { id: 'nl_price', label: 'Price' }
+            { id: 'nl_price', label: 'Price' },
+            { id: 'nl_capacity', label: 'Slots / Capacity' }
         ];
         form.addEventListener('submit', function (e) {
             var missing = [];

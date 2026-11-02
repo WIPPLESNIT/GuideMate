@@ -838,7 +838,7 @@ export default function TripsScreen() {
           >
             <Ionicons name="ticket-outline" size={13} color={categoryFilter === 'attraction' ? '#FFFFFF' : '#EC4899'} />
             <Text style={[styles.catChipText, { color: categoryFilter === 'attraction' ? '#FFFFFF' : colors.text }]}>
-              Attractions &amp; Tours ({attractionCount})
+              Attractions ({attractionCount})
             </Text>
           </TouchableOpacity>
         </ScrollView>

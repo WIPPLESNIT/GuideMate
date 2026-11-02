@@ -104,6 +104,15 @@ final class BookingController extends Controller
         }
 
         // Tour guide booking flow
+        $activeBooking = Booking::getActiveBookingForListing((int) $listing['id'], (int) Auth::id());
+        if ($activeBooking !== null) {
+            $statusLabel = ucfirst((string) $activeBooking['status']);
+            $dateFormatted = date('M j, Y', strtotime((string) $activeBooking['booking_date']));
+            flash('error', "You already have an active booking for this tour (Status: {$statusLabel}, Date: {$dateFormatted}). You can book this tour again once your current experience is marked as completed.");
+            redirect('/listing/' . $listing['slug']);
+            return;
+        }
+
         $date = (string) $this->input('booking_date', '');
         $guests = max(1, (int) $this->input('guests', 1));
         $notes = (string) $this->input('notes', '');
@@ -116,11 +125,16 @@ final class BookingController extends Controller
         } elseif (Booking::isDateBooked((int) $listing['id'], $date)) {
             $errors['booking_date'] = 'Sorry, this guide is already booked on that date. Please pick another date — or browse other guides who are still available.';
         }
+        $maxCap = (int) ($listing['capacity'] ?? 10);
+        if ($guests > $maxCap) {
+            $errors['guests'] = "This experience has a maximum capacity of {$maxCap} participants per booking.";
+        }
         if ($errors !== []) {
             flash_keep_old($errors, [], '/listing/' . $listing['slug']);
         }
 
-        $total = Listing::effectivePrice($listing) * $guests;
+        $isPerGroup = str_contains(strtolower((string) ($listing['price_unit'] ?? '')), 'group');
+        $total = $isPerGroup ? (float) Listing::effectivePrice($listing) : (Listing::effectivePrice($listing) * $guests);
         $bookingId = Booking::create((int) $listing['id'], (int) Auth::id(), $date, $guests, $total, $notes);
 
         flash('info', 'Almost there — complete payment. The partner still needs to confirm after you pay.');

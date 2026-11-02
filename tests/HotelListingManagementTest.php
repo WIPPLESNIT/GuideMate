@@ -52,6 +52,8 @@ final class HotelListingManagementTest
         $this->runTest('testFlashFunctionClearsSessionImmediately', [$this, 'testFlashFunctionClearsSessionImmediately']);
         $this->runTest('testYourHotelPropertiesTableActionButtonsLayout', [$this, 'testYourHotelPropertiesTableActionButtonsLayout']);
 
+        $this->runTest('testHotelPropertyEditModalPhotoResolutionAndPreservation', [$this, 'testHotelPropertyEditModalPhotoResolutionAndPreservation']);
+
         $this->tearDown();
 
         echo "\n--------------------------------------------------------\n";
@@ -736,6 +738,84 @@ final class HotelListingManagementTest
         $this->assert(str_contains($css, '.hotel-prop-btn'), "CSS must define .hotel-prop-btn");
         $this->assert(str_contains($css, 'border-radius: 9999px'), "CSS must specify pill border-radius: 9999px for hotel-prop-btn");
         $this->assert(str_contains($css, 'min-width: 640px'), "CSS must specify responsive min-width for hotel-properties-table");
+    }
+
+    public function testHotelPropertyEditModalPhotoResolutionAndPreservation(): void
+    {
+        $partnerId = User::create('Partner Photo Test', 'h_photo_' . bin2hex(random_bytes(4)) . '@example.com', 'Pass123!', 'hotel_admin');
+        $this->createdUserIds[] = $partnerId;
+        Database::run("UPDATE users SET guide_status = 'approved' WHERE id = ?", [$partnerId]);
+
+        $_SESSION['user_id'] = $partnerId;
+        Auth::refreshUser();
+
+        // 1. Create a hotel listing with uploaded relative paths
+        $slug = 'hotel-photo-' . bin2hex(random_bytes(4));
+        $relCover = 'uploads/listings/' . $partnerId . '/test_cover.jpg';
+        $relGallery = 'uploads/listings/' . $partnerId . '/test_gallery.jpg';
+        $listingId = Database::insert(
+            "INSERT INTO listings (user_id, category_id, title, slug, summary, description, area, price, price_unit, cover_image, status)
+             VALUES (?, 3, 'Photo Test Hotel', ?, 'Summary', 'Desc', 'Mactan', 2500, 'per night', ?, 'approved')",
+            [$partnerId, $slug, $relCover]
+        );
+        $this->createdListingIds[] = $listingId;
+        Listing::addImage($listingId, $relGallery, 2);
+
+        // 2. Test getHotel() endpoint returns photo_urls and cover_image_url mapped via img_src
+        $_SERVER['HTTP_ACCEPT'] = 'application/json';
+        $_SERVER['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';
+        ob_start();
+        $controller = new HotelController();
+        $controller->getHotel((string) $listingId);
+        $jsonOutput = ob_get_clean();
+
+        $data = json_decode($jsonOutput ?: '', true);
+        $this->assert(is_array($data) && ($data['success'] ?? false) === true, "getHotel must succeed");
+        $this->assert(isset($data['hotel']['cover_image_url']), "Hotel must have cover_image_url in JSON");
+        $this->assert(str_contains($data['hotel']['cover_image_url'], 'uploads/listings/'), "cover_image_url must contain uploads path");
+        $this->assert(isset($data['hotel']['photo_urls']) && count($data['hotel']['photo_urls']) >= 2, "Hotel must have photo_urls array in JSON");
+
+        // 3. Test template contains resolveImageUrl, hf_existing_0/1/2, and error fallback
+        $viewPath = __DIR__ . '/../app/Views/hotel/hotels.php';
+        $viewContent = file_get_contents($viewPath) ?: '';
+        $this->assert(str_contains($viewContent, 'resolveImageUrl'), "hotels.php must contain resolveImageUrl helper");
+        $this->assert(str_contains($viewContent, 'id="hf_existing_0"'), "hotels.php must contain hf_existing_0");
+        $this->assert(str_contains($viewContent, 'id="hf_existing_1"'), "hotels.php must contain hf_existing_1");
+        $this->assert(str_contains($viewContent, 'id="hf_existing_2"'), "hotels.php must contain hf_existing_2");
+        $this->assert(str_contains($viewContent, '⚠️ Image not found'), "hotels.php must contain graceful image not found placeholder");
+
+        // 4. Test updating the hotel without replacing images preserves existing images in the DB
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['HTTP_ACCEPT'] = 'application/json';
+        $_SERVER['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';
+        $_POST = [
+            '_token' => csrf_token(),
+            'title' => 'Photo Test Hotel Updated',
+            'area' => 'Mactan',
+            'address' => 'Punta Engaño',
+            'summary' => 'Updated summary',
+            'description' => 'Updated description test details',
+            'duration' => '2:00 PM - 12:00 PM',
+            'included' => 'Breakfast',
+            'not_included' => 'Lunch',
+            'existing_photo_0' => $relCover,
+            'existing_photo_1' => $relGallery,
+            'photo_removed_0' => '0',
+            'photo_removed_1' => '0',
+            'photo_removed_2' => '0',
+        ];
+        $_FILES = [];
+
+        ob_start();
+        $controller->updateHotel((string) $listingId);
+        $updateOutput = ob_get_clean();
+
+        $updatedListing = Listing::find($listingId);
+        $this->assert($updatedListing['title'] === 'Photo Test Hotel Updated', "Title must be updated");
+        $this->assert($updatedListing['cover_image'] === $relCover, "Cover image must be preserved without replacement");
+        $updatedPhotos = Listing::getPhotos($listingId);
+        $this->assert(in_array($relCover, $updatedPhotos, true), "Existing cover photo must be retained in gallery");
+        $this->assert(in_array($relGallery, $updatedPhotos, true), "Existing gallery photo must be retained in gallery");
     }
 
     private function runTest(string $name, callable $callable): void

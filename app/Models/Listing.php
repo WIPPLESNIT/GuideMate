@@ -34,8 +34,16 @@ final class Listing
             array_push($params, $like, $like, $like, $like);
         }
         if (!empty($filters['category'])) {
-            $where[] = 'c.slug = ?';
-            $params[] = $filters['category'];
+            $catSlug = (string) $filters['category'];
+            if ($catSlug === 'attraction-and-tours' || $catSlug === 'attraction') {
+                $catSlug = 'attractions';
+            }
+            if ($catSlug === 'attractions') {
+                $where[] = 'c.slug IN ("attractions", "attraction-and-tours")';
+            } else {
+                $where[] = 'c.slug = ?';
+                $params[] = $catSlug;
+            }
         }
         if (!empty($filters['area'])) {
             $where[] = 'l.area LIKE ?';
@@ -171,18 +179,19 @@ final class Listing
         $data['address'] = $data['address'] ?? null;
         $data['summary'] = $data['summary'] ?? null;
         $data['duration'] = $data['duration'] ?? null;
+        $data['capacity'] = isset($data['capacity']) && (int) $data['capacity'] > 0 ? (int) $data['capacity'] : 10;
         $data['included'] = $data['included'] ?? null;
         $data['not_included'] = $data['not_included'] ?? null;
-        $data['price_unit'] = $data['price_unit'] ?? 'per night';
+        $data['price_unit'] = !empty($data['price_unit']) ? (string) $data['price_unit'] : 'per person';
         $data['cover_image'] = $data['cover_image'] ?? null;
         $data['status'] = $data['status'] ?? 'pending';
 
         return Database::insert(
             'INSERT INTO listings
                 (user_id, category_id, title, slug, summary, description, area, address, latitude, longitude,
-                 price, price_unit, duration, included, not_included, cover_image, status, submitted_at)
+                 price, price_unit, duration, capacity, included, not_included, cover_image, status, submitted_at)
              VALUES (:user_id, :category_id, :title, :slug, :summary, :description, :area, :address, :latitude, :longitude,
-                     :price, :price_unit, :duration, :included, :not_included, :cover_image, :status, :submitted_at)',
+                     :price, :price_unit, :duration, :capacity, :included, :not_included, :cover_image, :status, :submitted_at)',
             $data
         );
     }
@@ -199,12 +208,13 @@ final class Listing
         );
         $data['latitude'] = $coords['latitude'] ?? null;
         $data['longitude'] = $coords['longitude'] ?? null;
+        $data['capacity'] = isset($data['capacity']) && (int) $data['capacity'] > 0 ? (int) $data['capacity'] : 10;
         $data['id'] = $id;
         Database::run(
             'UPDATE listings SET category_id = :category_id, title = :title, summary = :summary,
                 description = :description, area = :area, address = :address,
                 latitude = :latitude, longitude = :longitude,
-                price = :price, price_unit = :price_unit, duration = :duration, included = :included,
+                price = :price, price_unit = :price_unit, duration = :duration, capacity = :capacity, included = :included,
                 not_included = :not_included, cover_image = :cover_image
              WHERE id = :id',
             $data
@@ -447,11 +457,11 @@ final class Listing
         return (int) ($row['c'] ?? 0);
     }
 
-    /** Tour guides and hotels support direct online booking with deposit. */
+    /** Attractions & tours and hotels support direct online booking. */
     public static function isBookable(array $listing): bool
     {
         $slug = (string) ($listing['category_slug'] ?? '');
-        return in_array($slug, ['tour-guides', 'hotels'], true);
+        return in_array($slug, ['attractions', 'attraction-and-tours', 'tour-guides', 'hotels'], true);
     }
 
     /**

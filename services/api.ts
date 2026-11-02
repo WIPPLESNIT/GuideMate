@@ -4,7 +4,7 @@ import { API_BASE_URL } from '../config';
 // Fail fast instead of hanging forever when the backend is down/unreachable.
 const REQUEST_TIMEOUT_MS = 25000;
 
-// ── Types matching the PHP API payloads (app/Controllers/ApiController.php) ──
+// â”€â”€ Types matching the PHP API payloads (app/Controllers/ApiController.php) â”€â”€
 
 export type ApiUser = {
   id: number;
@@ -66,15 +66,25 @@ export type ApiListing = {
   slug: string;
   summary: string;
   area: string;
+  address?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   price: number;
   lowest_room_price?: number | null;
   price_unit: string;
+  capacity?: number;
+  total_capacity?: number;
+  booked_count?: number;
+  available_slots?: number;
+  is_available?: boolean;
+  date_booked_counts?: Record<string, number>;
   currency: string;
   rating: number;
   review_count: number;
   category: string;
   category_slug: string;
   image: string;
+  photos?: string[];
   featured: boolean;
   duration: string;
   check_in_time?: string | null;
@@ -109,6 +119,19 @@ export type NearestHotel = {
   directions_url: string;
 };
 
+export type ApiListingSchedule = {
+  id: number;
+  listing_id: number;
+  schedule_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  capacity: number | null;
+  booked_count?: number;
+  available_slots?: number;
+  is_available?: boolean;
+  note: string | null;
+};
+
 export type ApiArea = { slug: string; name: string; tagline: string };
 
 export type ApiHotelRoom = {
@@ -126,6 +149,9 @@ export type ApiHotelRoom = {
   status: 'available' | 'unavailable' | 'blocked' | 'fully_booked';
   amenities?: string | null;
   image?: string | null;
+  photos?: string[];
+  photo_urls?: string[];
+  image_url?: string;
 };
 
 export type ApiBooking = {
@@ -158,6 +184,9 @@ export type ApiBooking = {
   status: string;
   status_label?: string;
   area: string;
+  address?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   reviewed?: boolean;
   can_review?: boolean;
   can_report?: boolean;
@@ -288,7 +317,7 @@ export function resolveImage(url?: string | null): string {
   );
 }
 
-// ── Token handling ──
+// â”€â”€ Token handling â”€â”€
 
 let authToken: string | null = null;
 
@@ -296,7 +325,7 @@ export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
-// ── Core request helper ──
+// â”€â”€ Core request helper â”€â”€
 
 type Options = {
   method?: string;
@@ -338,10 +367,10 @@ export async function api<T = any>(path: string, options: Options = {}): Promise
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = (data && (data.error || data.message)) || 'Request failed. Please try again.';
-    const err = new Error(message) as Error & { code?: string; status?: number };
+    const err = new Error(message) as Error & { code?: string; status?: number; data?: any };
     err.status = response.status;
-    // 401/403 means the saved token is missing/expired — callers can treat this
-    // as "logged out" and prompt the user to sign in again.
+    err.data = data;
+    // 401/403 means the saved token is missing/expired
     if (response.status === 401 || response.status === 403) {
       err.code = 'UNAUTHORIZED';
     }
@@ -355,7 +384,7 @@ export function isUnauthorized(e: unknown): boolean {
   return e instanceof Error && (e as { code?: string }).code === 'UNAUTHORIZED';
 }
 
-// ── Endpoints ──
+// â”€â”€ Endpoints â”€â”€
 
 export const getHome = () => api<HomePayload>('/api/home');
 
@@ -368,11 +397,19 @@ export const getListing = (slug: string) =>
   api<{
     listing: ApiListing;
     rooms?: ApiHotelRoom[];
+    schedules?: ApiListingSchedule[];
     gallery: { id: number; url: string }[];
     reviews: { id: number; rating: number; comment: string; user_name: string; created_at: string }[];
     summary: { average: number; total: number } | any;
     favorited: boolean;
     already_booked: boolean;
+    active_booking?: {
+      id: number;
+      status: string;
+      status_label: string;
+      booking_date: string;
+      booking_time?: string;
+    } | null;
     has_reviewed: boolean;
     can_review: boolean;
     booked_slots: { date: string; time: string }[];
@@ -698,6 +735,7 @@ export const getRentalReview = (rentalId: number) =>
 
 export const createBooking = (payload: {
   listing_id: number;
+  schedule_id?: number;
   room_id?: number;
   check_in_date?: string;
   check_out_date?: string;
@@ -815,7 +853,7 @@ export const toggleFavorite = (listingId: number) =>
     body: { listing_id: listingId },
   });
 
-// ── Reviews ──
+// â”€â”€ Reviews â”€â”€
 
 export const submitReview = (payload: {
   listing_id: number;
@@ -828,7 +866,7 @@ export const submitReview = (payload: {
     body: payload,
   });
 
-// ── Problem reports (disputes) ──
+// â”€â”€ Problem reports (disputes) â”€â”€
 
 export const getMyDispute = (bookingId: number) =>
   api<{ dispute: ApiDispute | null }>(`/api/disputes?booking_id=${bookingId}`);
@@ -895,7 +933,7 @@ export async function submitDispute(payload: {
   return result;
 }
 
-// ── Profile ──
+// â”€â”€ Profile â”€â”€
 
 export const apiUpdateProfile = (payload: { name?: string; bio?: string }) =>
   api<{ user: ApiUser }>('/api/profile', { method: 'POST', body: payload });
@@ -973,7 +1011,7 @@ export function apiUploadAvatar(uri: string): Promise<{ user: ApiUser }> {
   });
 }
 
-// ── Messaging ──
+// â”€â”€ Messaging â”€â”€
 
 export const getConversations = (archived = false) =>
   api<{ conversations: ApiConversation[]; unread_total: number }>(

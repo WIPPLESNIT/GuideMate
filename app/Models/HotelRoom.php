@@ -48,7 +48,20 @@ final class HotelRoom
                 }
             }
         }
-        return array_values(array_slice(array_unique($photos), 0, 3));
+        return array_values(array_slice(array_unique($photos), 0, 1));
+    }
+
+    /**
+     * Enrich a hotel room row with full image URLs and photo arrays.
+     *
+     * @param array<string, mixed> $room
+     */
+    public static function enrichRoomData(array &$room): void
+    {
+        $room['photos'] = self::getPhotos($room);
+        $primaryPhoto = !empty($room['image']) ? $room['image'] : (!empty($room['photos'][0]) ? $room['photos'][0] : null);
+        $room['image_url'] = !empty($primaryPhoto) ? img_src($primaryPhoto) : '';
+        $room['photo_urls'] = array_values(array_map(static fn($p) => img_src($p), $room['photos']));
     }
 
     /** Allowed room availability statuses */
@@ -70,7 +83,7 @@ final class HotelRoom
 
         $rows = Database::all($sql, [$listingId]);
         foreach ($rows as &$r) {
-            $r['photos'] = self::getPhotos($r);
+            self::enrichRoomData($r);
         }
         unset($r);
         return $rows;
@@ -87,7 +100,7 @@ final class HotelRoom
             [$userId]
         );
         foreach ($rows as &$r) {
-            $r['photos'] = self::getPhotos($r);
+            self::enrichRoomData($r);
         }
         unset($r);
         return $rows;
@@ -103,7 +116,7 @@ final class HotelRoom
             [$id]
         );
         if ($row !== null) {
-            $row['photos'] = self::getPhotos($row);
+            self::enrichRoomData($row);
         }
         return $row;
     }
@@ -218,24 +231,30 @@ final class HotelRoom
             }
         }
 
+        $hasImageKey = array_key_exists('image', $data) || array_key_exists('images', $data) || $cleanPhotos !== null;
         $primary = null;
         $imagesJson = null;
         if ($cleanPhotos !== null) {
             $primary = $cleanPhotos[0] ?? null;
             $imagesJson = $cleanPhotos !== [] ? json_encode($cleanPhotos) : null;
-        } elseif (isset($data['image'])) {
-            $primary = trim((string) $data['image']) ?: null;
-            if ($primary !== null) {
-                $imagesJson = json_encode([$primary]);
-            }
+        } elseif (array_key_exists('image', $data)) {
+            $primary = trim((string) ($data['image'] ?? '')) ?: null;
+            $imagesJson = $primary !== null ? json_encode([$primary]) : null;
+        } elseif (array_key_exists('images', $data)) {
+            $primary = null;
+            $imagesJson = null;
+        } else {
+            $primary = $room['image'] ?? null;
+            $imagesJson = $room['images'] ?? null;
         }
+
+        $imageSql = $hasImageKey ? "image = ?, images = ?" : "image = COALESCE(?, image), images = COALESCE(?, images)";
 
         Database::run(
             "UPDATE hotel_rooms 
              SET name = ?, description = ?, room_size = ?, bed_type = ?, max_guests = ?,
                  price_per_night = ?, deposit_percentage = ?, status = ?, amenities = ?,
-                 image = COALESCE(?, image),
-                 images = COALESCE(?, images)
+                 {$imageSql}
              WHERE id = ?",
             [
                 trim((string) $data['name']),

@@ -181,6 +181,7 @@ return [
     'g_price_label' => 'Price (₱)',
     'g_price_unit' => 'Price unit',
     'g_unit_per_person' => 'per person',
+    'g_unit_per_group' => 'per group',
     'g_unit_per_night' => 'per night',
     'g_unit_per_tour' => 'per tour',
     'g_unit_per_day' => 'per day',

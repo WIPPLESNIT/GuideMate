@@ -277,6 +277,32 @@ final class Booking
         return $out;
     }
 
+    /**
+     * Active or incomplete booking for a user on this listing.
+     * Prevents duplicate bookings while a previous booking is pending, confirmed, or disputed.
+     * Once a booking is marked 'completed' or 'cancelled'/'refunded', this returns null
+     * allowing the account to rebook the tour.
+     */
+    public static function getActiveBookingForListing(int $listingId, int $userId): ?array
+    {
+        return Database::first(
+            'SELECT b.id, b.status, b.hotel_status, b.booking_date, b.booking_time, b.booking_end_time, b.guests, b.total_amount
+             FROM bookings b
+             WHERE b.listing_id = ?
+               AND b.user_id = ?
+               AND b.status IN ("pending", "confirmed", "disputed")
+               AND (b.hotel_status IS NULL OR b.hotel_status IN ("pending", "deposit_paid", "confirmed", "checked_in"))
+             ORDER BY b.id DESC
+             LIMIT 1',
+            [$listingId, $userId]
+        );
+    }
+
+    public static function hasActiveBookingForListing(int $listingId, int $userId): bool
+    {
+        return self::getActiveBookingForListing($listingId, $userId) !== null;
+    }
+
     public static function hasActivePaidBooking(int $listingId, int $userId, ?string $date = null): bool
     {
         $sql = 'SELECT b.id FROM bookings b
@@ -414,6 +440,7 @@ final class Booking
             $sql .= ' AND id <> ?';
             $params[] = $excludeBookingId;
         }
+
         return Database::first($sql, $params) !== null;
     }
 
@@ -530,6 +557,7 @@ final class Booking
             $sql .= ' AND id <> ?';
             $params[] = $excludeBookingId;
         }
+
         $rows = Database::all($sql, $params);
         foreach ($rows as $row) {
             $bStart = trim((string) ($row['booking_time'] ?? ''));
@@ -628,7 +656,7 @@ final class Booking
      * Is the GUIDE (owner) already taken for this date + start-time slot on any
      * of their listings? Used to stop a second tourist double-booking the guide.
      */
-    public static function isGuideSlotBooked(int $guideId, string $date, string $time, ?int $excludeBookingId = null): bool
+    public static function isGuideSlotBooked(int $guideId, string $date, string $time, ?int $excludeBookingId = null, ?int $excludeListingId = null): bool
     {
         $time = substr(trim($time), 0, 5);
         $sql = 'SELECT b.id, b.booking_time, b.booking_end_time FROM bookings b
@@ -638,6 +666,10 @@ final class Booking
         if ($excludeBookingId !== null) {
             $sql .= ' AND b.id <> ?';
             $params[] = $excludeBookingId;
+        }
+        if ($excludeListingId !== null) {
+            $sql .= ' AND l.id <> ?';
+            $params[] = $excludeListingId;
         }
         $rows = Database::all($sql, $params);
         foreach ($rows as $row) {

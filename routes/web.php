@@ -36,6 +36,8 @@ $router->get('/locale/{locale}', [LocaleController::class, 'setLocale']);
 $router->get('/currency/{currency}', [LocaleController::class, 'setCurrency']);
 $router->get('/listings', [ListingController::class, 'index']);
 $router->get('/things-to-do', [ListingController::class, 'thingsToDo']);
+$router->get('/attractions', [ListingController::class, 'attractions']);
+$router->get('/attraction-and-tours', function() { redirect('/attractions', 301); });
 $router->get('/tour-guides', [ListingController::class, 'tourGuides']);
 $router->get('/hotels', [ListingController::class, 'hotels']);
 $router->get('/restaurants', [ListingController::class, 'restaurants']);

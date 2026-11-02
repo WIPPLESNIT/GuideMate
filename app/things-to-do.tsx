@@ -13,8 +13,10 @@ import { ApiListing, getListings, resolveImage } from '../services/api';
 export default function ListingsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ category?: string; q?: string; featured?: string }>();
-  const categoryParam = params.category && !isHiddenCategorySlug(String(params.category))
-    ? String(params.category)
+  const rawCat = params.category ? String(params.category) : undefined;
+  const normalizedCat = (rawCat === 'attraction-and-tours' || rawCat === 'attraction') ? 'attractions' : rawCat;
+  const categoryParam = normalizedCat && !isHiddenCategorySlug(normalizedCat)
+    ? normalizedCat
     : undefined;
   const { t, formatPrice } = usePreferences();
   const { colors, isDark, shadow } = useTheme();
@@ -28,9 +30,13 @@ export default function ListingsScreen() {
     ? 'Attractions'
     : params.q
       ? `Results for "${params.q}"`
-      : categoryParam
-        ? categoryParam.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-        : 'Explore Cebu';
+      : categoryParam === 'attractions'
+        ? 'Attractions'
+        : categoryParam === 'things-to-do'
+          ? 'Things to Do'
+          : categoryParam
+            ? categoryParam.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+            : 'Explore Cebu';
 
   const load = useCallback(async () => {
     setLoading(true);

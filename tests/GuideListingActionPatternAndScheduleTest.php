@@ -314,7 +314,7 @@ final class GuideListingActionPatternAndScheduleTest
         );
         $this->createdListingIds[] = $listingId;
 
-        ListingSchedule::add($listingId, '2026-11-01', '09:00', '13:00', 8, 'Session 1');
+        ListingSchedule::add($listingId, date('Y-m-d', strtotime('+1 day')), '09:00', '13:00', 8, 'Session 1');
 
         $_SERVER['HTTP_ACCEPT'] = 'application/json';
         $_SERVER['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';

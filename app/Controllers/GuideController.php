@@ -69,8 +69,12 @@ final class GuideController extends Controller
             return;
         }
 
-        // An uploaded photo always wins over a pasted URL.
-        $cover = $this->uploadedCover() ?? $data['cover_image'];
+        // Resolve up to 3 photos (Photo 1 Cover, Photo 2 & 3 Gallery)
+        $photos = $this->resolveGuidePhotos();
+        $cover = $photos[0] ?? $this->uploadedCover() ?? $data['cover_image'] ?? 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&q=80';
+        if ($photos === [] && !empty($cover)) {
+            $photos = [$cover];
+        }
 
         $slug = $this->uniqueSlug($data['title']);
         $listingId = Listing::create([
@@ -85,15 +89,14 @@ final class GuideController extends Controller
             'price' => $data['price'],
             'price_unit' => $data['price_unit'],
             'duration' => $data['duration'],
+            'capacity' => $data['capacity'],
             'included' => $data['included'],
             'not_included' => $data['not_included'],
             'cover_image' => $cover,
             'status' => 'pending',
         ]);
 
-        if ($cover !== null) {
-            Listing::addImage($listingId, $cover, 1);
-        }
+        Listing::syncImages($listingId, $photos);
 
         flash('success', 'Listing submitted! It will appear publicly once an admin approves it.');
         redirect('/dashboard/listings');
@@ -116,6 +119,7 @@ final class GuideController extends Controller
             return;
         }
         if ($this->isJson()) {
+            $listing['photos'] = Listing::getPhotos((int) $id);
             $this->json([
                 'success' => true,
                 'listing' => $listing,
@@ -146,8 +150,12 @@ final class GuideController extends Controller
             return;
         }
 
-        // Keep the existing photo unless the guide uploaded a new one.
-        $cover = $this->uploadedCover() ?? (string) ($listing['cover_image'] ?? '') ?: null;
+        // Resolve up to 3 photos (Photo 1 Cover, Photo 2 & 3 Gallery)
+        $photos = $this->resolveGuidePhotos((int) $listing['id']);
+        $cover = $photos[0] ?? $this->uploadedCover() ?? (string) ($listing['cover_image'] ?? '') ?: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&q=80';
+        if ($photos === [] && !empty($cover)) {
+            $photos = [$cover];
+        }
 
         Listing::update((int) $listing['id'], [
             'category_id' => $data['category_id'],
@@ -159,10 +167,13 @@ final class GuideController extends Controller
             'price' => $data['price'],
             'price_unit' => $data['price_unit'],
             'duration' => $data['duration'],
+            'capacity' => $data['capacity'],
             'included' => $data['included'],
             'not_included' => $data['not_included'],
             'cover_image' => $cover,
         ]);
+
+        Listing::syncImages((int) $listing['id'], $photos);
 
         if ($this->isJson()) {
             $this->json([
@@ -650,6 +661,10 @@ final class GuideController extends Controller
         if ($price < 0) {
             $errors['price'] = 'Price cannot be negative.';
         }
+        $capacity = (int) $this->input('capacity', 0);
+        if ($capacity <= 0) {
+            $errors['capacity'] = 'Please enter a valid capacity / slots (at least 1).';
+        }
         $cover = trim((string) $this->input('cover_image', ''));
         if ($cover !== '' && !filter_var($cover, FILTER_VALIDATE_URL)) {
             $errors['cover_image'] = 'Cover image must be a valid URL (or left blank).';
@@ -670,6 +685,12 @@ final class GuideController extends Controller
             flash_keep_old($errors, $_POST, $back);
         }
 
+        $priceUnit = strtolower(trim((string) $this->input('price_unit', 'per person')));
+        $allowedUnits = ['per person', 'per group'];
+        if (!in_array($priceUnit, $allowedUnits, true)) {
+            $priceUnit = 'per person';
+        }
+
         return [
             'category_id' => $categoryId,
             'title' => (string) $this->input('title', ''),
@@ -678,12 +699,95 @@ final class GuideController extends Controller
             'area' => (string) $this->input('area', ''),
             'address' => (string) $this->input('address', ''),
             'price' => $price,
-            'price_unit' => (string) $this->input('price_unit', 'per person'),
+            'price_unit' => $priceUnit,
             'duration' => (string) $this->input('duration', ''),
+            'capacity' => $capacity > 0 ? $capacity : 10,
             'included' => trim((string) $this->input('included', '')),
             'not_included' => trim((string) $this->input('not_included', '')),
             'cover_image' => $cover === '' ? null : $cover,
         ];
+    }
+
+    /**
+     * Resolve up to 3 photos for an experience listing from uploads, URLs, and existing data.
+     *
+     * @return array<int, string>
+     */
+    private function resolveGuidePhotos(?int $listingId = null): array
+    {
+        $existing = $listingId !== null ? Listing::getPhotos($listingId) : [];
+        $photos = [];
+
+        for ($i = 0; $i < 3; $i++) {
+            $isRemoved = !empty($_POST['photo_removed_' . $i]) || !empty($_POST['photos_removed'][$i]);
+            if ($isRemoved) {
+                continue;
+            }
+
+            $file = null;
+            if (isset($_FILES['photo_file_' . $i]) && Upload::present($_FILES['photo_file_' . $i])) {
+                $file = $_FILES['photo_file_' . $i];
+            } elseif ($i === 0 && isset($_FILES['cover_file']) && Upload::present($_FILES['cover_file'])) {
+                $file = $_FILES['cover_file'];
+            }
+
+            if ($file !== null) {
+                try {
+                    $uploadedPath = Upload::store($file, 'listings/' . Auth::id(), ['jpg', 'jpeg', 'png', 'webp']);
+                    $photos[] = $uploadedPath;
+                    continue;
+                } catch (\RuntimeException $e) {
+                    // skip invalid image
+                }
+            }
+
+            $url = null;
+            if (!empty($_POST['photo_url_' . $i])) {
+                $url = trim((string) $_POST['photo_url_' . $i]);
+            } elseif ($i === 0 && !empty($_POST['cover_image'])) {
+                $url = trim((string) $_POST['cover_image']);
+            }
+
+            if ($url !== null && $url !== '') {
+                if (!str_starts_with($url, 'data:image/')) {
+                    $photos[] = $this->normalizeStoredImagePath($url);
+                    continue;
+                }
+            }
+
+            $existingPath = null;
+            if (!empty($_POST['existing_photo_' . $i])) {
+                $existingPath = trim((string) $_POST['existing_photo_' . $i]);
+            } elseif (isset($existing[$i]) && $existing[$i] !== '') {
+                $existingPath = $existing[$i];
+            }
+
+            if ($existingPath !== null && $existingPath !== '') {
+                $photos[] = $this->normalizeStoredImagePath($existingPath);
+            }
+        }
+
+        $clean = [];
+        foreach ($photos as $p) {
+            $p = trim((string) $p);
+            if ($p !== '' && !in_array($p, $clean, true)) {
+                $clean[] = $p;
+            }
+        }
+
+        return array_values(array_slice($clean, 0, 3));
+    }
+
+    private function normalizeStoredImagePath(string $path): string
+    {
+        $path = trim($path);
+        if (preg_match('#^https?://[^/]+/uploads/(.+)#i', $path, $m)) {
+            return 'uploads/' . $m[1];
+        }
+        if (str_starts_with($path, '/uploads/')) {
+            return substr($path, 1);
+        }
+        return $path;
     }
 
     /**

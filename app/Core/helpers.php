@@ -59,10 +59,11 @@ if (!function_exists('redirect')) {
     /**
      * Send a redirect and stop execution.
      */
-    function redirect(string $path): void
+    function redirect(string $path, int $status = 302): void
     {
         $location = str_starts_with($path, 'http') ? $path : url($path);
-        header('Location: ' . $location);
+        http_response_code($status);
+        header('Location: ' . $location, true, $status);
         exit;
     }
 }

@@ -79,7 +79,7 @@ final class Category
         return Database::all(
             'SELECT c.*,
                 CASE
-                    WHEN c.slug = "tour-guides" THEN GREATEST(
+                    WHEN c.slug IN ("attractions", "attraction-and-tours", "tour-guides") THEN GREATEST(
                         (SELECT COUNT(*) FROM users WHERE role = "guide" AND guide_status = "approved"),
                         COUNT(l.id)
                     )

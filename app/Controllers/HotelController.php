@@ -44,6 +44,8 @@ final class HotelController extends Controller
         foreach ($hotels as &$h) {
             $h['room_count'] = $roomCounts[(int) $h['id']] ?? 0;
             $h['photos'] = Listing::getPhotos($h);
+            $h['cover_image_url'] = !empty($h['cover_image']) ? img_src($h['cover_image']) : '';
+            $h['photo_urls'] = array_values(array_map(fn($p) => is_string($p) && $p !== '' ? img_src($p) : '', $h['photos']));
         }
         unset($h);
 
@@ -72,6 +74,8 @@ final class HotelController extends Controller
             return;
         }
         $hotel['photos'] = Listing::getPhotos($hotel);
+        $hotel['cover_image_url'] = !empty($hotel['cover_image']) ? img_src($hotel['cover_image']) : '';
+        $hotel['photo_urls'] = array_values(array_map(fn($p) => is_string($p) && $p !== '' ? img_src($p) : '', $hotel['photos']));
         $this->json([
             'success' => true,
             'hotel' => $hotel,
@@ -369,11 +373,9 @@ final class HotelController extends Controller
         $price = max(0.0, (float) $this->input('price_per_night', 0));
         $depositPct = max(5, min(100, (int) $this->input('deposit_percentage', 20)));
 
-        $photos = $this->resolveRoomPhotos();
-        $primary = $photos[0] ?? (trim((string) $this->input('image', '')) ?: ($listing['cover_image'] ?? 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80'));
-        if ($photos === []) {
-            $photos = [$primary];
-        }
+        $photos = $this->resolveRoomPhotos(null, 1);
+        $primary = $photos[0] ?? (trim((string) $this->input('image', '')) ?: null);
+        $images = $primary !== null ? [$primary] : null;
 
         HotelRoom::create([
             'listing_id' => $listingId,
@@ -387,7 +389,7 @@ final class HotelController extends Controller
             'status' => (string) $this->input('status', HotelRoom::STATUS_AVAILABLE),
             'amenities' => trim((string) $this->input('amenities', '')),
             'image' => $primary,
-            'images' => $photos,
+            'images' => $images,
         ]);
 
         if ($this->isJson()) {
@@ -435,8 +437,9 @@ final class HotelController extends Controller
             return;
         }
 
-        $photos = $this->resolveRoomPhotos($roomId);
-        $primary = $photos[0] ?? (trim((string) $this->input('image', '')) ?: ($room['image'] ?? null));
+        $isRemoved = !empty($_POST['room_photo_removed_0']) || !empty($_POST['room_photos_removed'][0]);
+        $photos = $this->resolveRoomPhotos($roomId, 1);
+        $primary = $isRemoved ? null : ($photos[0] ?? (trim((string) $this->input('image', '')) ?: null));
 
         HotelRoom::update($roomId, [
             'name' => $name,
@@ -453,6 +456,16 @@ final class HotelController extends Controller
         ]);
 
         flash('success', "Room \"{$name}\" updated successfully.");
+
+        if ($this->isJson()) {
+            unset($_SESSION['_flash']['success']);
+            $this->json([
+                'success' => true,
+                'message' => "Room \"{$name}\" updated successfully.",
+                'room' => HotelRoom::find($roomId),
+            ]);
+            return;
+        }
 
         $fallback = '/dashboard/hotels/' . (int) $room['listing_id'] . '/rooms';
         redirect($this->safeRedirectUrl((string) $this->input('redirect_to', ''), $fallback));
@@ -823,6 +836,40 @@ final class HotelController extends Controller
     }
 
     /**
+     * Normalize stored image path. If an absolute URL or local path pointing to the
+     * GuideMate uploads directory is passed, strip the host/base path to store a clean
+     * relative path (e.g. "uploads/listings/..."). External URLs remain untouched.
+     */
+    private function normalizeStoredImagePath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return '';
+        }
+
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            $host = parse_url($path, PHP_URL_HOST) ?? '';
+            $currentHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $hostNoPort = explode(':', $host)[0];
+            $currentHostNoPort = explode(':', $currentHost)[0];
+            $isLocal = in_array($hostNoPort, ['localhost', '127.0.0.1', $currentHostNoPort], true);
+            if (!$isLocal) {
+                return $path;
+            }
+        }
+
+        $urlPath = parse_url($path, PHP_URL_PATH);
+        $checkPath = ($urlPath !== null && $urlPath !== false) ? $urlPath : $path;
+
+        $uploadsPos = strpos($checkPath, 'uploads/');
+        if ($uploadsPos !== false) {
+            return substr($checkPath, $uploadsPos);
+        }
+
+        return ltrim($path, '/');
+    }
+
+    /**
      * Resolve up to 3 photos for a hotel listing from uploads, URLs, and existing data.
      *
      * @return array<int, string>
@@ -874,13 +921,22 @@ final class HotelController extends Controller
 
             if ($url !== null && $url !== '') {
                 if (!str_starts_with($url, 'data:image/')) {
-                    $photos[] = $url;
+                    $photos[] = $this->normalizeStoredImagePath($url);
                     continue;
                 }
             }
 
-            if (isset($existing[$i]) && $existing[$i] !== '') {
-                $photos[] = $existing[$i];
+            $existingPath = null;
+            if (!empty($_POST['existing_photo_' . $i])) {
+                $existingPath = trim((string) $_POST['existing_photo_' . $i]);
+            } elseif (!empty($_POST['existing_photos'][$i])) {
+                $existingPath = trim((string) $_POST['existing_photos'][$i]);
+            } elseif (isset($existing[$i]) && $existing[$i] !== '') {
+                $existingPath = $existing[$i];
+            }
+
+            if ($existingPath !== null && $existingPath !== '') {
+                $photos[] = $this->normalizeStoredImagePath($existingPath);
             }
         }
 
@@ -896,11 +952,11 @@ final class HotelController extends Controller
     }
 
     /**
-     * Resolve up to 3 photos for a hotel room from uploads, URLs, and existing data.
+     * Resolve single photo for a hotel room from upload, URL, or existing data.
      *
      * @return array<int, string>
      */
-    private function resolveRoomPhotos(?int $roomId = null): array
+    private function resolveRoomPhotos(?int $roomId = null, int $max = 1): array
     {
         $existing = [];
         if ($roomId !== null) {
@@ -912,7 +968,7 @@ final class HotelController extends Controller
 
         $photos = [];
 
-        for ($i = 0; $i < 3; $i++) {
+        for ($i = 0; $i < $max; $i++) {
             $isRemoved = !empty($_POST['room_photo_removed_' . $i]) || !empty($_POST['room_photos_removed'][$i]);
             if ($isRemoved) {
                 continue;
@@ -935,11 +991,16 @@ final class HotelController extends Controller
 
             if ($file !== null) {
                 try {
+                    $imgSize = @getimagesize((string) $file['tmp_name']);
+                    if ($imgSize !== false && ($imgSize[0] < 16 || $imgSize[1] < 16)) {
+                        flash('warning', 'Uploaded room photo is too small. Please upload an image with at least 16x16 pixels.');
+                        continue;
+                    }
                     $uploadedPath = Upload::store($file, 'rooms/' . Auth::id(), ['jpg', 'jpeg', 'png', 'webp']);
                     $photos[] = $uploadedPath;
                     continue;
                 } catch (\RuntimeException $e) {
-                    // skip invalid image
+                    flash('warning', $e->getMessage());
                 }
             }
 
@@ -954,13 +1015,22 @@ final class HotelController extends Controller
 
             if ($url !== null && $url !== '') {
                 if (!str_starts_with($url, 'data:image/')) {
-                    $photos[] = $url;
+                    $photos[] = $this->normalizeStoredImagePath($url);
                     continue;
                 }
             }
 
-            if (isset($existing[$i]) && $existing[$i] !== '') {
-                $photos[] = $existing[$i];
+            $existingPath = null;
+            if (!empty($_POST['existing_room_photo_' . $i])) {
+                $existingPath = trim((string) $_POST['existing_room_photo_' . $i]);
+            } elseif (!empty($_POST['existing_room_photos'][$i])) {
+                $existingPath = trim((string) $_POST['existing_room_photos'][$i]);
+            } elseif (isset($existing[$i]) && $existing[$i] !== '') {
+                $existingPath = $existing[$i];
+            }
+
+            if ($existingPath !== null && $existingPath !== '') {
+                $photos[] = $this->normalizeStoredImagePath($existingPath);
             }
         }
 
@@ -972,7 +1042,7 @@ final class HotelController extends Controller
             }
         }
 
-        return array_values(array_slice($clean, 0, 3));
+        return array_values(array_slice($clean, 0, $max));
     }
 
 }

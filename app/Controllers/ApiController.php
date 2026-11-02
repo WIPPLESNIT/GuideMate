@@ -126,7 +126,8 @@ final class ApiController extends Controller
         $gallery = Listing::gallery($listingId);
         $userId = ApiAuth::id();
         $favorited = $userId !== null && Favorite::exists($userId, $listingId);
-        $alreadyBooked = $userId !== null && Booking::hasActivePaidBooking($listingId, $userId);
+        $activeBooking = $userId !== null ? Booking::getActiveBookingForListing($listingId, $userId) : null;
+        $alreadyBooked = $activeBooking !== null;
         $hasReviewed = $userId !== null && Review::userHasReviewed($listingId, $userId);
         // Reviews open once the tourist has a completed (or confirmed) booking.
         $canReview = $userId !== null && !$hasReviewed && Booking::hasCompletedBooking($listingId, $userId);
@@ -152,10 +153,79 @@ final class ApiController extends Controller
             return $rm;
         }, $rawRooms);
 
+        $listingCap = (int) (!empty($listing['capacity']) ? $listing['capacity'] : 10);
+        $totalBookedSum = Database::first(
+            'SELECT COALESCE(SUM(guests), 0) AS total_booked
+             FROM bookings
+             WHERE listing_id = ?
+               AND status IN ("pending", "confirmed")
+               AND (booking_date >= CURDATE() OR booking_date IS NULL)',
+            [$listingId]
+        );
+        $totalListingBooked = (int) ($totalBookedSum['total_booked'] ?? 0);
+        $listingAvailSlots = max(0, $listingCap - $totalListingBooked);
+
+        $dateBookedRows = Database::all(
+            'SELECT booking_date, COALESCE(SUM(guests), 0) AS booked_count
+             FROM bookings
+             WHERE listing_id = ?
+               AND status IN ("pending", "confirmed")
+               AND booking_date >= CURDATE()
+             GROUP BY booking_date',
+            [$listingId]
+        );
+        $dateBookedMap = [];
+        foreach ($dateBookedRows as $dr) {
+            if (!empty($dr['booking_date'])) {
+                $dateBookedMap[(string) $dr['booking_date']] = (int) $dr['booked_count'];
+            }
+        }
+
+        $listingPayload['capacity'] = $listingCap;
+        $listingPayload['total_capacity'] = $listingCap;
+        $listingPayload['booked_count'] = $totalListingBooked;
+        $listingPayload['available_slots'] = $listingAvailSlots;
+        $listingPayload['is_available'] = $listingAvailSlots > 0;
+        $listingPayload['date_booked_counts'] = $dateBookedMap;
+
         $this->json([
             'listing' => $listingPayload,
             'rooms' => $rooms,
+            'schedules' => array_map(function (array $s) use ($listingId, $listing): array {
+                $sessionCap = (int) (!empty($s['capacity']) ? $s['capacity'] : ($listing['capacity'] ?? 10));
+                $sessionTime = $s['start_time'] !== null ? substr((string) $s['start_time'], 0, 5) : null;
+                $bookedSum = Database::first(
+                    'SELECT COALESCE(SUM(guests), 0) AS total_booked
+                     FROM bookings
+                     WHERE listing_id = ?
+                       AND booking_date = ?
+                       AND status IN ("pending", "confirmed")
+                       AND (? IS NULL OR booking_time LIKE CONCAT(?, "%"))',
+                    [$listingId, $s['schedule_date'], $sessionTime, $sessionTime]
+                );
+                $bookedCount = (int) ($bookedSum['total_booked'] ?? 0);
+                $availSlots = max(0, $sessionCap - $bookedCount);
+                return [
+                    'id' => (int) $s['id'],
+                    'listing_id' => (int) $s['listing_id'],
+                    'schedule_date' => (string) $s['schedule_date'],
+                    'start_time' => $s['start_time'] !== null ? (string) $s['start_time'] : null,
+                    'end_time' => $s['end_time'] !== null ? (string) $s['end_time'] : null,
+                    'capacity' => $sessionCap,
+                    'booked_count' => $bookedCount,
+                    'available_slots' => $availSlots,
+                    'is_available' => $availSlots > 0,
+                    'note' => $s['note'] !== null ? (string) $s['note'] : null,
+                ];
+            }, \App\Models\ListingSchedule::forListing($listingId)),
             'already_booked' => $alreadyBooked,
+            'active_booking' => $activeBooking !== null ? [
+                'id' => (int) $activeBooking['id'],
+                'status' => (string) $activeBooking['status'],
+                'status_label' => ucfirst((string) $activeBooking['status']),
+                'booking_date' => (string) $activeBooking['booking_date'],
+                'booking_time' => (string) ($activeBooking['booking_time'] ?? ''),
+            ] : null,
             'has_reviewed' => $hasReviewed,
             'can_review' => $canReview,
             // Guide-level: disable every slot where this guide is already busy
@@ -260,7 +330,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * POST /api/auth/social — sign in with Google or Facebook.
+     * POST /api/auth/social â€” sign in with Google or Facebook.
      *
      * Privacy by design: we store ONLY the provider + its opaque user id. The
      * real Google/Facebook email and password are never received or stored, so
@@ -284,7 +354,7 @@ final class ApiController extends Controller
         $token = trim((string) ($body['token'] ?? ''));
 
         if ($token !== '') {
-            // A real provider token was supplied — always verify it server-side.
+            // A real provider token was supplied â€” always verify it server-side.
             $subject = $provider === 'google'
                 ? $this->verifyGoogleToken($token, (array) ($social['google_client_ids'] ?? []))
                 : $this->verifyFacebookToken($token);
@@ -407,7 +477,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * GET /api/auth/google/start — begin the Expo Go-compatible Google login.
+     * GET /api/auth/google/start â€” begin the Expo Go-compatible Google login.
      *
      * The mobile app opens this URL in a web browser; we redirect to Google.
      * Google only ever redirects back to OUR https callback (never the phone),
@@ -478,7 +548,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * GET /api/auth/google/pending?session= — phone polls the LAN for the
+     * GET /api/auth/google/pending?session= â€” phone polls the LAN for the
      * finished token so login still works if the browser deep-link is lost.
      */
     public function googlePending(): void
@@ -497,7 +567,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * POST /api/auth/google/exchange — the mobile WebView intercepted Google's
+     * POST /api/auth/google/exchange â€” the mobile WebView intercepted Google's
      * redirect (so ngrok never has to be online) and sends us the auth code.
      */
     public function googleExchange(): void
@@ -522,7 +592,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * GET /api/auth/google/callback — Google redirects here with an auth code.
+     * GET /api/auth/google/callback â€” Google redirects here with an auth code.
      * We exchange it, verify the id token, load/create the anonymous account,
      * mint our app token, and hand it back to the app via its return link.
      */
@@ -548,7 +618,7 @@ final class ApiController extends Controller
 
     /**
      * Must match an Authorized redirect URI on the Google Web client.
-     * This project’s Console entry is the static ngrok URL (localhost is not registered).
+     * This projectâ€™s Console entry is the static ngrok URL (localhost is not registered).
      */
     private function googleRegisteredRedirect(): string
     {
@@ -701,7 +771,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * GET /api/auth/facebook/start — begin the Expo Go-compatible Facebook
+     * GET /api/auth/facebook/start â€” begin the Expo Go-compatible Facebook
      * login. Same design as Google: Facebook only ever redirects to our public
      * https callback, never the phone.
      */
@@ -741,7 +811,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * GET /api/auth/facebook/callback — exchange the code, read the app-scoped
+     * GET /api/auth/facebook/callback â€” exchange the code, read the app-scoped
      * user id (never the email), load/create the anonymous account, and hand
      * our app token back to the app.
      */
@@ -875,7 +945,7 @@ final class ApiController extends Controller
         header('Content-Type: text/html; charset=utf-8');
         echo '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>'
             . '<body style="font-family:sans-serif;text-align:center;padding:40px;color:#111;">'
-            . '<p>Signing you in…</p>'
+            . '<p>Signing you inâ€¦</p>'
             . '<p><a href="' . htmlspecialchars($url, ENT_QUOTES) . '">Tap here if you are not redirected</a></p>'
             . '<script>window.location.href=' . json_encode($url) . ';</script>'
             . '</body></html>';
@@ -915,7 +985,7 @@ final class ApiController extends Controller
     /**
      * Build a friendly display name for a social account. Prefers the provider's
      * full name, then given+family, then a title-cased version of the email's
-     * local part (e.g. "mole.kraine" / "mole_kraine" → "Mole Kraine"). Returns
+     * local part (e.g. "mole.kraine" / "mole_kraine" â†’ "Mole Kraine"). Returns
      * '' when nothing usable is available (caller falls back to a label).
      */
     private function displayNameFromClaims(string $name, string $given, string $family, string $email): string
@@ -1221,7 +1291,7 @@ final class ApiController extends Controller
         ]);
     }
 
-    /** GET /api/maps — public Mapbox token for live traffic (no login). */
+    /** GET /api/maps â€” public Mapbox token for live traffic (no login). */
     public function mapsConfig(): void
     {
         $maps = App::config('maps') ?? [];
@@ -1230,7 +1300,7 @@ final class ApiController extends Controller
         ]);
     }
 
-    /** GET /api/vouchers — Sale tab catalog plus which codes this account already used. */
+    /** GET /api/vouchers â€” Sale tab catalog plus which codes this account already used. */
     public function vouchers(): void
     {
         $userId = ApiAuth::id();
@@ -1239,7 +1309,7 @@ final class ApiController extends Controller
         ]);
     }
 
-    /** POST /api/vouchers/validate — check a code before checkout. */
+    /** POST /api/vouchers/validate â€” check a code before checkout. */
     public function validateVoucher(): void
     {
         $userId = ApiAuth::id();
@@ -1402,11 +1472,11 @@ final class ApiController extends Controller
                 default => 'Debit/Credit Card',
             };
             $hotelNotes = "Hotel Room: {$room['name']} ({$nights} nights: {$checkIn} to {$checkOut})\n"
-                . "Check-in: From {$checkInLabel} · Check-out: Until {$checkOutLabel}\n"
-                . "Deposit paid via {$methodLabel}: ₱" . number_format($depositAmount, 2) . "\n"
-                . "Remaining balance due at front desk: ₱" . number_format($balanceAmount, 2);
+                . "Check-in: From {$checkInLabel} Â· Check-out: Until {$checkOutLabel}\n"
+                . "Deposit paid via {$methodLabel}: â‚±" . number_format($depositAmount, 2) . "\n"
+                . "Remaining balance due at front desk: â‚±" . number_format($balanceAmount, 2);
             if ($paymentReference !== '') {
-                $hotelNotes .= ' · Ref: ' . $paymentReference;
+                $hotelNotes .= ' Â· Ref: ' . $paymentReference;
             }
             if ($notes !== '') {
                 $hotelNotes .= "\nGuest notes: " . $notes;
@@ -1449,22 +1519,93 @@ final class ApiController extends Controller
                 'booking' => $booking !== null ? $this->bookingPayload($booking) : null,
                 'deposit_amount' => $depositAmount,
                 'balance_amount' => $balanceAmount,
-                'payment_instructions' => "Deposit of ₱" . number_format($depositAmount, 2) . " received. Remaining ₱" . number_format($balanceAmount, 2) . " is payable at the hotel front desk upon check-in.",
+                'payment_instructions' => "Deposit of â‚±" . number_format($depositAmount, 2) . " received. Remaining â‚±" . number_format($balanceAmount, 2) . " is payable at the hotel front desk upon check-in.",
             ], 201);
             return;
         }
 
         $guideId = (int) ($listing['user_id'] ?? 0);
+
+        $scheduleId = !empty($body['schedule_id']) ? (int) $body['schedule_id'] : 0;
+        $sched = null;
+        if ($scheduleId > 0) {
+            $sched = Database::first(
+                'SELECT * FROM listing_schedules WHERE id = ? AND listing_id = ? LIMIT 1',
+                [$scheduleId, $listingId]
+            );
+        }
+        if ($sched === null && $primaryDate !== '') {
+            if ($time !== '') {
+                $sched = Database::first(
+                    'SELECT * FROM listing_schedules WHERE listing_id = ? AND schedule_date = ? AND start_time LIKE CONCAT(?, "%") LIMIT 1',
+                    [$listingId, $primaryDate, $time]
+                );
+            }
+            if ($sched === null) {
+                $sched = Database::first(
+                    'SELECT * FROM listing_schedules WHERE listing_id = ? AND schedule_date = ? LIMIT 1',
+                    [$listingId, $primaryDate]
+                );
+            }
+        }
+        if ($sched !== null) {
+            $primaryDate = (string) $sched['schedule_date'];
+            $dates = [$primaryDate];
+            if ($time === '' && !empty($sched['start_time'])) {
+                $time = substr((string) $sched['start_time'], 0, 5);
+            }
+            if ($endTime === '' && !empty($sched['end_time'])) {
+                $endTime = substr((string) $sched['end_time'], 0, 5);
+            }
+        }
+        if ($time === '') {
+            $time = '09:00';
+        }
+        if ($endTime === '') {
+            $endTime = '13:00';
+        }
+
+        // Server-side duplicate active booking check for the entire tour / package identifier (listing_id)
+        $activeBooking = Booking::getActiveBookingForListing($listingId, $userId);
+        if ($activeBooking !== null) {
+            $statusLabel = ucfirst((string) $activeBooking['status']);
+            $dateFormatted = date('M j, Y', strtotime((string) $activeBooking['booking_date']));
+            $this->json([
+                'error' => "You already have an active booking for this tour (Status: {$statusLabel}, Date: {$dateFormatted}). You can book this tour again once your current experience is marked as completed.",
+                'active_booking' => [
+                    'id' => (int) $activeBooking['id'],
+                    'status' => (string) $activeBooking['status'],
+                    'status_label' => $statusLabel,
+                    'booking_date' => (string) $activeBooking['booking_date'],
+                ]
+            ], 409);
+            return;
+        }
+
+        // Idempotency check for repeated clicks or refreshes with the same payment reference
+        if ($paymentReference !== '') {
+            $existingRefBooking = Database::first(
+                "SELECT b.* FROM bookings b
+                 WHERE b.user_id = ? AND b.listing_id = ? AND b.notes LIKE ?
+                 ORDER BY b.id DESC LIMIT 1",
+                [$userId, $listingId, "%Ref: {$paymentReference}%"]
+            );
+            if ($existingRefBooking !== null) {
+                $this->json([
+                    'booking' => $this->bookingPayload($existingRefBooking),
+                    'idempotent' => true,
+                ], 200);
+                return;
+            }
+        }
+
         foreach ($dates as $d) {
             if (strtotime($d) < strtotime('today')) {
                 $this->json(['error' => "Date {$d} cannot be in the past."], 422);
                 return;
             }
-            if (Booking::hasActivePaidBooking($listingId, $userId, $d)) {
-                $this->json(['error' => "You already have an active booking on {$d} for this experience."], 409);
-                return;
-            }
-            if ($time !== '' && Booking::isGuideSlotBooked($guideId, $d, $time)) {
+            $excludeListingId = ($sched !== null) ? $listingId : null;
+            if ($time !== '' && Booking::isGuideSlotBooked($guideId, $d, $time, null, $excludeListingId)) {
                 $this->json(['error' => "This guide is already booked on {$d} at {$time}. Please pick another slot."], 409);
                 return;
             }
@@ -1474,8 +1615,35 @@ final class ApiController extends Controller
             }
         }
 
+        // Validate session slots and capacity to prevent overbooking
+        if (!$isHotel) {
+            $maxCap = (int) (!empty($sched['capacity']) ? $sched['capacity'] : ($listing['capacity'] ?? 10));
+            $sessionTime = ($sched && !empty($sched['start_time'])) ? substr((string) $sched['start_time'], 0, 5) : ($time ?: null);
+            $targetDate = $sched ? (string) $sched['schedule_date'] : $primaryDate;
+            $bookedSum = Database::first(
+                'SELECT COALESCE(SUM(guests), 0) AS total_booked
+                 FROM bookings
+                 WHERE listing_id = ?
+                   AND booking_date = ?
+                   AND status IN ("pending", "confirmed")
+                   AND (? IS NULL OR booking_time LIKE CONCAT(?, "%"))',
+                [$listingId, $targetDate, $sessionTime, $sessionTime]
+            );
+            $currentBooked = (int) ($bookedSum['total_booked'] ?? 0);
+            $availableSlots = max(0, $maxCap - $currentBooked);
+            if ($availableSlots <= 0) {
+                $this->json(['error' => 'This tour session is already fully booked. Please choose another date or session.'], 422);
+                return;
+            }
+            if ($guests > $availableSlots) {
+                $this->json(['error' => "This tour session only has {$availableSlots} slot(s) remaining."], 422);
+                return;
+            }
+        }
+
         $price = Listing::effectivePrice($listing);
-        $subtotal = $price * $guests * $daysCount;
+        $isPerGroup = str_contains(strtolower((string) ($listing['price_unit'] ?? '')), 'group');
+        $subtotal = $isPerGroup ? ($price * $daysCount) : ($price * $guests * $daysCount);
         $total = $subtotal;
         $promoId = null;
         $discount = 0.0;
@@ -1503,7 +1671,7 @@ final class ApiController extends Controller
             $paymentNote .= ' ****' . substr($cardLast4, -4);
         }
         if ($paymentReference !== '') {
-            $paymentNote .= ' · Ref: ' . $paymentReference;
+            $paymentNote .= ' Â· Ref: ' . $paymentReference;
         }
         $fullNotes = trim($notes === '' ? $paymentNote : ($notes . "\n" . $paymentNote));
 
@@ -1549,9 +1717,9 @@ final class ApiController extends Controller
         ], 201);
     }
 
-    // ── Chat / messaging ────────────────────────────────────────────────────
+    // â”€â”€ Chat / messaging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    /** GET /api/messages — conversation list (inbox or archived). */
+    /** GET /api/messages â€” conversation list (inbox or archived). */
     public function conversations(): void
     {
         $userId = ApiAuth::id();
@@ -1583,7 +1751,7 @@ final class ApiController extends Controller
         ]);
     }
 
-    /** GET /api/messages/thread?partner=&lang= — full conversation. */
+    /** GET /api/messages/thread?partner=&lang= â€” full conversation. */
     public function thread(): void
     {
         $userId = ApiAuth::id();
@@ -1619,7 +1787,7 @@ final class ApiController extends Controller
         ]);
     }
 
-    /** GET /api/messages/poll?partner=&since=&lang= — new messages + receipts. */
+    /** GET /api/messages/poll?partner=&since=&lang= â€” new messages + receipts. */
     public function pollThread(): void
     {
         $userId = ApiAuth::id();
@@ -1655,7 +1823,7 @@ final class ApiController extends Controller
         ]);
     }
 
-    /** POST /api/messages/send — body { partner_id, body, listing_id? }. */
+    /** POST /api/messages/send â€” body { partner_id, body, listing_id? }. */
     public function sendMessage(): void
     {
         $userId = ApiAuth::id();
@@ -1697,19 +1865,19 @@ final class ApiController extends Controller
         ], 201);
     }
 
-    /** POST /api/messages/archive — body { partner_id }. */
+    /** POST /api/messages/archive â€” body { partner_id }. */
     public function archiveConversation(): void
     {
         $this->setArchivedState(true);
     }
 
-    /** POST /api/messages/unarchive — body { partner_id }. */
+    /** POST /api/messages/unarchive â€” body { partner_id }. */
     public function unarchiveConversation(): void
     {
         $this->setArchivedState(false);
     }
 
-    /** POST /api/messages/delete — body { partner_id }. */
+    /** POST /api/messages/delete â€” body { partner_id }. */
     public function deleteConversation(): void
     {
         $userId = ApiAuth::id();
@@ -1727,7 +1895,7 @@ final class ApiController extends Controller
         $this->json(['success' => true]);
     }
 
-    /** GET /api/guides — approved tour guides available to message. */
+    /** GET /api/guides â€” approved tour guides available to message. */
     public function guides(): void
     {
         $userId = ApiAuth::id();
@@ -1835,7 +2003,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * GET /api/rentals/{id} — full vehicle details for mobile and web.
+     * GET /api/rentals/{id} â€” full vehicle details for mobile and web.
      */
     public function rentalDetail(string $id): void
     {
@@ -1918,7 +2086,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * POST /api/rentals — reserve a vehicle with FULL up-front payment.
+     * POST /api/rentals â€” reserve a vehicle with FULL up-front payment.
      * Sent as multipart/form-data so the tourist can attach a valid ID that is
      * held for the rental owner until the unit is returned.
      */
@@ -1957,7 +2125,7 @@ final class ApiController extends Controller
             return;
         }
 
-        // ── Verification: a valid ID is required and held for the owner ──
+        // â”€â”€ Verification: a valid ID is required and held for the owner â”€â”€
         $idType = trim((string) ($_POST['id_type'] ?? ''));
         $idNumber = trim((string) ($_POST['id_number'] ?? ''));
         if ($idType === '') {
@@ -1976,7 +2144,7 @@ final class ApiController extends Controller
             return;
         }
 
-        // ── Payment: the tourist pays the whole amount to reserve ──
+        // â”€â”€ Payment: the tourist pays the whole amount to reserve â”€â”€
         $method = strtolower(trim((string) ($_POST['payment_method'] ?? '')));
         if (!in_array($method, ['gcash', 'instapay', 'card'], true)) {
             $this->json(['error' => 'Please choose a valid payment method.'], 422);
@@ -2047,7 +2215,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * GET /api/rentals/mine — the signed-in tourist's reservations.
+     * GET /api/rentals/mine â€” the signed-in tourist's reservations.
      */
     public function myRentals(): void
     {
@@ -2065,12 +2233,12 @@ final class ApiController extends Controller
     }
 
     /**
-     * POST /api/rentals/report — report a problem with a reserved unit so the
+     * POST /api/rentals/report â€” report a problem with a reserved unit so the
      * rental owner can review and refund. JSON body.
      */
 
     /**
-     * POST /api/rentals/reviews — submit or update rating and feedback for a completed rental.
+     * POST /api/rentals/reviews â€” submit or update rating and feedback for a completed rental.
      */
     public function submitRentalReview(): void
     {
@@ -2165,7 +2333,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * GET /api/rentals/reviews?rental_id=... — fetch a review by rental ID.
+     * GET /api/rentals/reviews?rental_id=... â€” fetch a review by rental ID.
      */
     public function getRentalReview(): void
     {
@@ -2268,7 +2436,7 @@ final class ApiController extends Controller
 
     /**
      * Shape a rental row for the mobile app. The ID document is intentionally
-     * NOT exposed here — it is held only for the rental owner.
+     * NOT exposed here â€” it is held only for the rental owner.
      *
      * @param array<string, mixed> $r
      * @return array<string, mixed>
@@ -2487,9 +2655,14 @@ final class ApiController extends Controller
             'slug' => (string) $listing['slug'],
             'summary' => (string) ($listing['summary'] ?? ''),
             'area' => (string) ($listing['area'] ?? ''),
+            'address' => (string) ($listing['address'] ?? ''),
+            'latitude' => isset($listing['latitude']) && $listing['latitude'] !== null && $listing['latitude'] !== '' ? (float) $listing['latitude'] : null,
+            'longitude' => isset($listing['longitude']) && $listing['longitude'] !== null && $listing['longitude'] !== '' ? (float) $listing['longitude'] : null,
             'price' => $price,
             'lowest_room_price' => $lowestRoomPrice,
-            'price_unit' => $isHotel ? 'per night' : (string) ($listing['price_unit'] ?? 'person'),
+            'price_unit' => $isHotel ? 'per night' : (string) ($listing['price_unit'] ?? 'per group'),
+            'capacity' => (int) (!empty($listing['capacity']) ? $listing['capacity'] : 10),
+            'total_capacity' => (int) (!empty($listing['capacity']) ? $listing['capacity'] : 10),
             'currency' => 'PHP',
             'rating' => round((float) ($listing['avg_rating'] ?? 0), 1),
             'review_count' => (int) ($listing['review_count'] ?? 0),
@@ -2514,7 +2687,7 @@ final class ApiController extends Controller
             'owner_id' => (int) ($listing['user_id'] ?? 0),
             'owner_role' => (string) ($listing['owner_role'] ?? ''),
             'favorited' => in_array((int) $listing['id'], $this->favoriteIdSet(), true),
-            // Freshly published (within the last 7 days) — the app shows a
+            // Freshly published (within the last 7 days) â€” the app shows a
             // "New" badge on these cards so travelers can spot new tours.
             'is_new' => isset($listing['created_at'])
                 && strtotime((string) $listing['created_at']) >= strtotime('-7 days'),
@@ -2649,7 +2822,7 @@ final class ApiController extends Controller
         $known = $m['source_lang'] ?? null;
         $known = is_string($known) && $known !== '' ? $known : null;
 
-        // Already known to be in the reader's language → nothing to do.
+        // Already known to be in the reader's language â†’ nothing to do.
         if ($known !== null && $this->normLang($known) === $this->normLang($target)) {
             return null;
         }
@@ -2725,13 +2898,13 @@ final class ApiController extends Controller
                 $recipients[] = ['email' => $owner['email'], 'name' => $owner['name']];
             }
 
-            $subject = 'New booking awaiting your confirmation — ' . $title;
+            $subject = 'New booking awaiting your confirmation â€” ' . $title;
             $body = "{$customerName} booked \"{$title}\" and payment was received.\n\n"
                 . "Date: {$date}\n"
                 . "Guests: {$guests}\n"
                 . 'Amount paid: PHP ' . number_format($total, 2) . "\n"
                 . "Payment: {$methodLabel}\n\n"
-                . "This booking is NOT confirmed yet. Open your dashboard → Bookings and confirm or decline it.\n"
+                . "This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.\n"
                 . url('/dashboard/bookings');
 
             $seen = [];
@@ -2766,11 +2939,11 @@ final class ApiController extends Controller
             $recipients = Database::all(
                 "SELECT email, name FROM users WHERE role IN ('rental_provider', 'rental_admin', 'admin')"
             );
-            $subject = 'Confirm this rental — ' . $title;
+            $subject = 'Confirm this rental â€” ' . $title;
             $body = "{$customerName} reserved \"{$title}\" and payment was received.\n\n"
                 . "Pickup: {$pickupDate}\n"
                 . 'Amount paid: PHP ' . number_format($total, 2) . "\n\n"
-                . "This reservation is NOT confirmed yet. Open your dashboard → Rental requests and confirm or decline it.\n"
+                . "This reservation is NOT confirmed yet. Open your dashboard â†’ Rental requests and confirm or decline it.\n"
                 . url('/dashboard/rentals');
 
             $seen = [];
@@ -2845,7 +3018,7 @@ final class ApiController extends Controller
             $hotelCheckInLabel = (strtotime($hotelCheckInTime) !== false) ? date('g:i A', strtotime($hotelCheckInTime)) : $parsedTimes['check_in_time_label'];
             $hotelCheckOutLabel = (strtotime($hotelCheckOutTime) !== false) ? date('g:i A', strtotime($hotelCheckOutTime)) : $parsedTimes['check_out_time_label'];
             $hotelCheckInOutLabel = "{$hotelCheckInLabel} / {$hotelCheckOutLabel}";
-            $hotelCheckInScheduleLabel = "Check-in from {$hotelCheckInLabel} · Check-out until {$hotelCheckOutLabel}";
+            $hotelCheckInScheduleLabel = "Check-in from {$hotelCheckInLabel} Â· Check-out until {$hotelCheckOutLabel}";
         }
 
         return [
@@ -2918,9 +3091,9 @@ final class ApiController extends Controller
         ];
     }
 
-    // ── Reviews & problem reports ─────────────────────────────────────────────
+    // â”€â”€ Reviews & problem reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    /** POST /api/reviews — leave a rating/review for a completed experience. */
+    /** POST /api/reviews â€” leave a rating/review for a completed experience. */
     public function submitReview(): void
     {
         $userId = ApiAuth::id();
@@ -2965,7 +3138,7 @@ final class ApiController extends Controller
         ], 201);
     }
 
-    /** GET /api/disputes?booking_id= — the tourist's existing report, if any. */
+    /** GET /api/disputes?booking_id= â€” the tourist's existing report, if any. */
     public function myDispute(): void
     {
         $userId = ApiAuth::id();
@@ -2986,7 +3159,7 @@ final class ApiController extends Controller
     }
 
     /**
-     * POST /api/disputes — report a problem with a guide/booking to the admin.
+     * POST /api/disputes â€” report a problem with a guide/booking to the admin.
      * Sent as multipart/form-data so photo evidence can be attached.
      */
     public function submitDispute(): void

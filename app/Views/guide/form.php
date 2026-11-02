@@ -78,53 +78,168 @@ $val = fn(string $k, string $d = '') => e($editing ? (string) ($listing[$k] ?? $
 
                         <div class="form-grid-2">
                             <div class="field-row">
-                                <label for="price"><?= e(__('g_price_label', 'Price (₱)')) ?></label>
-                                <input class="input" id="price" name="price" type="number" step="0.01" min="0" value="<?= $val('price') ?>">
+                                <label for="price"><?= e(__('g_price_label', 'Price (₱)')) ?> <span class="req">*</span></label>
+                                <input class="input" id="price" name="price" type="number" step="0.01" min="0" value="<?= $val('price') ?>" placeholder="e.g. 2500">
                                 <?php if (isset($errors['price'])): ?><div class="field-error"><?= e($errors['price']) ?></div><?php endif; ?>
                             </div>
                             <div class="field-row">
-                                <label for="price_unit"><?= e(__('g_price_unit', 'Price unit')) ?></label>
-                                <select class="input" id="price_unit" name="price_unit">
-                                    <?php foreach (['per person','per night','per tour','per day','per table'] as $u):
-                                        $sel = ($editing ? $listing['price_unit'] : old('price_unit', 'per person')) === $u; ?>
-                                        <option value="<?= e($u) ?>" <?= $sel ? 'selected' : '' ?>><?= e(__('g_unit_' . str_replace(' ', '_', $u), $u)) ?></option>
-                                    <?php endforeach; ?>
+                                <label for="price_unit"><?= e(__('g_price_unit', 'Price unit')) ?> <span class="req">*</span></label>
+                                <?php $formUnit = strtolower((string) $val('price_unit', 'per person')); ?>
+                                <select class="input" id="price_unit" name="price_unit" onchange="var h = document.getElementById('form_price_unit_hint'); if(h) h.textContent = this.value === 'per group' ? 'Fixed rate for the entire group/tour.' : 'Rate per individual tourist/guest.';">
+                                    <option value="per person" <?= $formUnit === 'per person' ? 'selected' : '' ?>><?= e(__('g_unit_per_person', 'Per Person')) ?></option>
+                                    <option value="per group" <?= $formUnit === 'per group' ? 'selected' : '' ?>><?= e(__('g_unit_per_group', 'Per Group')) ?></option>
                                 </select>
+                                <span id="form_price_unit_hint" class="hint" style="font-size:0.75rem;color:#64748b;display:block;margin-top:2px;"><?= $formUnit === 'per group' ? 'Fixed rate for the entire group/tour.' : 'Rate per individual tourist/guest.' ?></span>
                             </div>
                         </div>
 
                         <div class="form-grid-2">
                             <div class="field-row">
+                                <label for="capacity">Slots / Capacity <span class="req">*</span></label>
+                                <input class="input" id="capacity" name="capacity" type="number" min="1" max="100" value="<?= $val('capacity') ?: '10' ?>" placeholder="e.g. 10">
+                                <span class="hint" style="font-size:0.75rem;color:#64748b;display:block;margin-top:2px;">Max participants allowed per booking session or group.</span>
+                                <?php if (isset($errors['capacity'])): ?><div class="field-error"><?= e($errors['capacity']) ?></div><?php endif; ?>
+                            </div>
+                            <div class="field-row">
                                 <label for="duration"><?= e(__('g_duration', 'Duration (optional)')) ?></label>
                                 <input class="input" id="duration" name="duration" value="<?= $val('duration') ?>" placeholder="<?= e(__('g_duration_ph', 'e.g. 4-5 hours')) ?>">
                             </div>
-                            <div class="field-row">
-                                <label for="address"><?= e(__('g_address', 'Address (optional)')) ?></label>
-                                <input class="input" id="address" name="address" value="<?= $val('address') ?>" placeholder="<?= e(__('g_address_ph', 'Landmark / address')) ?>">
+                        </div>
+
+                        <div class="field-row">
+                            <label for="address"><?= e(__('g_address', 'Address / Departure Point (optional)')) ?></label>
+                            <input class="input" id="address" name="address" value="<?= $val('address') ?>" placeholder="<?= e(__('g_address_ph', 'Landmark / meeting point')) ?>">
+                        </div>
+
+                        <?php
+                        $existingPhotos = $editing ? \App\Models\Listing::getPhotos((int) $listing['id']) : [];
+                        ?>
+                        <!-- Structured 3-Photo Upload Section (Replicating Hotel Photo Upload Pattern) -->
+                        <div class="field-row" style="background:#f8fafc;padding:0.85rem 1rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:1rem;">
+                            <label style="font-weight:700;font-size:0.92rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;color:var(--text, #0f172a);">
+                                <span>📸 Experience Photos (Upload up to 3 photos)</span>
+                                <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">Max 3 Photos</span>
+                            </label>
+                            <span class="hint" style="display:block;margin-bottom:0.75rem;font-size:0.8rem;color:#64748b;">
+                                Upload high-quality JPG, PNG, or WEBP images (up to 5MB each) or paste direct photo URLs. Photo 1 will be used as the primary cover photo.
+                            </span>
+
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:0.75rem;">
+                                <?php for ($slot = 0; $slot < 3; $slot++):
+                                    $pSrc = $existingPhotos[$slot] ?? ($slot === 0 ? ($listing['cover_image'] ?? '') : '');
+                                    $isCover = $slot === 0;
+                                ?>
+                                <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                                        <strong style="font-size:0.8rem;color:#0f172a;">Photo <?= $slot + 1 ?> <?= $isCover ? '(Cover) *' : '(Gallery)' ?></strong>
+                                        <span style="font-size:0.68rem;<?= $isCover ? 'background:#dcfce7;color:#166534;font-weight:700;' : 'background:#f1f5f9;color:#64748b;font-weight:600;' ?>padding:1px 6px;border-radius:4px;"><?= $isCover ? 'Cover' : 'Optional' ?></span>
+                                    </div>
+                                    <div id="gf_preview_wrap_<?= $slot ?>" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                        <img id="gf_preview_img_<?= $slot ?>" src="<?= $pSrc ? e(img_src($pSrc, 'listing-' . ($listing['id'] ?? 0))) : '' ?>" alt="Photo <?= $slot + 1 ?>" style="width:100%;height:100%;object-fit:cover;<?= $pSrc ? '' : 'display:none;' ?>">
+                                        <span id="gf_placeholder_<?= $slot ?>" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;<?= $pSrc ? 'display:none;' : '' ?>">📷 No photo uploaded</span>
+                                        <button type="button" id="gf_remove_btn_<?= $slot ?>" onclick="removeFormPhoto(<?= $slot ?>)" style="<?= $pSrc ? 'display:flex;' : 'display:none;' ?>position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                                    </div>
+                                    <input type="file" name="photo_file_<?= $slot ?>" id="gf_file_<?= $slot ?>" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleFormFileChange(<?= $slot ?>, this)">
+                                    <input type="text" name="photo_url_<?= $slot ?>" id="gf_url_<?= $slot ?>" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleFormUrlChange(<?= $slot ?>, this.value)">
+                                    <input type="hidden" name="existing_photo_<?= $slot ?>" id="gf_existing_<?= $slot ?>" value="<?= e($pSrc) ?>">
+                                    <input type="hidden" name="photo_removed_<?= $slot ?>" id="gf_removed_<?= $slot ?>" value="0">
+                                    <?php if ($isCover): ?><input type="hidden" name="cover_image" id="gf_cover_image" value="<?= e($pSrc) ?>"><?php endif; ?>
+                                </div>
+                                <?php endfor; ?>
                             </div>
                         </div>
 
-                        <div class="field-row">
-                            <label for="cover_file"><?= e(__('g_cover_photo', 'Cover photo')) ?></label>
-                            <?php $currentCover = $editing ? (string) ($listing['cover_image'] ?? '') : ''; ?>
-                            <?php if ($currentCover !== ''): ?>
-                                <img id="coverPreview" src="<?= e(img_src($currentCover, 'listing' . $listing['id'])) ?>" alt="" style="width:100%;max-width:280px;height:160px;object-fit:cover;border-radius:12px;margin-bottom:.6rem;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/listing<?= (int) $listing['id'] ?>/600/400';">
-                            <?php else: ?>
-                                <img id="coverPreview" src="" alt="" style="display:none;width:100%;max-width:280px;height:160px;object-fit:cover;border-radius:12px;margin-bottom:.6rem;">
-                            <?php endif; ?>
-                            <input class="file-input" type="file" id="cover_file" name="cover_file" accept=".jpg,.jpeg,.png,.webp">
-                            <span class="hint"><?= e(__('g_cover_hint', 'Upload a JPG, PNG or WEBP (up to 5MB).')) ?> <?= $editing ? e(__('g_cover_keep', 'Leave blank to keep the current photo.')) : e(__('g_cover_placeholder', 'Leave blank to use an automatic placeholder.')) ?></span>
-                            <?php if (isset($errors['cover_file'])): ?><div class="field-error"><?= e($errors['cover_file']) ?></div><?php endif; ?>
-                        </div>
-
-                        <?php if (!$editing): ?>
-                        <div class="field-row">
-                            <label for="cover_image"><?= e(__('g_cover_url', '…or paste a direct image URL (optional)')) ?></label>
-                            <input class="input" id="cover_image" name="cover_image" value="<?= e(old('cover_image')) ?>" placeholder="https://example.com/photo.jpg">
-                            <span class="hint"><?= e(__('g_cover_url_hint', 'Must be a direct link ending in .jpg, .png, etc. — not a share/page link. An uploaded photo takes priority.')) ?></span>
-                            <?php if (isset($errors['cover_image'])): ?><div class="field-error"><?= e($errors['cover_image']) ?></div><?php endif; ?>
-                        </div>
-                        <?php endif; ?>
+                        <script>
+                        function resolveFormImageUrl(src) {
+                            if (!src) return '';
+                            if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) return src;
+                            var clean = src.replace(/^\/+/, '');
+                            var base = (window.APP_BASE_URL || '').replace(/\/+$/, '');
+                            return base + '/' + clean;
+                        }
+                        function handleFormFileChange(slot, input) {
+                            if (!input.files || !input.files[0]) return;
+                            var file = input.files[0];
+                            var reader = new FileReader();
+                            reader.onload = function(e) {
+                                setFormSlotPreview(slot, e.target.result);
+                                var remIn = document.getElementById('gf_removed_' + slot);
+                                if (remIn) remIn.value = '0';
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                        function handleFormUrlChange(slot, val) {
+                            val = (val || '').trim();
+                            var remIn = document.getElementById('gf_removed_' + slot);
+                            if (val) {
+                                setFormSlotPreview(slot, val);
+                                if (remIn) remIn.value = '0';
+                                if (slot === 0) {
+                                    var cov = document.getElementById('gf_cover_image');
+                                    if (cov) cov.value = val;
+                                }
+                            } else {
+                                var exist = document.getElementById('gf_existing_' + slot);
+                                if (exist && exist.value) {
+                                    setFormSlotPreview(slot, exist.value);
+                                } else {
+                                    clearFormSlotPreview(slot);
+                                }
+                            }
+                        }
+                        function removeFormPhoto(slot) {
+                            var fileIn = document.getElementById('gf_file_' + slot);
+                            if (fileIn) fileIn.value = '';
+                            var urlIn = document.getElementById('gf_url_' + slot);
+                            if (urlIn) urlIn.value = '';
+                            var existingIn = document.getElementById('gf_existing_' + slot);
+                            if (existingIn) existingIn.value = '';
+                            var remIn = document.getElementById('gf_removed_' + slot);
+                            if (remIn) remIn.value = '1';
+                            if (slot === 0) {
+                                var cov = document.getElementById('gf_cover_image');
+                                if (cov) cov.value = '';
+                            }
+                            clearFormSlotPreview(slot);
+                        }
+                        function setFormSlotPreview(slot, src) {
+                            var img = document.getElementById('gf_preview_img_' + slot);
+                            var ph = document.getElementById('gf_placeholder_' + slot);
+                            var btn = document.getElementById('gf_remove_btn_' + slot);
+                            if (img && ph && btn) {
+                                var resolved = resolveFormImageUrl(src);
+                                img.onload = function() {
+                                    img.style.display = 'block';
+                                    ph.style.display = 'none';
+                                    btn.style.display = 'flex';
+                                };
+                                img.onerror = function() {
+                                    img.style.display = 'none';
+                                    ph.textContent = '⚠️ Image not found';
+                                    ph.style.display = 'block';
+                                    btn.style.display = 'flex';
+                                };
+                                img.src = resolved;
+                                img.style.display = 'block';
+                                ph.style.display = 'none';
+                                btn.style.display = 'flex';
+                            }
+                        }
+                        function clearFormSlotPreview(slot) {
+                            var img = document.getElementById('gf_preview_img_' + slot);
+                            var ph = document.getElementById('gf_placeholder_' + slot);
+                            var btn = document.getElementById('gf_remove_btn_' + slot);
+                            if (img && ph && btn) {
+                                img.onload = null;
+                                img.onerror = null;
+                                img.src = '';
+                                img.style.display = 'none';
+                                ph.textContent = '📷 No photo uploaded';
+                                ph.style.display = 'block';
+                                btn.style.display = 'none';
+                            }
+                        }
+                        </script>
 
                         <div class="mt-2" style="display:flex;gap:.6rem;">
                             <button class="btn btn-primary btn-lg" type="submit"><?= $editing ? e(__('g_save_changes', 'Save changes')) : e(__('g_submit_review', 'Submit for review')) ?></button>

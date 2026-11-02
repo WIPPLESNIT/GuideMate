@@ -12,59 +12,59 @@ use RuntimeException;
  */
 final class Router
 {
-    /** @var array<int, array{method:string, pattern:string, handler:array{0:class-string,1:string}, guards:array<int,string>}> */
+    /** @var array<int, array{method:string, pattern:string, handler:array{0:class-string,1:string}|callable, guards:array<int,string>}> */
     private array $routes = [];
 
     /**
-     * @param array{0:class-string,1:string} $handler
+     * @param array{0:class-string,1:string}|callable $handler
      * @param array<int,string> $guards
      */
-    public function get(string $pattern, array $handler, array $guards = []): void
+    public function get(string $pattern, array|callable $handler, array $guards = []): void
     {
         $this->add('GET', $pattern, $handler, $guards);
     }
 
     /**
-     * @param array{0:class-string,1:string} $handler
+     * @param array{0:class-string,1:string}|callable $handler
      * @param array<int,string> $guards
      */
-    public function post(string $pattern, array $handler, array $guards = []): void
+    public function post(string $pattern, array|callable $handler, array $guards = []): void
     {
         $this->add('POST', $pattern, $handler, $guards);
     }
 
     /**
-     * @param array{0:class-string,1:string} $handler
+     * @param array{0:class-string,1:string}|callable $handler
      * @param array<int,string> $guards
      */
-    public function delete(string $pattern, array $handler, array $guards = []): void
+    public function delete(string $pattern, array|callable $handler, array $guards = []): void
     {
         $this->add('DELETE', $pattern, $handler, $guards);
     }
 
     /**
-     * @param array{0:class-string,1:string} $handler
+     * @param array{0:class-string,1:string}|callable $handler
      * @param array<int,string> $guards
      */
-    public function put(string $pattern, array $handler, array $guards = []): void
+    public function put(string $pattern, array|callable $handler, array $guards = []): void
     {
         $this->add('PUT', $pattern, $handler, $guards);
     }
 
     /**
-     * @param array{0:class-string,1:string} $handler
+     * @param array{0:class-string,1:string}|callable $handler
      * @param array<int,string> $guards
      */
-    public function patch(string $pattern, array $handler, array $guards = []): void
+    public function patch(string $pattern, array|callable $handler, array $guards = []): void
     {
         $this->add('PATCH', $pattern, $handler, $guards);
     }
 
     /**
-     * @param array{0:class-string,1:string} $handler
+     * @param array{0:class-string,1:string}|callable $handler
      * @param array<int,string> $guards
      */
-    private function add(string $method, string $pattern, array $handler, array $guards): void
+    private function add(string $method, string $pattern, array|callable $handler, array $guards): void
     {
         $this->routes[] = [
             'method' => $method,
@@ -218,11 +218,19 @@ final class Router
     }
 
     /**
-     * @param array{0:class-string,1:string} $handler
+     * @param array{0:class-string,1:string}|callable $handler
      * @param array<string, string> $params
      */
-    private function invoke(array $handler, array $params): void
+    private function invoke(array|callable $handler, array $params): void
     {
+        if ($handler instanceof \Closure || (!is_array($handler) && is_callable($handler))) {
+            $handler(...array_values($params));
+            return;
+        }
+        if (is_array($handler) && isset($handler[0]) && is_object($handler[0]) && is_callable($handler)) {
+            $handler(...array_values($params));
+            return;
+        }
         [$class, $action] = $handler;
         if (!class_exists($class)) {
             throw new RuntimeException("Controller {$class} not found.");

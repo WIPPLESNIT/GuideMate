@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // Lightweight month calendar with no native dependencies (works in Expo Go).
@@ -22,6 +22,7 @@ type Props = {
   theme: Theme;
   disabledDates?: string[]; // YYYY-MM-DD dates that are fully booked
   minDate?: string; // Optional minimum selectable date (YYYY-MM-DD)
+  readOnly?: boolean; // When true, calendar displays selected date(s) without allowing clicks
 };
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -47,6 +48,7 @@ export default function CalendarPicker({
   theme,
   disabledDates = [],
   minDate,
+  readOnly = false,
 }: Props) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -57,6 +59,22 @@ export default function CalendarPicker({
   const initial = initialDateStr ? new Date(initialDateStr) : today;
   const [viewYear, setViewYear] = useState(initial.getFullYear());
   const [viewMonth, setViewMonth] = useState(initial.getMonth());
+
+  // Automatically navigate visible month to match selected date whenever it updates
+  useEffect(() => {
+    const targetDateStr = multiSelect ? (values[0] || value) : value;
+    if (targetDateStr) {
+      const parts = targetDateStr.split('-');
+      if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        if (!isNaN(y) && !isNaN(m)) {
+          setViewYear(y);
+          setViewMonth(m);
+        }
+      }
+    }
+  }, [value, values, multiSelect]);
 
   const todayKey = toKey(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -95,6 +113,7 @@ export default function CalendarPicker({
   };
 
   const handlePress = (key: string) => {
+    if (readOnly) return;
     if (multiSelect) {
       let updated: string[];
       if (selectedSet.has(key)) {
@@ -146,7 +165,7 @@ export default function CalendarPicker({
             <TouchableOpacity
               key={key}
               style={styles.cell}
-              disabled={isDisabled}
+              disabled={readOnly || isDisabled}
               activeOpacity={0.7}
               onPress={() => handlePress(key)}
             >

@@ -41,6 +41,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
     $sidePhoto1 = $listingPhotos[1] ?? $listingPhotos[0] ?? $mainPhoto;
     $sidePhoto2 = $listingPhotos[2] ?? $listingPhotos[1] ?? $listingPhotos[0] ?? $mainPhoto;
     ?>
+    <?php if (!empty($mainPhoto)): ?>
     <div class="detail-hero">
         <div class="main-img">
             <img src="<?= e(img_src($mainPhoto, 'listing' . $listing['id'])) ?>" alt="<?= e($listing['title']) ?>" onerror="this.onerror=null;this.src='https://picsum.photos/seed/listing<?= (int) $listing['id'] ?>/1200/800';">
@@ -50,6 +51,12 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
             <img src="<?= e(img_src($sidePhoto2, 'gallery' . $listing['id'] . '1')) ?>" alt="<?= e($listing['title']) ?> photo 3" onerror="this.onerror=null;this.src='https://picsum.photos/seed/gallery<?= (int) $listing['id'] ?>2/800/600';">
         </div>
     </div>
+    <?php else: ?>
+    <div class="detail-hero" style="display:flex;align-items:center;justify-content:center;background:#0f172a;min-height:260px;border-radius:var(--radius);color:#94a3b8;flex-direction:column;gap:8px;">
+        <span style="font-size:3rem;">🏨</span>
+        <span style="font-size:1.1rem;font-weight:600;color:#cbd5e1;">No photo uploaded</span>
+    </div>
+    <?php endif; ?>
 
     <div class="detail-layout">
         <div>
@@ -130,23 +137,13 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                                 ?>
                                 <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));">
                                     <div style="position:relative;min-height:220px;background:#E2E8F0;overflow:hidden;">
-                                        <?php if (count($roomPhotos) >= 3): ?>
-                                            <div style="display:grid;grid-template-columns:2fr 1fr;gap:4px;height:100%;min-height:220px;">
-                                                <div style="height:100%;">
-                                                    <img src="<?= e(img_src($rPhoto1, 'room' . $room['id'] . '0')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>/800/600';">
-                                                </div>
-                                                <div style="display:grid;grid-template-rows:1fr 1fr;gap:4px;height:100%;">
-                                                    <img src="<?= e(img_src($rPhoto2, 'room' . $room['id'] . '1')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>1/800/600';">
-                                                    <img src="<?= e(img_src($rPhoto3, 'room' . $room['id'] . '2')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>2/800/600';">
-                                                </div>
-                                            </div>
-                                        <?php elseif (count($roomPhotos) === 2): ?>
-                                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;height:100%;min-height:220px;">
-                                                <img src="<?= e(img_src($rPhoto1, 'room' . $room['id'] . '0')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>/800/600';">
-                                                <img src="<?= e(img_src($rPhoto2, 'room' . $room['id'] . '1')) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>1/800/600';">
-                                            </div>
+                                        <?php if (!empty($rPhoto1)): ?>
+                                            <img src="<?= e(img_src($rPhoto1, 'room' . $room['id'])) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;">
                                         <?php else: ?>
-                                            <img src="<?= e(img_src($rPhoto1, 'room' . $room['id'])) ?>" alt="<?= e($room['name']) ?>" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onerror="this.onerror=null;this.src='https://picsum.photos/seed/room<?= (int) $room['id'] ?>/800/600';">
+                                            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F1F5F9;color:#94A3B8;gap:6px;text-align:center;padding:1rem;">
+                                                <span style="font-size:2.2rem;line-height:1;">🛏️</span>
+                                                <span style="font-size:0.88rem;font-weight:600;color:#64748B;">No photo uploaded</span>
+                                            </div>
                                         <?php endif; ?>
                                     </div>
                                     <div style="padding:1.25rem;display:flex;flex-direction:column;justify-content:space-between;">
@@ -227,7 +224,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                     <?php endif; ?>
                     <?php if (!empty($listing['not_included'])): ?>
                         <div class="inclusion-col">
-                            <h3>Not included</h3>
+                            <h3>Available Add-ons & Services</h3>
                             <ul class="inclusion-list inclusion-list-muted">
                                 <?php foreach (preg_split('/\r\n|\r|\n/', (string) $listing['not_included']) ?: [] as $line): ?>
                                     <?php if (trim($line) !== ''): ?><li><?= e(trim($line)) ?></li><?php endif; ?>

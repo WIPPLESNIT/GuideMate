@@ -32,7 +32,9 @@ const HERO_WIDTH = width * 0.78;
 // Map backend category slugs to Ionicons + soft tints.
 const CATEGORY_STYLE: Record<string, { icon: string; bg: string; color: string }> = {
   'things-to-do': { icon: 'compass', bg: '#FFF2E6', color: '#FF8C00' },
-  'tour-guides': { icon: 'people', bg: '#E6F0FA', color: '#3B82F6' },
+  attractions: { icon: 'ticket', bg: '#FCE7F3', color: '#EC4899' },
+  'attraction-and-tours': { icon: 'ticket', bg: '#FCE7F3', color: '#EC4899' },
+  'tour-guides': { icon: 'people', bg: '#E6F0FA', color: '#10B981' },
   hotels: { icon: 'bed', bg: '#FFF9E6', color: '#F59E0B' },
 };
 
@@ -41,7 +43,7 @@ function categoryStyle(slug: string) {
 }
 
 const SERVICES: { key: string; label: string; icon: string; color: string; bg: string }[] = [
-  { key: 'attractions', label: 'Attractions', icon: 'ticket', color: '#EC4899', bg: '#FCE7F3' },
+  { key: 'guides', label: 'Tour Guides', icon: 'people', color: '#10B981', bg: '#E6F0FA' },
   { key: 'car', label: 'Car Rentals', icon: 'car-sport', color: '#3B82F6', bg: '#E0EDFF' },
   { key: 'flights', label: 'Flights', icon: 'airplane', color: '#8B5CF6', bg: '#EDE9FE' },
   { key: 'weather', label: 'Weather', icon: 'partly-sunny', color: '#0EA5E9', bg: '#E0F2FE' },
@@ -117,7 +119,7 @@ export default function HomeScreen() {
     slug === 'tour-guides'
       ? router.push('/guides')
       : router.push({ pathname: '/things-to-do', params: { category: slug } });
-  const openAttractions = () => router.push({ pathname: '/things-to-do', params: { featured: '1' } });
+  const openAttractions = () => router.push({ pathname: '/things-to-do', params: { category: 'attractions' } });
   const openExplore = () => router.push('/things-to-do');
   const openSearch = () => router.push('/search');
 
@@ -145,7 +147,7 @@ export default function HomeScreen() {
       color: s.color,
       // Every shortcut now navigates somewhere useful (no dead buttons).
       onPress: () => {
-        if (s.key === 'attractions') return openAttractions();
+        if (s.key === 'guides') return router.push('/guides');
         if (s.key === 'car') return router.push('/car-rentals');
         if (s.key === 'weather') return router.push('/weather');
         if (s.key === 'traffic') return router.push('/traffic');

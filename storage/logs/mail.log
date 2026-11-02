@@ -394,3 +394,273 @@ http://localhosttests/
 
 [HTML Version Attached]
 ----------------------------------------
+[2026-11-02 17:22:52] LOCAL MAIL
+To: chrisyongzon112@gmail.com
+Subject: Hotel listing approved — Bluewater Maribago Beach Resort
+Body:
+Great news! Your hotel property listing for Bluewater Maribago Beach Resort has been approved by the administrator and is now published and available for travelers. You can now configure room types and inventory from your dashboard.
+
+----------------------------------------
+[2026-11-02 17:33:03] LOCAL MAIL
+To: christianyongzon143@gmail.com
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Bluewater Maribago Beach Resort on 1 nights (2026-11-05 to 2026-11-06) was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.39/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-02 17:33:03] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation — Bluewater Maribago Beach Resort
+Body:
+Christian Yongzon booked "Bluewater Maribago Beach Resort" and payment was received.
+
+Date: 2026-11-05
+Guests: 1
+Amount paid: PHP 1,300.00
+Payment: Debit/Credit Card (Room Deposit)
+
+This booking is NOT confirmed yet. Open your dashboard → Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-02 17:33:03] LOCAL MAIL
+To: chrisyongzon112@gmail.com
+Subject: New booking awaiting your confirmation — Bluewater Maribago Beach Resort
+Body:
+Christian Yongzon booked "Bluewater Maribago Beach Resort" and payment was received.
+
+Date: 2026-11-05
+Guests: 1
+Amount paid: PHP 1,300.00
+Payment: Debit/Credit Card (Room Deposit)
+
+This booking is NOT confirmed yet. Open your dashboard → Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-02 22:16:12] LOCAL MAIL
+To: christianyongzon143@gmail.com
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Bojo River on 2026-11-18 was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.39/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-02 22:16:12] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation â€” Bojo River
+Body:
+Christian Yongzon booked "Bojo River" and payment was received.
+
+Date: 2026-11-18
+Guests: 1
+Amount paid: PHP 1,000.00
+Payment: InstaPay QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-02 22:16:12] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: New booking awaiting your confirmation â€” Bojo River
+Body:
+Christian Yongzon booked "Bojo River" and payment was received.
+
+Date: 2026-11-18
+Guests: 1
+Amount paid: PHP 1,000.00
+Payment: InstaPay QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-02 22:17:25] LOCAL MAIL
+To: christianyongzon143@gmail.com
+Subject: Booking confirmed — Bojo River
+Body:
+Your booking for Bojo River on 2026-11-18 is confirmed.
+
+View bookings: http://localhost/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-02 22:21:41] LOCAL MAIL
+To: christianyongzon143@gmail.com
+Subject: Booking cancelled — Bojo River
+Body:
+Your booking for Bojo River was cancelled.
+
+₱3,000.00 has been refunded.
+
+----------------------------------------
+[2026-11-02 22:24:22] LOCAL MAIL
+To: pending_h_e13291fc@example.com
+Subject: Application update
+Body:
+Hi Pending Hotel Partner,
+
+Your Hotel Partner application was not approved.
+
+----------------------------------------
+[2026-11-02 22:24:24] LOCAL MAIL
+To: rej_part_bce5957b@example.com
+Subject: Application update
+Body:
+Hi Rejectee Partner,
+
+Your Hotel Partner application was not approved.
+
+----------------------------------------
+[2026-11-02 22:24:28] LOCAL MAIL
+To: rev_test_d0c50948@example.com
+Subject: Application update
+Body:
+Hi Review Test Partner,
+
+Your Hotel Partner application was not approved.
+
+----------------------------------------
+[2026-11-02 22:24:28] LOCAL MAIL
+To: hotel_prov_83e6429a@example.com
+Subject: Application update
+Body:
+Hi Grand Resort Provider,
+
+Your Hotel Partner application was not approved.
+
+----------------------------------------
+[2026-11-02 22:24:29] LOCAL MAIL
+To: hotel_leg_60a2ba9e@example.com
+Subject: Application update
+Body:
+Hi Legacy Hotel Partner,
+
+Your Hotel Partner application was not approved.
+
+----------------------------------------
+[2026-11-02 22:24:30] LOCAL MAIL
+To: rej_part_5bbfce73@example.com
+Subject: Application update
+Body:
+Hi Rejectee Partner,
+
+Your Hotel Partner application was not approved.
+
+----------------------------------------
+[2026-11-02 22:24:31] LOCAL MAIL
+To: rev_test_d5c6610c@example.com
+Subject: Application update
+Body:
+Hi Review Test Partner,
+
+Your Hotel Partner application was not approved.
+
+----------------------------------------
+[2026-11-03 02:29:26] LOCAL MAIL
+To: christianyongzon143@gmail.com
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Moalboal Snorkeling on 2026-11-04 was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.39/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-03 02:29:26] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation â€” Moalboal Snorkeling
+Body:
+Christian Yongzon booked "Moalboal Snorkeling" and payment was received.
+
+Date: 2026-11-04
+Guests: 6
+Amount paid: PHP 4,800.00
+Payment: GCash / e-Wallet QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-03 02:29:26] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: New booking awaiting your confirmation â€” Moalboal Snorkeling
+Body:
+Christian Yongzon booked "Moalboal Snorkeling" and payment was received.
+
+Date: 2026-11-04
+Guests: 6
+Amount paid: PHP 4,800.00
+Payment: GCash / e-Wallet QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-03 02:29:57] LOCAL MAIL
+To: christianyongzon143@gmail.com
+Subject: Booking cancelled — Moalboal Snorkeling
+Body:
+Your booking for Moalboal Snorkeling was cancelled.
+
+A full refund of ₱4,800.00 has been automatically initiated to your original payment method. Expected processing time is 1–3 business days.
+
+----------------------------------------
+[2026-11-03 03:37:49] LOCAL MAIL
+To: christianyongzon143@gmail.com
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Bojo River on 2026-11-18 was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.39/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-03 03:37:49] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation â€” Bojo River
+Body:
+Christian Yongzon booked "Bojo River" and payment was received.
+
+Date: 2026-11-18
+Guests: 2
+Amount paid: PHP 2,000.00
+Payment: GCash / e-Wallet QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-03 03:37:49] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: New booking awaiting your confirmation â€” Bojo River
+Body:
+Christian Yongzon booked "Bojo River" and payment was received.
+
+Date: 2026-11-18
+Guests: 2
+Amount paid: PHP 2,000.00
+Payment: GCash / e-Wallet QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-03 04:21:20] LOCAL MAIL
+To: christianyongzon143@gmail.com
+Subject: Booking cancelled — Bojo River
+Body:
+Your booking for Bojo River was cancelled.
+
+A full refund of ₱2,000.00 has been automatically initiated to your original payment method. Expected processing time is 1–3 business days.
+
+----------------------------------------

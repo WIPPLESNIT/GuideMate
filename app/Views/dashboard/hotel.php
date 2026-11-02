@@ -188,8 +188,22 @@ foreach ($reservations as $res) {
                                         <!-- 1. ROOM NAME -->
                                         <td class="col-room-name">
                                             <div style="display:flex;align-items:center;gap:0.75rem;min-width:0;">
-                                                <img src="<?= e(img_src($rm['image'] ?? null, 'room-' . $rm['id'])) ?>" alt=""
-                                                     style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;background:#f8fafc;">
+                                                <?php $overviewRoomImg = !empty($rm['image']) ? $rm['image'] : (!empty($rm['photos'][0]) ? $rm['photos'][0] : null); ?>
+                                                <?php if (!empty($overviewRoomImg)): ?>
+                                                    <img src="<?= e(img_src($overviewRoomImg, 'room-' . $rm['id'])) ?>" alt="<?= e($rm['name']) ?>"
+                                                         onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='flex';"
+                                                         onload="if(this.naturalWidth<=1&&this.naturalHeight<=1){this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='flex';}"
+                                                         style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;background:#f8fafc;">
+                                                    <div style="width:44px;height:44px;border-radius:8px;background:#f1f5f9;border:1px solid var(--line);display:none;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;color:#94a3b8;text-align:center;padding:2px;" title="No photo uploaded">
+                                                        <span style="font-size:0.95rem;line-height:1;">🛏️</span>
+                                                        <span style="font-size:0.58rem;font-weight:600;margin-top:2px;color:#64748b;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40px;">No photo</span>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <div style="width:44px;height:44px;border-radius:8px;background:#f1f5f9;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;color:#94a3b8;text-align:center;padding:2px;" title="No photo uploaded">
+                                                        <span style="font-size:0.95rem;line-height:1;">🛏️</span>
+                                                        <span style="font-size:0.58rem;font-weight:600;margin-top:2px;color:#64748b;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40px;">No photo</span>
+                                                    </div>
+                                                <?php endif; ?>
                                                 <div style="min-width:0;flex:1 1 auto;">
                                                     <strong style="color:var(--teal-700, #0f766e);font-size:0.90rem;display:block;line-height:1.25;word-break:break-word;">
                                                         <?= e($rm['name']) ?>
@@ -679,60 +693,28 @@ foreach ($reservations as $res) {
             </div>
             <div class="field-row" style="background:#f8fafc;padding:0.85rem 1rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:1rem;">
                 <label style="font-weight:700;font-size:0.90rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;color:var(--text, #0f172a);">
-                    <span>📸 Room Photos (Upload up to 3 photos)</span>
-                    <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">Max 3 Photos</span>
+                    <span>📸 Room Photo</span>
+                    <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">1 Photo</span>
                 </label>
                 <span class="hint" style="display:block;margin-bottom:0.75rem;font-size:0.8rem;color:#64748b;">
-                    Upload high-quality JPG, PNG, or WEBP images (up to 5MB each) or paste direct photo URLs. Photo 1 will be used as the primary room photo.
+                    Upload a high-quality JPG, PNG, or WEBP image (up to 5MB) or paste a direct photo URL.
                 </span>
 
-                                                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:0.6rem;">
+                <div style="max-width:280px;">
                     <!-- Slot 0: Cover -->
                     <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 1 (Cover) *</strong>
+                            <strong style="font-size:0.78rem;color:#0f172a;">Room Photo *</strong>
                             <span style="font-size:0.65rem;background:#dcfce7;color:#166534;font-weight:700;padding:1px 5px;border-radius:4px;">Cover</span>
                         </div>
-                        <div id="dash_add_room_preview_wrap_0" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
-                            <img id="dash_add_room_preview_img_0" src="" alt="Photo 1" style="width:100%;height:100%;object-fit:cover;display:none;">
-                            <span id="dash_add_room_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
-                            <button type="button" id="dash_add_room_remove_btn_0" onclick="removeDashAddRoomPhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        <div id="dash_add_room_preview_wrap_0" style="position:relative;height:120px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="dash_add_room_preview_img_0" src="" alt="Room Photo" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="dash_add_room_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                            <button type="button" id="dash_add_room_remove_btn_0" onclick="removeDashAddRoomPhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
                         </div>
                         <input type="file" name="room_photo_file_0" id="dash_add_room_file_0" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleDashAddRoomFileChange(0, this)">
                         <input type="url" name="room_photo_url_0" id="dash_add_room_url_0" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleDashAddRoomUrlChange(0, this.value)">
                         <input type="hidden" name="room_photo_removed_0" id="dash_add_room_removed_0" value="0">
-                    </div>
-
-                    <!-- Slot 1: Photo 2 -->
-                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 2</strong>
-                            <span style="font-size:0.65rem;background:#f1f5f9;color:#64748b;font-weight:700;padding:1px 5px;border-radius:4px;">Optional</span>
-                        </div>
-                        <div id="dash_add_room_preview_wrap_1" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
-                            <img id="dash_add_room_preview_img_1" src="" alt="Photo 2" style="width:100%;height:100%;object-fit:cover;display:none;">
-                            <span id="dash_add_room_placeholder_1" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
-                            <button type="button" id="dash_add_room_remove_btn_1" onclick="removeDashAddRoomPhoto(1)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
-                        </div>
-                        <input type="file" name="room_photo_file_1" id="dash_add_room_file_1" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleDashAddRoomFileChange(1, this)">
-                        <input type="url" name="room_photo_url_1" id="dash_add_room_url_1" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleDashAddRoomUrlChange(1, this.value)">
-                        <input type="hidden" name="room_photo_removed_1" id="dash_add_room_removed_1" value="0">
-                    </div>
-
-                    <!-- Slot 2: Photo 3 -->
-                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <strong style="font-size:0.78rem;color:#0f172a;">Photo 3</strong>
-                            <span style="font-size:0.65rem;background:#f1f5f9;color:#64748b;font-weight:700;padding:1px 5px;border-radius:4px;">Optional</span>
-                        </div>
-                        <div id="dash_add_room_preview_wrap_2" style="position:relative;height:85px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
-                            <img id="dash_add_room_preview_img_2" src="" alt="Photo 3" style="width:100%;height:100%;object-fit:cover;display:none;">
-                            <span id="dash_add_room_placeholder_2" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
-                            <button type="button" id="dash_add_room_remove_btn_2" onclick="removeDashAddRoomPhoto(2)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
-                        </div>
-                        <input type="file" name="room_photo_file_2" id="dash_add_room_file_2" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleDashAddRoomFileChange(2, this)">
-                        <input type="url" name="room_photo_url_2" id="dash_add_room_url_2" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleDashAddRoomUrlChange(2, this.value)">
-                        <input type="hidden" name="room_photo_removed_2" id="dash_add_room_removed_2" value="0">
                     </div>
                 </div>
             </div>
@@ -795,6 +777,34 @@ foreach ($reservations as $res) {
                 <label>Key Amenities</label>
                 <input type="text" id="edit-room-amenities" name="amenities" class="input">
             </div>
+            <div class="field-row" style="background:#f8fafc;padding:0.85rem 1rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:1rem;">
+                <label style="font-weight:700;font-size:0.90rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;color:var(--text, #0f172a);">
+                    <span>📸 Room Photo</span>
+                    <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">1 Photo</span>
+                </label>
+                <span class="hint" style="display:block;margin-bottom:0.75rem;font-size:0.8rem;color:#64748b;">
+                    Upload a high-quality JPG, PNG, or WEBP image (up to 5MB) or paste a direct photo URL.
+                </span>
+
+                <div style="max-width:280px;">
+                    <!-- Slot 0: Primary Room Photo -->
+                    <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.6rem;display:flex;flex-direction:column;gap:0.35rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <strong style="font-size:0.78rem;color:#0f172a;">Room Photo *</strong>
+                            <span style="font-size:0.65rem;background:#dcfce7;color:#166534;font-weight:700;padding:1px 5px;border-radius:4px;">Cover</span>
+                        </div>
+                        <div id="dash_edit_room_preview_wrap_0" style="position:relative;height:120px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                            <img id="dash_edit_room_preview_img_0" src="" alt="Room Photo" style="width:100%;height:100%;object-fit:cover;display:none;">
+                            <span id="dash_edit_room_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                            <button type="button" id="dash_edit_room_remove_btn_0" onclick="removeDashEditRoomPhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                        </div>
+                        <input type="file" name="room_photo_file_0" id="dash_edit_room_file_0" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.72rem;width:100%;" onchange="handleDashEditRoomFileChange(0, this)">
+                        <input type="text" name="room_photo_url_0" id="dash_edit_room_url_0" class="input" placeholder="…or photo URL" style="font-size:0.75rem;padding:0.3rem 0.45rem;" oninput="handleDashEditRoomUrlChange(0, this.value)">
+                        <input type="hidden" name="existing_room_photo_0" id="dash_edit_room_existing_0" value="">
+                        <input type="hidden" name="room_photo_removed_0" id="dash_edit_room_removed_0" value="0">
+                    </div>
+                </div>
+            </div>
             <div class="field-row">
                 <label>Description</label>
                 <textarea id="edit-room-desc" name="description" class="input" rows="3"></textarea>
@@ -846,12 +856,38 @@ window.removeDashAddRoomPhoto = function(slot) {
     clearDashAddRoomSlotPreview(slot);
 };
 
+function resolveImageUrl(path) {
+    if (!path) return '';
+    path = String(path).trim();
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:image/')) {
+        return path;
+    }
+    var base = '<?= e(rtrim(url("/"), "/")) ?>';
+    if (base && (path === base || path.startsWith(base + '/'))) {
+        return path.startsWith('/') ? path : '/' + path;
+    }
+    var clean = path.replace(/^\/+/, '');
+    return (base ? base + '/' : '/') + clean;
+}
+
 function setDashAddRoomSlotPreview(slot, src) {
     var img = document.getElementById('dash_add_room_preview_img_' + slot);
     var ph = document.getElementById('dash_add_room_placeholder_' + slot);
     var btn = document.getElementById('dash_add_room_remove_btn_' + slot);
     if (img && ph && btn) {
-        img.src = src;
+        var resolved = resolveImageUrl(src);
+        img.onload = function() {
+            img.style.display = 'block';
+            ph.style.display = 'none';
+            btn.style.display = 'flex';
+        };
+        img.onerror = function() {
+            img.style.display = 'none';
+            ph.textContent = '⚠️ Image not found';
+            ph.style.display = 'block';
+            btn.style.display = 'flex';
+        };
+        img.src = resolved;
         img.style.display = 'block';
         ph.style.display = 'none';
         btn.style.display = 'flex';
@@ -863,8 +899,11 @@ function clearDashAddRoomSlotPreview(slot) {
     var ph = document.getElementById('dash_add_room_placeholder_' + slot);
     var btn = document.getElementById('dash_add_room_remove_btn_' + slot);
     if (img && ph && btn) {
+        img.onload = null;
+        img.onerror = null;
         img.src = '';
         img.style.display = 'none';
+        ph.textContent = '📷 No photo uploaded';
         ph.style.display = 'block';
         btn.style.display = 'none';
     }
@@ -879,18 +918,27 @@ window.handleDashEditRoomFileChange = function(slot, input) {
         reader.readAsDataURL(input.files[0]);
         var rem = document.getElementById('dash_edit_room_removed_' + slot);
         if (rem) rem.value = '0';
+        var urlIn = document.getElementById('dash_edit_room_url_' + slot);
+        if (urlIn) urlIn.value = '';
     }
 };
 
 window.handleDashEditRoomUrlChange = function(slot, val) {
     val = (val || '').trim();
+    var existingIn = document.getElementById('dash_edit_room_existing_' + slot);
     if (val) {
         setDashEditRoomSlotPreview(slot, val);
         var rem = document.getElementById('dash_edit_room_removed_' + slot);
         if (rem) rem.value = '0';
     } else {
         var fileIn = document.getElementById('dash_edit_room_file_' + slot);
-        if (!fileIn || !fileIn.files || !fileIn.files[0]) {
+        if (fileIn && fileIn.files && fileIn.files[0]) {
+            // Keep file preview
+        } else if (existingIn && existingIn.value) {
+            setDashEditRoomSlotPreview(slot, existingIn.value);
+            var rem2 = document.getElementById('dash_edit_room_removed_' + slot);
+            if (rem2) rem2.value = '0';
+        } else {
             clearDashEditRoomSlotPreview(slot);
         }
     }
@@ -901,6 +949,8 @@ window.removeDashEditRoomPhoto = function(slot) {
     if (fileIn) fileIn.value = '';
     var urlIn = document.getElementById('dash_edit_room_url_' + slot);
     if (urlIn) urlIn.value = '';
+    var existingIn = document.getElementById('dash_edit_room_existing_' + slot);
+    if (existingIn) existingIn.value = '';
     var rem = document.getElementById('dash_edit_room_removed_' + slot);
     if (rem) rem.value = '1';
     clearDashEditRoomSlotPreview(slot);
@@ -911,10 +961,26 @@ function setDashEditRoomSlotPreview(slot, src) {
     var ph = document.getElementById('dash_edit_room_placeholder_' + slot);
     var btn = document.getElementById('dash_edit_room_remove_btn_' + slot);
     if (img && ph && btn) {
-        img.src = src;
-        img.style.display = 'block';
-        ph.style.display = 'none';
-        btn.style.display = 'flex';
+        var resolved = resolveImageUrl(src);
+        img.onload = function() {
+            if (this.naturalWidth <= 1 && this.naturalHeight <= 1) {
+                this.style.display = 'none';
+                ph.textContent = '⚠️ Invalid image';
+                ph.style.display = 'block';
+                btn.style.display = 'flex';
+                return;
+            }
+            img.style.display = 'block';
+            ph.style.display = 'none';
+            btn.style.display = 'flex';
+        };
+        img.onerror = function() {
+            img.style.display = 'none';
+            ph.textContent = '⚠️ Image not found';
+            ph.style.display = 'block';
+            btn.style.display = 'flex';
+        };
+        img.src = resolved;
     }
 }
 
@@ -923,8 +989,11 @@ function clearDashEditRoomSlotPreview(slot) {
     var ph = document.getElementById('dash_edit_room_placeholder_' + slot);
     var btn = document.getElementById('dash_edit_room_remove_btn_' + slot);
     if (img && ph && btn) {
+        img.onload = null;
+        img.onerror = null;
         img.src = '';
         img.style.display = 'none';
+        ph.textContent = '📷 No photo uploaded';
         ph.style.display = 'block';
         btn.style.display = 'none';
     }
@@ -939,6 +1008,11 @@ function openAddRoomModal() {
     }
     var modal = document.getElementById('modal-add-room');
     if (modal) {
+        if (typeof removeDashAddRoomPhoto === 'function') {
+            removeDashAddRoomPhoto(0);
+            var rem = document.getElementById('dash_add_room_removed_0');
+            if (rem) rem.value = '0';
+        }
         modal.style.display = 'flex';
         var firstInput = modal.querySelector('input:not([type="hidden"]), select, textarea');
         if (firstInput) {
@@ -962,20 +1036,23 @@ function openEditRoomModal(room) {
     document.getElementById('edit-room-status').value = room.status || 'available';
     document.getElementById('edit-room-amenities').value = room.amenities || '';
     document.getElementById('edit-room-desc').value = room.description || '';
-    var photos = room.photos || (room.image ? [room.image] : []);
-    for (var i = 0; i < 3; i++) {
-        var fileIn = document.getElementById('dash_edit_room_file_' + i);
-        if (fileIn) fileIn.value = '';
-        var urlIn = document.getElementById('dash_edit_room_url_' + i);
-        var remIn = document.getElementById('dash_edit_room_removed_' + i);
-        if (remIn) remIn.value = '0';
-        if (photos[i]) {
-            if (urlIn) urlIn.value = photos[i];
-            setDashEditRoomSlotPreview(i, photos[i]);
-        } else {
-            if (urlIn) urlIn.value = '';
-            clearDashEditRoomSlotPreview(i);
+    var photo = (room.photos && room.photos.length > 0) ? room.photos[0] : (room.image || '');
+    var photoUrl = (room.photo_urls && room.photo_urls.length > 0) ? room.photo_urls[0] : (room.image_url || resolveImageUrl(photo));
+    var fileIn = document.getElementById('dash_edit_room_file_0');
+    if (fileIn) fileIn.value = '';
+    var urlIn = document.getElementById('dash_edit_room_url_0');
+    var existingIn = document.getElementById('dash_edit_room_existing_0');
+    var remIn = document.getElementById('dash_edit_room_removed_0');
+    if (remIn) remIn.value = '0';
+    if (existingIn) existingIn.value = photo;
+    if (photoUrl || photo) {
+        if (urlIn) {
+            urlIn.value = (photo.startsWith('http://') || photo.startsWith('https://')) ? photo : '';
         }
+        setDashEditRoomSlotPreview(0, photoUrl || photo);
+    } else {
+        if (urlIn) urlIn.value = '';
+        clearDashEditRoomSlotPreview(0);
     }
     document.getElementById('modal-edit-room').style.display = 'flex';
 }

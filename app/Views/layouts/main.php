@@ -79,6 +79,7 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
                 $navCategory = $activeCategory ?? ($listing['category_slug'] ?? ($filters['category'] ?? null));
                 ?>
                 <a href="<?= e(url('/things-to-do')) ?>" class="nav-item <?= active_when('/things-to-do', $navCategory === 'things-to-do') ?>"><?= __('nav_things', 'Things to Do') ?></a>
+                <a href="<?= e(url('/attractions')) ?>" class="nav-item <?= active_when('/attractions', $navCategory === 'attractions') ?>">Attractions</a>
                 <a href="<?= e(url('/tour-guides')) ?>" class="nav-item <?= active_when('/tour-guides', $navCategory === 'tour-guides') ?>"><?= __('nav_guides', 'Tour Guides') ?></a>
                 <a href="<?= e(url('/hotels')) ?>" class="nav-item <?= active_when('/hotels', $navCategory === 'hotels') ?>"><?= __('nav_hotels', 'Hotels') ?></a>
                 <a href="<?= e(url('/rentals')) ?>" class="nav-item <?= active_when('/rentals', $navCategory === 'rentals') ?>"><?= __('nav_rentals', 'Rentals') ?></a>
@@ -151,6 +152,7 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
         <div>
             <h4>Explore</h4>
             <a href="<?= e(url('/things-to-do')) ?>">Things to Do</a>
+            <a href="<?= e(url('/attractions')) ?>">Attractions</a>
             <a href="<?= e(url('/tour-guides')) ?>">Tour Guides</a>
             <a href="<?= e(url('/hotels')) ?>">Hotels &amp; Stays</a>
             <a href="<?= e(url('/rentals')) ?>">Vehicle Rentals</a>

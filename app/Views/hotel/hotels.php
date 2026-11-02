@@ -100,8 +100,15 @@ $errors = $errors ?? [];
                                     <tr>
                                         <td>
                                             <div style="display:flex;align-items:center;gap:0.75rem;">
-                                                <img src="<?= e(img_src($thumb, 'hotel-' . $h['id'])) ?>" alt=""
-                                                     style="width:52px;height:52px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f1f5f9;">
+                                                <?php if (!empty($h['cover_image'])): ?>
+                                                    <img src="<?= e(img_src($h['cover_image'], 'hotel-' . $h['id'])) ?>" alt="<?= e($h['title']) ?>"
+                                                         style="width:52px;height:52px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f1f5f9;">
+                                                <?php else: ?>
+                                                    <div style="width:52px;height:52px;border-radius:8px;background:#f1f5f9;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;color:#94a3b8;text-align:center;padding:2px;" title="No photo uploaded">
+                                                        <span style="font-size:1.15rem;line-height:1;">🏨</span>
+                                                        <span style="font-size:0.6rem;font-weight:600;margin-top:2px;color:#64748b;line-height:1;">No photo</span>
+                                                    </div>
+                                                <?php endif; ?>
                                                 <div>
                                                     <a href="<?= e(url('/listing/' . ($h['slug'] ?? $h['id']))) ?>" target="_blank" style="font-weight:700;color:var(--text, #0f172a);text-decoration:none;">
                                                         <?= e($h['title']) ?>
@@ -332,11 +339,12 @@ $errors = $errors ?? [];
                         </div>
                         <div id="hf_preview_wrap_0" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
                             <img id="hf_preview_img_0" src="" alt="Photo 1" style="width:100%;height:100%;object-fit:cover;display:none;">
-                            <span id="hf_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <span id="hf_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
                             <button type="button" id="hf_remove_btn_0" onclick="removeHotelPhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
                         </div>
                         <input type="file" name="photo_file_0" id="hf_file_0" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleHotelFileChange(0, this)">
-                        <input type="url" name="photo_url_0" id="hf_url_0" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(0, this.value)">
+                        <input type="text" name="photo_url_0" id="hf_url_0" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(0, this.value)">
+                        <input type="hidden" name="existing_photo_0" id="hf_existing_0" value="">
                         <input type="hidden" name="photo_removed_0" id="hf_removed_0" value="0">
                         <input type="hidden" name="cover_image" id="hf_cover_image" value="">
                     </div>
@@ -349,11 +357,12 @@ $errors = $errors ?? [];
                         </div>
                         <div id="hf_preview_wrap_1" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
                             <img id="hf_preview_img_1" src="" alt="Photo 2" style="width:100%;height:100%;object-fit:cover;display:none;">
-                            <span id="hf_placeholder_1" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <span id="hf_placeholder_1" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
                             <button type="button" id="hf_remove_btn_1" onclick="removeHotelPhoto(1)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
                         </div>
                         <input type="file" name="photo_file_1" id="hf_file_1" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleHotelFileChange(1, this)">
-                        <input type="url" name="photo_url_1" id="hf_url_1" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(1, this.value)">
+                        <input type="text" name="photo_url_1" id="hf_url_1" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(1, this.value)">
+                        <input type="hidden" name="existing_photo_1" id="hf_existing_1" value="">
                         <input type="hidden" name="photo_removed_1" id="hf_removed_1" value="0">
                     </div>
 
@@ -365,11 +374,12 @@ $errors = $errors ?? [];
                         </div>
                         <div id="hf_preview_wrap_2" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
                             <img id="hf_preview_img_2" src="" alt="Photo 3" style="width:100%;height:100%;object-fit:cover;display:none;">
-                            <span id="hf_placeholder_2" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo</span>
+                            <span id="hf_placeholder_2" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
                             <button type="button" id="hf_remove_btn_2" onclick="removeHotelPhoto(2)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
                         </div>
                         <input type="file" name="photo_file_2" id="hf_file_2" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleHotelFileChange(2, this)">
-                        <input type="url" name="photo_url_2" id="hf_url_2" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(2, this.value)">
+                        <input type="text" name="photo_url_2" id="hf_url_2" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleHotelUrlChange(2, this.value)">
+                        <input type="hidden" name="existing_photo_2" id="hf_existing_2" value="">
                         <input type="hidden" name="photo_removed_2" id="hf_removed_2" value="0">
                     </div>
                 </div>
@@ -409,7 +419,21 @@ $errors = $errors ?? [];
         }
     }
 
-        window.handleHotelFileChange = function(slot, input) {
+    function resolveImageUrl(path) {
+        if (!path) return '';
+        path = String(path).trim();
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:image/')) {
+            return path;
+        }
+        var base = '<?= e(rtrim(url("/"), "/")) ?>';
+        if (base && (path === base || path.startsWith(base + '/'))) {
+            return path.startsWith('/') ? path : '/' + path;
+        }
+        var clean = path.replace(/^\/+/, '');
+        return (base ? base + '/' : '/') + clean;
+    }
+
+    window.handleHotelFileChange = function(slot, input) {
         if (input.files && input.files[0]) {
             var reader = new FileReader();
             reader.onload = function(e) {
@@ -420,6 +444,8 @@ $errors = $errors ?? [];
                 }
             };
             reader.readAsDataURL(input.files[0]);
+            var urlIn = document.getElementById('hf_url_' + slot);
+            if (urlIn) urlIn.value = '';
             var remIn = document.getElementById('hf_removed_' + slot);
             if (remIn) remIn.value = '0';
         }
@@ -427,6 +453,7 @@ $errors = $errors ?? [];
 
     window.handleHotelUrlChange = function(slot, val) {
         val = (val || '').trim();
+        var existingIn = document.getElementById('hf_existing_' + slot);
         if (val) {
             setHotelSlotPreview(slot, val);
             var remIn = document.getElementById('hf_removed_' + slot);
@@ -437,7 +464,17 @@ $errors = $errors ?? [];
             }
         } else {
             var fileIn = document.getElementById('hf_file_' + slot);
-            if (!fileIn || !fileIn.files || !fileIn.files[0]) {
+            if (fileIn && fileIn.files && fileIn.files[0]) {
+                // file input has a selected file, retain preview
+            } else if (existingIn && existingIn.value) {
+                setHotelSlotPreview(slot, existingIn.value);
+                var remIn2 = document.getElementById('hf_removed_' + slot);
+                if (remIn2) remIn2.value = '0';
+                if (slot === 0) {
+                    var cov2 = document.getElementById('hf_cover_image');
+                    if (cov2) cov2.value = existingIn.value;
+                }
+            } else {
                 clearHotelSlotPreview(slot);
             }
         }
@@ -448,6 +485,8 @@ $errors = $errors ?? [];
         if (fileIn) fileIn.value = '';
         var urlIn = document.getElementById('hf_url_' + slot);
         if (urlIn) urlIn.value = '';
+        var existingIn = document.getElementById('hf_existing_' + slot);
+        if (existingIn) existingIn.value = '';
         var remIn = document.getElementById('hf_removed_' + slot);
         if (remIn) remIn.value = '1';
         if (slot === 0) {
@@ -462,7 +501,19 @@ $errors = $errors ?? [];
         var ph = document.getElementById('hf_placeholder_' + slot);
         var btn = document.getElementById('hf_remove_btn_' + slot);
         if (img && ph && btn) {
-            img.src = src;
+            var resolved = resolveImageUrl(src);
+            img.onload = function() {
+                img.style.display = 'block';
+                ph.style.display = 'none';
+                btn.style.display = 'flex';
+            };
+            img.onerror = function() {
+                img.style.display = 'none';
+                ph.textContent = '⚠️ Image not found';
+                ph.style.display = 'block';
+                btn.style.display = 'flex';
+            };
+            img.src = resolved;
             img.style.display = 'block';
             ph.style.display = 'none';
             btn.style.display = 'flex';
@@ -474,8 +525,11 @@ $errors = $errors ?? [];
         var ph = document.getElementById('hf_placeholder_' + slot);
         var btn = document.getElementById('hf_remove_btn_' + slot);
         if (img && ph && btn) {
+            img.onload = null;
+            img.onerror = null;
             img.src = '';
             img.style.display = 'none';
+            ph.textContent = '📷 No photo uploaded';
             ph.style.display = 'block';
             btn.style.display = 'none';
         }
@@ -501,6 +555,8 @@ $errors = $errors ?? [];
             removeHotelPhoto(i);
             var remIn = document.getElementById('hf_removed_' + i);
             if (remIn) remIn.value = '0';
+            var existingIn = document.getElementById('hf_existing_' + i);
+            if (existingIn) existingIn.value = '';
         }
 
         modal.hidden = false;
@@ -527,18 +583,25 @@ $errors = $errors ?? [];
         document.getElementById('hf_included').value = hotel.included || '';
         document.getElementById('hf_not_included').value = hotel.not_included || '';
         var photos = hotel.photos || (hotel.cover_image ? [hotel.cover_image] : []);
+        var photoUrls = hotel.photo_urls || (hotel.cover_image_url ? [hotel.cover_image_url] : []);
         for (var i = 0; i < 3; i++) {
             var fileIn = document.getElementById('hf_file_' + i);
             if (fileIn) fileIn.value = '';
             var urlIn = document.getElementById('hf_url_' + i);
+            var existingIn = document.getElementById('hf_existing_' + i);
             var remIn = document.getElementById('hf_removed_' + i);
             if (remIn) remIn.value = '0';
-            if (photos[i]) {
-                if (urlIn) urlIn.value = photos[i];
-                setHotelSlotPreview(i, photos[i]);
+            var rawPhoto = photos[i] || '';
+            var displaySrc = (photoUrls && photoUrls[i]) ? photoUrls[i] : rawPhoto;
+            if (existingIn) existingIn.value = rawPhoto;
+            if (rawPhoto) {
+                if (urlIn) {
+                    urlIn.value = (rawPhoto.startsWith('http://') || rawPhoto.startsWith('https://')) ? rawPhoto : '';
+                }
+                setHotelSlotPreview(i, displaySrc);
                 if (i === 0) {
                     var covIn = document.getElementById('hf_cover_image');
-                    if (covIn) covIn.value = photos[0];
+                    if (covIn) covIn.value = rawPhoto;
                 }
             } else {
                 if (urlIn) urlIn.value = '';

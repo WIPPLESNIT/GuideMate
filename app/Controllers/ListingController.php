@@ -29,7 +29,17 @@ final class ListingController extends Controller
 
     public function thingsToDo(): void
     {
-        $this->renderBrowse('things-to-do', 'Things to Do', 'Tours, attractions and unforgettable activities.');
+        $this->renderBrowse('things-to-do', 'Things to Do', 'Activities, experiences and things to do across Cebu.');
+    }
+
+    public function attractions(): void
+    {
+        $this->renderBrowse('attractions', 'Attractions', 'Tours, heritage sites, and premier attractions across Cebu.');
+    }
+
+    public function attractionAndTours(): void
+    {
+        $this->renderBrowse('attractions', 'Attraction & Tours', 'Tours, heritage sites, and premier attractions across Cebu.');
     }
 
     public function tourGuides(): void
