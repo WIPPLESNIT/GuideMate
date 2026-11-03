@@ -1,5 +1,8 @@
 <?php
 /**
+ * Public Rental Vehicle Detail Page
+ * Redesigned to match the Hotel and Things to Do detail page design system.
+ *
  * @var array<string,mixed> $vehicle
  * @var array<int,array<string,mixed>> $gallery
  * @var array<int,string> $specs
@@ -8,280 +11,252 @@
  * @var bool $isPreview
  * @var bool $isOwner
  */
+
+$user = \App\Core\Auth::user();
 $reviews = $reviews ?? [];
 $reviewStats = $reviewStats ?? ['rating' => 0.0, 'reviews_count' => 0];
+$avgRating = (float) ($reviewStats['rating'] ?? 5.0);
+$reviewCount = (int) ($reviewStats['reviews_count'] ?? 0);
+$isAvailable = (int) ($vehicle['is_available'] ?? 1) === 1 && ($vehicle['status'] ?? '') === 'approved';
+
+$mainPhoto = !empty($vehicle['image']) ? $vehicle['image'] : null;
+$galleryPaths = [];
+foreach ($gallery ?? [] as $g) {
+    if (!empty($g['image_path'])) {
+        $galleryPaths[] = (string) $g['image_path'];
+    }
+}
+$sidePhoto1 = $galleryPaths[0] ?? $mainPhoto;
+$sidePhoto2 = $galleryPaths[1] ?? $galleryPaths[0] ?? $mainPhoto;
 ?>
-<div class="container" style="padding-top:1.5rem;padding-bottom:3rem;">
+<div class="container">
     <!-- Breadcrumb -->
-    <nav style="font-size:0.875rem;margin-bottom:1rem;color:var(--text-muted);">
-        <a href="<?= e(url('/')) ?>" style="color:var(--text-muted);">Home</a> &gt;
-        <a href="<?= e(url('/rentals')) ?>" style="color:var(--text-muted);">Vehicle Rentals</a> &gt;
+    <div class="breadcrumb">
+        <a href="<?= e(url('/')) ?>">Home</a> ›
+        <a href="<?= e(url('/rentals')) ?>">Rentals</a> ›
         <span><?= e($vehicle['name']) ?></span>
-    </nav>
+    </div>
 
     <?php if ($isPreview): ?>
-        <div class="status-banner banner-amber" style="margin-bottom:1.5rem;">
-            <span class="status-icon"><?= admin_icon('clock', 24) ?></span>
-            <div>
-                <strong>Preview Mode</strong>
-                <p class="mb-0">
-                    This vehicle listing is currently in <strong><?= e(\App\Models\Vehicle::statusLabel((string) $vehicle['status'])) ?></strong> status and is not visible to public tourists.
-                    <?php if ($isOwner): ?>
-                        <a href="<?= e(url('/dashboard/vehicles/' . (int) $vehicle['id'] . '/edit')) ?>">Edit listing details →</a>
-                    <?php endif; ?>
-                </p>
-            </div>
+        <div class="card-soft" style="background:#fdf0d5;border-color:#f0d9a0;margin-top:1.25rem;">
+            <strong>Preview mode —</strong> this vehicle rental is <em><?= e(\App\Models\Vehicle::statusLabel((string) $vehicle['status'])) ?></em> and not yet visible to the public.
+            <?php if ($isOwner): ?>
+                <a href="<?= e(url('/dashboard/vehicles/' . (int) $vehicle['id'] . '/edit')) ?>" style="margin-left:0.5rem;font-weight:600;color:var(--teal-700);">Edit listing details →</a>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 
-    <div class="section-head" style="margin-bottom:1.25rem;">
+    <!-- Media Hero (1 large on left, 2 stacked on right matching Things to Do & Hotels) -->
+    <?php if (!empty($mainPhoto)): ?>
+        <div class="detail-hero">
+            <div class="main-img">
+                <img src="<?= e(img_src($mainPhoto, 'vehicle-' . $vehicle['id'])) ?>" alt="<?= e($vehicle['name']) ?>" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vehicle<?= (int) $vehicle['id'] ?>/1200/800';">
+            </div>
+            <div class="side">
+                <img src="<?= e(img_src($sidePhoto1, 'gallery-' . $vehicle['id'] . '-0')) ?>" alt="<?= e($vehicle['name']) ?> photo 2" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vehicle<?= (int) $vehicle['id'] ?>1/800/600';">
+                <img src="<?= e(img_src($sidePhoto2, 'gallery-' . $vehicle['id'] . '-1')) ?>" alt="<?= e($vehicle['name']) ?> photo 3" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vehicle<?= (int) $vehicle['id'] ?>2/800/600';">
+            </div>
+        </div>
+    <?php else: ?>
+        <div class="detail-hero" style="display:flex;align-items:center;justify-content:center;background:#0f172a;min-height:260px;border-radius:var(--radius-lg);color:#94a3b8;flex-direction:column;gap:8px;">
+            <span style="font-size:3rem;">🛵</span>
+            <span style="font-size:1.1rem;font-weight:600;color:#cbd5e1;">No photo uploaded</span>
+        </div>
+    <?php endif; ?>
+
+    <?php if (count($galleryPaths) > 2): ?>
+        <div style="display:flex;gap:0.6rem;margin-top:0.75rem;overflow-x:auto;padding-bottom:4px;">
+            <?php foreach ($galleryPaths as $idx => $gPath): ?>
+                <a href="<?= e(url($gPath)) ?>" target="_blank" rel="noopener" style="flex-shrink:0;">
+                    <img src="<?= e(url($gPath)) ?>" alt="Photo <?= $idx + 1 ?>" style="width:104px;height:72px;object-fit:cover;border-radius:8px;border:1.5px solid var(--line);">
+                </a>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+
+    <!-- Two-column Layout matching Hotel and Things to Do screens -->
+    <div class="detail-layout">
+        <!-- Left: Vehicle Information, Overview, Specs, Inclusions, and Reviews -->
         <div>
-            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;flex-wrap:wrap;">
-                <span class="pill pill-confirmed"><?= e($vehicle['type']) ?></span>
-                <span class="hint">📍 <?= e($vehicle['location']) ?></span>
-                <?php if (!empty($reviewStats['reviews_count'])): ?>
-                    <a href="#reviews" style="text-decoration:none;display:inline-flex;align-items:center;gap:3px;font-size:0.875rem;font-weight:600;color:var(--ink-500,#1e293b);">
-                        <span style="color:#f59e0b;">★</span>
-                        <span><?= number_format((float) $reviewStats['rating'], 1) ?></span>
-                        <span class="hint" style="font-weight:normal;">(<?= (int) $reviewStats['reviews_count'] ?> <?= (int) $reviewStats['reviews_count'] === 1 ? 'review' : 'reviews' ?>)</span>
-                    </a>
+            <span class="chip"><?= e($vehicle['type']) ?></span>
+            <h1 class="detail-title mt-2"><?= e($vehicle['name']) ?></h1>
+
+            <div class="detail-meta">
+                <span class="rating">
+                    <?= e(stars($avgRating > 0 ? $avgRating : 5.0)) ?>
+                    <strong><?= number_format($avgRating > 0 ? $avgRating : 5.0, 1) ?></strong>
+                    <span class="count">(<?= $reviewCount ?> <?= $reviewCount === 1 ? 'review' : 'reviews' ?>)</span>
+                </span>
+                <span>📍 <?= e($vehicle['location']) ?></span>
+                <span>⏱️ <?= (int) $vehicle['year'] ?> Model · <?= e($vehicle['make']) ?></span>
+                <span class="chip" style="background:#E0F2FE;color:#0369A1;font-weight:600;font-size:0.85rem;">🛡️ Verified Partner</span>
+            </div>
+
+            <!-- Host Presence & Address -->
+            <div class="chips">
+                <?php $isHostOnline = \App\Models\User::isOnline((int) $vehicle['user_id']); ?>
+                <span class="chip chip-host">
+                    <span class="presence-dot <?= $isHostOnline ? 'online' : 'offline' ?>"></span>
+                    Hosted by <?= e($vehicle['provider_name']) ?> · <span class="presence-text"><?= $isHostOnline ? 'Online' : 'Offline' ?></span>
+                </span>
+                <?php if (!empty($vehicle['address'])): ?>
+                    <span class="chip">🗺️ <?= e($vehicle['address']) ?></span>
                 <?php endif; ?>
             </div>
-            <h1 style="margin:0;"><?= e($vehicle['name']) ?></h1>
-        </div>
-        <div style="text-align:right;">
-            <div style="font-size:1.75rem;font-weight:800;color:var(--primary);"><?= money((float) $vehicle['price_per_day']) ?></div>
-            <div class="hint">per day</div>
-        </div>
-    </div>
 
-    <!-- Media Gallery -->
-    <div style="margin-bottom:2rem;">
-        <img src="<?= e(img_src($vehicle['image'] ?? null, 'vehicle-' . $vehicle['id'])) ?>" alt="<?= e($vehicle['name']) ?>" style="width:100%;max-height:480px;object-fit:cover;border-radius:12px;border:1px solid var(--border);" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vehicle<?= (int) $vehicle['id'] ?>/1200/800';">
-
-        <?php if ($gallery !== []): ?>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));gap:0.75rem;margin-top:1rem;">
-                <?php foreach ($gallery as $img): ?>
-                    <a href="<?= e(url($img['image_path'])) ?>" target="_blank" rel="noopener">
-                        <img src="<?= e(url($img['image_path'])) ?>" alt="" style="width:100%;height:100px;object-fit:cover;border-radius:8px;border:1px solid var(--border);">
-                    </a>
-                <?php endforeach; ?>
+            <!-- About this rental -->
+            <h2 class="mt-3">About this rental</h2>
+            <div class="prose">
+                <?php if (!empty(trim((string) $vehicle['description']))): ?>
+                    <p><?= nl2br(e($vehicle['description'])) ?></p>
+                <?php else: ?>
+                    <p>Rent this <?= e($vehicle['name']) ?> for your travels in <?= e($vehicle['location']) ?>, Cebu. Well-maintained and inspected for optimal road safety and comfortable exploration.</p>
+                <?php endif; ?>
             </div>
-        <?php endif; ?>
-    </div>
 
-    <!-- Two-column Layout -->
-    <div style="display:grid;grid-template-columns:1fr 360px;gap:2rem;align-items:start;">
-        <!-- Left: Details, Specs & Description -->
-        <div>
-            <!-- Specifications Grid -->
-            <div class="panel" style="margin-bottom:1.5rem;">
-                <div class="panel-head"><h3>Vehicle Specifications</h3></div>
-                <div class="panel-body">
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:1rem;font-size:0.95rem;">
-                        <div>
-                            <span class="hint" style="display:block;font-size:0.8rem;">Make / Manufacturer</span>
-                            <strong><?= e($vehicle['make']) ?></strong>
-                        </div>
-                        <div>
-                            <span class="hint" style="display:block;font-size:0.8rem;">Model</span>
-                            <strong><?= e($vehicle['model']) ?></strong>
-                        </div>
-                        <div>
-                            <span class="hint" style="display:block;font-size:0.8rem;">Model Year</span>
-                            <strong><?= (int) $vehicle['year'] ?></strong>
-                        </div>
-                        <div>
-                            <span class="hint" style="display:block;font-size:0.8rem;">Category</span>
-                            <strong><?= e($vehicle['type']) ?></strong>
-                        </div>
-                    </div>
-
-                    <?php if ($specs !== []): ?>
-                        <h4 style="margin:1.5rem 0 0.75rem 0;border-top:1px solid var(--border);padding-top:1rem;">Features &amp; Inclusions</h4>
-                        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+            <!-- Inclusions and Specifications Box -->
+            <div class="inclusion-box mt-3">
+                <div class="inclusion-col">
+                    <h3>What's included</h3>
+                    <ul class="inclusion-list">
+                        <?php if (!empty($specs)): ?>
                             <?php foreach ($specs as $s): ?>
-                                <span style="background:#f1f5f9;color:#334155;padding:0.4rem 0.8rem;border-radius:20px;font-size:0.875rem;border:1px solid var(--border);">
-                                    ✓ <?= e($s) ?>
-                                </span>
+                                <li><?= e($s) ?></li>
                             <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
+                        <?php else: ?>
+                            <li>Clean, inspected, and road-ready unit</li>
+                            <li>Standard protective safety helmets</li>
+                            <li>Third-party liability protection</li>
+                            <li>24/7 Cebu roadside customer assistance</li>
+                        <?php endif; ?>
+                    </ul>
                 </div>
-            </div>
-
-            <!-- Description -->
-            <div class="panel" style="margin-bottom:1.5rem;">
-                <div class="panel-head"><h3>Vehicle Overview &amp; Terms</h3></div>
-                <div class="panel-body" style="line-height:1.7;color:#334155;white-space:pre-line;">
-                    <?= e($vehicle['description']) ?>
-                </div>
-            </div>
-
-            <!-- Rental Guidelines -->
-            <div class="panel" style="margin-bottom:1.5rem;">
-                <div class="panel-head"><h3>Rental Requirements</h3></div>
-                <div class="panel-body" style="font-size:0.9rem;line-height:1.6;color:#475569;">
-                    <ul style="padding-left:1.25rem;margin:0;">
-                        <li><strong>Valid Driver's License:</strong> A valid Philippine or International Driver's License corresponding to the vehicle type.</li>
-                        <li><strong>Valid Identification:</strong> Government-issued ID or passport required upon pickup.</li>
-                        <li><strong>Fuel Policy:</strong> Vehicles are typically delivered full and must be returned with the same fuel level unless arranged otherwise.</li>
-                        <li><strong>Safe Driving:</strong> Always wear a certified helmet on two-wheelers and observe local traffic regulations throughout Cebu.</li>
+                <div class="inclusion-col">
+                    <h3>Available Add-ons &amp; Services</h3>
+                    <ul class="inclusion-list inclusion-list-muted">
+                        <li><strong>Vehicle:</strong> <?= e($vehicle['make']) ?> <?= e($vehicle['model']) ?> (<?= (int) $vehicle['year'] ?>)</li>
+                        <li><strong>Category:</strong> <?= e($vehicle['type']) ?></li>
+                        <li><strong>License:</strong> Valid Philippine or International Driver's License</li>
+                        <li><strong>Security:</strong> Government ID or passport held during rental</li>
+                        <li><strong>Fuel Policy:</strong> Same-to-same fuel level on return</li>
                     </ul>
                 </div>
             </div>
+            <p class="hint mt-2">
+                All rental rates are agreed directly with verified Cebu rental operators. Inspect the vehicle condition during handover and always observe safe driving habits. <a href="<?= e(url('/policy')) ?>">Read our policy</a>
+            </p>
 
             <!-- Tourist Reviews Section -->
-            <div class="panel" id="reviews" style="margin-bottom:1.5rem;">
-                <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
-                    <h3 style="margin:0;">Tourist Reviews</h3>
-                    <?php if (($reviewStats['reviews_count'] ?? 0) > 0): ?>
-                        <div style="display:flex;align-items:center;gap:0.5rem;">
-                            <span class="rating" style="color:#f59e0b;font-size:1.05rem;"><?= e(stars((float) $reviewStats['rating'])) ?></span>
-                            <strong style="font-size:1.05rem;"><?= number_format((float) $reviewStats['rating'], 1) ?></strong>
-                            <span class="hint">(<?= (int) $reviewStats['reviews_count'] ?> <?= (int) $reviewStats['reviews_count'] === 1 ? 'review' : 'reviews' ?>)</span>
-                        </div>
-                    <?php endif; ?>
+            <h2 class="mt-4" id="reviews">Tourist Reviews</h2>
+            <?php if ($reviewCount > 0): ?>
+                <div class="review-summary">
+                    <div class="text-center">
+                        <div class="big-score"><?= number_format($avgRating, 1) ?></div>
+                        <div class="rating"><?= e(stars($avgRating)) ?></div>
+                        <div class="hint"><?= $reviewCount ?> <?= $reviewCount === 1 ? 'verified review' : 'verified reviews' ?></div>
+                    </div>
+                    <div>
+                        <?php
+                        $breakdown = $reviewStats['breakdown'] ?? [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
+                        foreach ([5, 4, 3, 2, 1] as $star):
+                            $count = (int) ($breakdown[$star] ?? 0);
+                            $pct = $reviewCount > 0 ? round(($count / $reviewCount) * 100) : 0;
+                        ?>
+                            <div class="bar-row">
+                                <span><?= $star ?> star</span>
+                                <span class="bar"><i style="width:<?= $pct ?>%"></i></span>
+                                <span><?= $count ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
-                <div class="panel-body">
-                    <?php if (empty($reviews)): ?>
-                        <div class="empty-state" style="padding:2.5rem 1rem;text-align:center;">
-                            <div style="font-size:2.5rem;margin-bottom:0.5rem;">💬</div>
-                            <h4 style="margin-bottom:0.25rem;">No tourist reviews yet</h4>
-                            <p class="hint" style="max-width:380px;margin:0 auto;">
-                                Be the first tourist to rent this <?= e($vehicle['name']) ?> and share your feedback with fellow travelers.
-                            </p>
-                        </div>
-                    <?php else: ?>
-                        <!-- Review Summary Bar -->
-                        <div class="review-summary" style="display:flex;align-items:center;gap:1.5rem;padding:1.25rem;background:#f8fafc;border-radius:10px;margin-bottom:1.5rem;border:1px solid var(--border);flex-wrap:wrap;">
-                            <div style="text-align:center;min-width:110px;">
-                                <div style="font-size:2.5rem;font-weight:800;line-height:1;color:var(--text, #0f172a);">
-                                    <?= number_format((float) $reviewStats['rating'], 1) ?>
-                                </div>
-                                <div class="rating" style="margin:0.35rem 0;font-size:1.1rem;color:#f59e0b;">
-                                    <?= e(stars((float) $reviewStats['rating'])) ?>
-                                </div>
-                                <div class="hint" style="font-size:0.8rem;">
-                                    <?= (int) $reviewStats['reviews_count'] ?> verified <?= (int) $reviewStats['reviews_count'] === 1 ? 'review' : 'reviews' ?>
-                                </div>
-                            </div>
-                            <div style="flex:1 1 200px;border-left:1px solid #e2e8f0;padding-left:1.5rem;min-width:180px;">
-                                <?php
-                                $breakdown = $reviewStats['breakdown'] ?? [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
-                                $totalCount = max(1, (int) $reviewStats['reviews_count']);
-                                for ($s = 5; $s >= 1; $s--):
-                                    $cnt = (int) ($breakdown[$s] ?? 0);
-                                    $pct = round(($cnt / $totalCount) * 100);
-                                ?>
-                                    <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;margin-bottom:0.25rem;">
-                                        <span style="width:36px;text-align:right;font-weight:600;"><?= $s ?> ★</span>
-                                        <div style="flex:1 1 auto;background:#e2e8f0;height:8px;border-radius:4px;overflow:hidden;">
-                                            <div style="background:#f59e0b;height:100%;width:<?= $pct ?>%;"></div>
-                                        </div>
-                                        <span class="hint" style="width:28px;text-align:right;"><?= $cnt ?></span>
-                                    </div>
-                                <?php endfor; ?>
-                            </div>
-                        </div>
+            <?php endif; ?>
 
-                        <!-- Review Cards List -->
-                        <div class="review-list" style="display:flex;flex-direction:column;gap:1rem;">
-                            <?php foreach ($reviews as $r):
-                                $reviewerAvatar = $r['reviewer_avatar'] ?? null;
-                                $reviewerName = (string) ($r['reviewer_name'] ?? 'Tourist');
-                                $reviewDate = !empty($r['created_at']) ? date('M j, Y', strtotime((string) $r['created_at'])) : '';
-                                $reviewAgo = !empty($r['created_at']) ? time_ago((string) $r['created_at']) : '';
-                                $feedbackText = (string) ($r['feedback'] ?? $r['comment'] ?? '');
-                            ?>
-                                <div class="review-card" style="padding:1.15rem;background:#ffffff;border:1px solid var(--border);border-radius:10px;">
-                                    <div class="review-head" style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;flex-wrap:wrap;">
-                                        <img src="<?= e(img_src($reviewerAvatar, 'avatar' . (int)$r['reviewer_id'])) ?>" alt=""
-                                             style="width:44px;height:44px;border-radius:50%;object-fit:cover;background:#f1f5f9;border:1px solid #e2e8f0;flex-shrink:0;">
-                                        <div>
-                                            <strong style="font-size:0.95rem;color:var(--text, #0f172a);display:block;"><?= e($reviewerName) ?></strong>
-                                            <small class="hint" style="font-size:0.78rem;">
-                                                <?php if ($reviewDate !== ''): ?>
-                                                    <?= e($reviewDate) ?> (<?= e($reviewAgo) ?>)
-                                                <?php else: ?>
-                                                    Verified Tourist
-                                                <?php endif; ?>
-                                            </small>
-                                        </div>
-                                        <div style="margin-left:auto;text-align:right;">
-                                            <span class="rating" style="color:#f59e0b;font-size:1rem;letter-spacing:1px;"><?= e(stars((float) $r['rating'])) ?></span>
-                                        </div>
-                                    </div>
-                                    <p class="mb-0" style="font-size:0.92rem;line-height:1.55;color:#334155;white-space:pre-line;">
-                                        <?= e($feedbackText) ?>
-                                    </p>
+            <div class="review-list mt-3">
+                <?php if (empty($reviews)): ?>
+                    <p class="hint">No tourist reviews yet. Be the first tourist to rent this unit and share your experience!</p>
+                <?php else: ?>
+                    <?php foreach ($reviews as $r):
+                        $rAvatar = $r['reviewer_avatar'] ?? null;
+                        $rName = (string) ($r['reviewer_name'] ?? 'Tourist');
+                        $rDate = !empty($r['created_at']) ? date('M j, Y', strtotime((string) $r['created_at'])) : '';
+                        $rAgo = !empty($r['created_at']) ? time_ago((string) $r['created_at']) : '';
+                        $rText = (string) ($r['feedback'] ?? $r['comment'] ?? '');
+                    ?>
+                        <div class="review-card">
+                            <div class="review-head">
+                                <img src="<?= e(img_src($rAvatar, 'avatar' . (int) ($r['reviewer_id'] ?? 0))) ?>" alt="<?= e($rName) ?>" onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=<?= urlencode($rName) ?>&background=e2e8f0&color=475569';">
+                                <div class="meta">
+                                    <strong><?= e($rName) ?></strong><br>
+                                    <small>
+                                        <?php if ($rDate !== ''): ?>
+                                            <?= e($rDate) ?> (<?= e($rAgo) ?>)
+                                        <?php else: ?>
+                                            Verified Tourist
+                                        <?php endif; ?>
+                                    </small>
                                 </div>
-                            <?php endforeach; ?>
+                                <span class="rating" style="margin-left:auto;"><?= e(stars((float) ($r['rating'] ?? 5))) ?></span>
+                            </div>
+                            <?php if (!empty($r['title'])): ?><strong><?= e($r['title']) ?></strong><?php endif; ?>
+                            <p class="mb-0"><?= nl2br(e($rText)) ?></p>
                         </div>
-                    <?php endif; ?>
-                </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </div>
 
-        <!-- Right: Reservation / Partner Box -->
-        <div>
-            <div class="panel" style="position:sticky;top:80px;border-top:3px solid var(--primary);">
-                <div class="panel-body">
-                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:1rem;">
-                        <div>
-                            <span style="font-size:1.8rem;font-weight:800;color:var(--primary);"><?= money((float) $vehicle['price_per_day']) ?></span>
-                            <span class="hint">/ day</span>
-                        </div>
-                        <span class="pill pill-approved">Available for Rent</span>
-                    </div>
+        <!-- Right: Sticky Booking Box matching Things to Do & Hotels -->
+        <aside>
+            <div class="booking-box" id="bookingBox">
+                <div class="price">
+                    <span><?= money((float) $vehicle['price_per_day']) ?></span>
+                    <span class="price-unit">/ per day</span>
+                </div>
 
-                    <div style="margin-bottom:1.25rem;font-size:0.9rem;">
-                        <div style="margin-bottom:0.5rem;">
-                            <span class="hint">Pickup Location:</span>
-                            <div style="font-weight:600;">📍 <?= e($vehicle['location']) ?></div>
-                            <?php if (!empty($vehicle['address'])): ?>
-                                <div class="hint" style="font-size:0.8rem;"><?= e($vehicle['address']) ?></div>
-                            <?php endif; ?>
-                        </div>
-                        <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);">
-                            <span class="hint">Rental Partner:</span>
-                            <div style="font-weight:600;font-size:1rem;"><?= e($vehicle['provider_name']) ?></div>
-                            <div class="hint" style="font-size:0.8rem;">Verified GuideMate Partner</div>
-                            <?php if (!empty($reviewStats['reviews_count'])): ?>
-                                <div style="display:flex;align-items:center;gap:4px;margin-top:4px;font-size:0.85rem;">
-                                    <span style="color:#f59e0b;">★</span>
-                                    <strong><?= number_format((float) $reviewStats['rating'], 1) ?></strong>
-                                    <span class="hint">(<?= (int) $reviewStats['reviews_count'] ?> <?= (int) $reviewStats['reviews_count'] === 1 ? 'review' : 'reviews' ?>)</span>
-                                </div>
-                            <?php endif; ?>
-                        </div>
+                <div class="guide-mini">
+                    <img src="<?= e(img_src($vehicle['provider_avatar'] ?? null, 'avatar' . (int) $vehicle['user_id'])) ?>" alt="<?= e($vehicle['provider_name']) ?>" class="guide-mini-avatar" onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=<?= urlencode($vehicle['provider_name']) ?>&background=059669&color=fff';">
+                    <div class="guide-mini-meta">
+                        <span class="guide-mini-label">Your host</span>
+                        <strong class="guide-mini-name"><?= e($vehicle['provider_name']) ?></strong>
                     </div>
+                </div>
 
-                    <?php if ($isOwner): ?>
-                        <a href="<?= e(url('/dashboard/vehicles/' . (int) $vehicle['id'] . '/edit')) ?>" class="btn btn-primary" style="width:100%;justify-content:center;">
-                            Manage Your Listing
+                <div style="margin-bottom:0.75rem;">
+                    <?php if ($isAvailable): ?>
+                        <span class="badge" style="background:#DCFCE7;color:#166534;border:1px solid #86EFAC;font-weight:600;font-size:0.8rem;padding:3px 8px;border-radius:6px;display:inline-block;">🟢 Available for Rent</span>
+                    <?php else: ?>
+                        <span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;font-weight:600;font-size:0.8rem;padding:3px 8px;border-radius:6px;display:inline-block;">🟡 Currently Inactive / Reserved</span>
+                    <?php endif; ?>
+                </div>
+
+                <p class="hint" style="margin: 0 0 1.15rem; font-size: 0.9rem; color: var(--ink-600); line-height: 1.45;">
+                    Inquire with the host for availability.
+                </p>
+
+                <?php if ($isOwner): ?>
+                    <p class="hint">This is your vehicle listing.</p>
+                    <a href="<?= e(url('/dashboard/vehicles/' . (int) $vehicle['id'] . '/edit')) ?>" class="btn btn-ghost btn-block">Edit listing</a>
+                <?php else: ?>
+                    <?php if (\App\Core\Auth::check()): ?>
+                        <form method="post" action="<?= e(url('/messages')) ?>">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="receiver_id" value="<?= (int) $vehicle['user_id'] ?>">
+                            <input type="hidden" name="body" value="Hi! I am interested in renting your <?= e($vehicle['name']) ?> (<?= money((float) $vehicle['price_per_day']) ?>/day). Is this available?">
+                            <button type="submit" class="btn btn-primary btn-block btn-lg" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+                                <span>💬</span>
+                                <span>Message the host</span>
+                            </button>
+                        </form>
+                    <?php else: ?>
+                        <a class="btn btn-primary btn-block btn-lg" href="<?= e(url('/login?redirect=' . rawurlencode('/rentals/' . ($vehicle['slug'] ?? $vehicle['id'])))) ?>" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+                            <span>💬</span>
+                            <span>Message the host</span>
                         </a>
-                    <?php else: ?>
-                        <?php if (\App\Core\Auth::check()): ?>
-                            <form method="post" action="<?= e(url('/messages')) ?>" style="margin-bottom:0.75rem;">
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="receiver_id" value="<?= (int) $vehicle['user_id'] ?>">
-                                <input type="hidden" name="body" value="Hi! I am interested in renting your <?= e($vehicle['name']) ?> (<?= money((float) $vehicle['price_per_day']) ?>/day). Is this available?">
-                                <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
-                                    Inquire with Partner
-                                </button>
-                            </form>
-                        <?php else: ?>
-                            <a href="<?= e(url('/login?return=' . urlencode('/rentals/' . $vehicle['slug']))) ?>" class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:0.75rem;">
-                                Log in to Reserve Unit
-                            </a>
-                        <?php endif; ?>
-                        <div class="hint" style="text-align:center;font-size:0.8rem;">
-                            🔒 Direct booking with verified Cebu rental operators.
-                        </div>
                     <?php endif; ?>
-                </div>
+                <?php endif; ?>
             </div>
-        </div>
+        </aside>
     </div>
 </div>
+<div style="height:3rem;"></div>

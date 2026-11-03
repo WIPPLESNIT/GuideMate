@@ -47,6 +47,7 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
     <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
+    <script>window.APP_BASE_URL = <?= json_encode(rtrim(url('/'), '/')) ?>;</script>
     <?php if ($user !== null): ?>
         <meta name="auth-user-id" content="<?= (int) $user['id'] ?>">
         <meta name="auth-user-role" content="<?= e((string) $user['role']) ?>">

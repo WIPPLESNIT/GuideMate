@@ -116,7 +116,11 @@ final class Listing
     public static function find(int $id): ?array
     {
         $sql = self::SELECT . ' WHERE l.id = ? GROUP BY l.id';
-        return Database::first($sql, [$id]);
+        $listing = Database::first($sql, [$id]);
+        if ($listing !== null) {
+            $listing['photos'] = self::getPhotos($listing);
+        }
+        return $listing;
     }
 
     /**
@@ -127,7 +131,8 @@ final class Listing
     public static function forOwner(int $userId): array
     {
         $sql = self::SELECT . ' WHERE l.user_id = ? GROUP BY l.id ORDER BY l.created_at DESC';
-        return Database::all($sql, [$userId]);
+        $listings = Database::all($sql, [$userId]);
+        return self::attachPhotosToListings($listings);
     }
 
     /**
@@ -149,7 +154,57 @@ final class Listing
     public static function forGuideOwner(int $userId): array
     {
         $sql = self::SELECT . ' WHERE l.user_id = ? AND c.slug != "hotels" GROUP BY l.id ORDER BY l.created_at DESC';
-        return Database::all($sql, [$userId]);
+        $listings = Database::all($sql, [$userId]);
+        return self::attachPhotosToListings($listings);
+    }
+
+    /**
+     * Helper to batch load and attach photos to an array of listings.
+     *
+     * @param array<int, array<string, mixed>> $listings
+     * @return array<int, array<string, mixed>>
+     */
+    public static function attachPhotosToListings(array $listings): array
+    {
+        if ($listings === []) {
+            return [];
+        }
+
+        $ids = array_filter(array_column($listings, 'id'), fn($id) => $id !== null && $id !== '');
+        if ($ids === []) {
+            return $listings;
+        }
+
+        $in = implode(',', array_map('intval', $ids));
+        $allImages = Database::all("SELECT * FROM listing_images WHERE listing_id IN ($in) ORDER BY sort_order ASC, id ASC");
+        $galleryMap = [];
+        foreach ($allImages as $img) {
+            $lid = (int) ($img['listing_id'] ?? 0);
+            $p = trim((string) ($img['image_path'] ?? ''));
+            if ($p !== '') {
+                $galleryMap[$lid][] = $p;
+            }
+        }
+
+        foreach ($listings as &$l) {
+            $lid = (int) ($l['id'] ?? 0);
+            $photos = [];
+            $cover = trim((string) ($l['cover_image'] ?? ''));
+            if ($cover !== '') {
+                $photos[] = $cover;
+            }
+            if (isset($galleryMap[$lid])) {
+                foreach ($galleryMap[$lid] as $p) {
+                    if (!in_array($p, $photos, true)) {
+                        $photos[] = $p;
+                    }
+                }
+            }
+            $l['photos'] = array_values(array_slice($photos, 0, 3));
+        }
+        unset($l);
+
+        return $listings;
     }
 
     /**
@@ -173,27 +228,43 @@ final class Listing
             isset($data['address']) ? (string) $data['address'] : null,
             isset($data['title']) ? (string) $data['title'] : null
         );
-        $data['latitude'] = $coords['latitude'] ?? null;
-        $data['longitude'] = $coords['longitude'] ?? null;
-        $data['submitted_at'] = $data['submitted_at'] ?? date('Y-m-d H:i:s');
-        $data['address'] = $data['address'] ?? null;
-        $data['summary'] = $data['summary'] ?? null;
-        $data['duration'] = $data['duration'] ?? null;
-        $data['capacity'] = isset($data['capacity']) && (int) $data['capacity'] > 0 ? (int) $data['capacity'] : 10;
-        $data['included'] = $data['included'] ?? null;
-        $data['not_included'] = $data['not_included'] ?? null;
-        $data['price_unit'] = !empty($data['price_unit']) ? (string) $data['price_unit'] : 'per person';
-        $data['cover_image'] = $data['cover_image'] ?? null;
-        $data['status'] = $data['status'] ?? 'pending';
 
-        return Database::insert(
+        $params = [
+            'user_id' => $data['user_id'] ?? null,
+            'category_id' => $data['category_id'] ?? null,
+            'title' => $data['title'] ?? '',
+            'slug' => $data['slug'] ?? '',
+            'summary' => $data['summary'] ?? null,
+            'description' => $data['description'] ?? '',
+            'area' => $data['area'] ?? '',
+            'address' => $data['address'] ?? null,
+            'latitude' => $coords['latitude'] ?? null,
+            'longitude' => $coords['longitude'] ?? null,
+            'price' => $data['price'] ?? 0,
+            'price_unit' => !empty($data['price_unit']) ? (string) $data['price_unit'] : 'per person',
+            'duration' => $data['duration'] ?? null,
+            'capacity' => isset($data['capacity']) && (int) $data['capacity'] > 0 ? (int) $data['capacity'] : 10,
+            'included' => $data['included'] ?? null,
+            'not_included' => $data['not_included'] ?? null,
+            'cover_image' => $data['cover_image'] ?? null,
+            'status' => $data['status'] ?? 'pending',
+            'submitted_at' => $data['submitted_at'] ?? date('Y-m-d H:i:s'),
+        ];
+
+        $id = Database::insert(
             'INSERT INTO listings
                 (user_id, category_id, title, slug, summary, description, area, address, latitude, longitude,
                  price, price_unit, duration, capacity, included, not_included, cover_image, status, submitted_at)
              VALUES (:user_id, :category_id, :title, :slug, :summary, :description, :area, :address, :latitude, :longitude,
                      :price, :price_unit, :duration, :capacity, :included, :not_included, :cover_image, :status, :submitted_at)',
-            $data
+            $params
         );
+
+        if (!empty($data['rejection_reason'])) {
+            Database::run('UPDATE listings SET rejection_reason = ? WHERE id = ?', [$data['rejection_reason'], $id]);
+        }
+
+        return $id;
     }
 
     /**
@@ -369,7 +440,8 @@ final class Listing
     public static function getPhotos(int|array $listing): array
     {
         if (is_int($listing)) {
-            $found = self::find($listing);
+            $sql = self::SELECT . ' WHERE l.id = ? GROUP BY l.id';
+            $found = Database::first($sql, [$listing]);
             if ($found === null) {
                 return [];
             }
@@ -551,6 +623,154 @@ final class Listing
              WHERE id = ?",
             [$id]
         );
+    }
+
+    /**
+     * All guide property listings (Attractions and Things to Do) for administrator review.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function allGuideListingsForAdmin(?string $status = null, ?string $category = null): array
+    {
+        $params = [];
+        $where = ['c.slug IN ("attractions", "things-to-do", "attraction-and-tours", "tour-guides")'];
+
+        if ($status !== null && $status !== '' && $status !== 'all') {
+            $where[] = 'l.status = ?';
+            $params[] = $status;
+        }
+
+        if ($category !== null && $category !== '' && $category !== 'all') {
+            if ($category === 'attractions' || $category === 'attraction-and-tours') {
+                $where[] = 'c.slug IN ("attractions", "attraction-and-tours")';
+            } elseif ($category === 'things-to-do') {
+                $where[] = 'c.slug IN ("things-to-do", "tour-guides")';
+            } else {
+                $where[] = 'c.slug = ?';
+                $params[] = $category;
+            }
+        }
+
+        $sql = 'SELECT l.*, c.name AS category_name, c.slug AS category_slug,
+                       u.name AS guide_name, u.email AS guide_email, u.avatar AS guide_avatar,
+                       r.name AS reviewer_name,
+                       (SELECT COUNT(*) FROM listing_schedules ls WHERE ls.listing_id = l.id) AS schedule_count,
+                       COALESCE(AVG(rev.rating), 0) AS avg_rating,
+                       COUNT(DISTINCT rev.id) AS review_count
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                JOIN users u ON u.id = l.user_id
+                LEFT JOIN users r ON r.id = l.reviewed_by
+                LEFT JOIN reviews rev ON rev.listing_id = l.id
+                WHERE ' . implode(' AND ', $where) . '
+                GROUP BY l.id
+                ORDER BY CASE WHEN l.status = "pending" THEN 0 ELSE 1 END, COALESCE(l.submitted_at, l.created_at) DESC';
+
+        return Database::all($sql, $params);
+    }
+
+    public static function pendingGuideListingsCount(): int
+    {
+        $res = Database::first(
+            'SELECT COUNT(*) AS cnt FROM listings l
+             JOIN categories c ON c.id = l.category_id
+             WHERE c.slug IN ("attractions", "things-to-do", "attraction-and-tours", "tour-guides")
+               AND l.status = "pending"'
+        );
+        return (int) ($res['cnt'] ?? 0);
+    }
+
+    public static function approveGuideListing(int $id, int $reviewerId): void
+    {
+        Database::run(
+            "UPDATE listings
+             SET status = 'approved',
+                 reviewed_at = NOW(), reviewed_by = ?, rejection_reason = NULL
+             WHERE id = ?",
+            [$reviewerId, $id]
+        );
+    }
+
+    public static function rejectGuideListing(int $id, int $reviewerId, ?string $reason = null): void
+    {
+        Database::run(
+            "UPDATE listings
+             SET status = 'rejected',
+                 reviewed_at = NOW(), reviewed_by = ?, rejection_reason = ?
+             WHERE id = ?",
+            [$reviewerId, $reason, $id]
+        );
+    }
+
+    /**
+     * All live & approved listings across both Hotel and Guide listings (Attractions and Things to Do).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function allLiveForAdmin(?string $category = null, ?string $search = null): array
+    {
+        $params = [];
+        $where = ['l.status = "approved"', 'c.slug NOT IN ("restaurants")'];
+
+        if ($category !== null && $category !== '' && $category !== 'all') {
+            if ($category === 'attractions' || $category === 'attraction-and-tours') {
+                $where[] = 'c.slug IN ("attractions", "attraction-and-tours")';
+            } elseif ($category === 'things-to-do') {
+                $where[] = 'c.slug IN ("things-to-do", "tour-guides")';
+            } elseif ($category === 'hotels') {
+                $where[] = 'c.slug = "hotels"';
+            } else {
+                $where[] = 'c.slug = ?';
+                $params[] = $category;
+            }
+        }
+
+        if ($search !== null && trim($search) !== '') {
+            $like = '%' . trim($search) . '%';
+            $where[] = '(l.title LIKE ? OR l.area LIKE ? OR u.name LIKE ? OR u.email LIKE ?)';
+            array_push($params, $like, $like, $like, $like);
+        }
+
+        $sql = 'SELECT l.*, c.name AS category_name, c.slug AS category_slug, c.icon AS category_icon,
+                       u.name AS owner_name, u.email AS owner_email, u.role AS owner_role,
+                       COALESCE(AVG(rev.rating), 0) AS avg_rating,
+                       COUNT(DISTINCT rev.id) AS review_count,
+                       (SELECT COUNT(*) FROM hotel_rooms hr WHERE hr.listing_id = l.id) AS room_count,
+                       (SELECT COUNT(*) FROM listing_schedules ls WHERE ls.listing_id = l.id) AS schedule_count
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                JOIN users u ON u.id = l.user_id
+                LEFT JOIN reviews rev ON rev.listing_id = l.id
+                WHERE ' . implode(' AND ', $where) . '
+                GROUP BY l.id
+                ORDER BY l.is_featured DESC, l.created_at DESC';
+
+        return Database::all($sql, $params);
+    }
+
+    public static function countLiveByCategory(): array
+    {
+        $rows = Database::all(
+            'SELECT c.slug, COUNT(l.id) AS cnt
+             FROM listings l
+             JOIN categories c ON c.id = l.category_id
+             WHERE l.status = "approved" AND c.slug NOT IN ("restaurants")
+             GROUP BY c.slug'
+        );
+        $counts = ['all' => 0, 'attractions' => 0, 'things-to-do' => 0, 'hotels' => 0];
+        foreach ($rows as $r) {
+            $cnt = (int) $r['cnt'];
+            $counts['all'] += $cnt;
+            $slug = (string) $r['slug'];
+            if ($slug === 'hotels') {
+                $counts['hotels'] += $cnt;
+            } elseif ($slug === 'attractions' || $slug === 'attraction-and-tours') {
+                $counts['attractions'] += $cnt;
+            } elseif ($slug === 'things-to-do' || $slug === 'tour-guides') {
+                $counts['things-to-do'] += $cnt;
+            }
+        }
+        return $counts;
     }
 
     public static function hotelStatusPillClass(string $status): string

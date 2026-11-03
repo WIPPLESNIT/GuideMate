@@ -6,6 +6,7 @@
  */
 $errors = $errors ?? [];
 $editing = $listing !== null;
+$existingPhotos = $editing ? \App\Models\Listing::getPhotos($listing) : [];
 $action = $editing ? url('/dashboard/listings/' . $listing['id']) : url('/dashboard/listings');
 $val = fn(string $k, string $d = '') => e($editing ? (string) ($listing[$k] ?? $d) : old($k, $d));
 ?>
@@ -150,12 +151,18 @@ $val = fn(string $k, string $d = '') => e($editing ? (string) ($listing[$k] ?? $
                         </div>
 
                         <script>
-                        function resolveFormImageUrl(src) {
-                            if (!src) return '';
-                            if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) return src;
-                            var clean = src.replace(/^\/+/, '');
-                            var base = (window.APP_BASE_URL || '').replace(/\/+$/, '');
-                            return base + '/' + clean;
+                        function resolveFormImageUrl(path) {
+                            if (!path) return '';
+                            path = String(path).trim();
+                            if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:image/') || path.startsWith('data:')) {
+                                return path;
+                            }
+                            var base = (window.APP_BASE_URL !== undefined ? window.APP_BASE_URL : <?= json_encode(rtrim(url('/'), '/')) ?>) || '';
+                            if (base && (path === base || path.startsWith(base + '/'))) {
+                                return path.startsWith('/') ? path : '/' + path;
+                            }
+                            var clean = path.replace(/^\/+/, '');
+                            return (base ? base + '/' : '/') + clean;
                         }
                         function handleFormFileChange(slot, input) {
                             if (!input.files || !input.files[0]) return;

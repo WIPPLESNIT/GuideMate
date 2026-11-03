@@ -120,6 +120,7 @@ $router->get('/dashboard/listings', [GuideController::class, 'listings'], ['list
 $router->get('/dashboard/listings/create', [GuideController::class, 'create'], ['listing_provider']);
 $router->post('/dashboard/listings', [GuideController::class, 'store'], ['listing_provider']);
 $router->get('/dashboard/listings/{id}/edit', [GuideController::class, 'edit'], ['listing_provider']);
+$router->get('/dashboard/listings/{id}', [GuideController::class, 'edit'], ['listing_provider']);
 $router->post('/dashboard/listings/{id}', [GuideController::class, 'update'], ['listing_provider']);
 $router->post('/dashboard/listings/{id}/delete', [GuideController::class, 'destroy'], ['listing_provider']);
 $router->get('/dashboard/bookings', [GuideController::class, 'bookings'], ['listing_provider']);
@@ -189,6 +190,13 @@ $router->post('/admin/security/disable', [AdminAuthController::class, 'disableTw
 $router->get('/admin/listings', [AdminController::class, 'listings'], ['admin']);
 $router->post('/admin/listings/{id}/status', [AdminController::class, 'updateListingStatus'], ['admin']);
 $router->post('/admin/listings/{id}/feature', [AdminController::class, 'toggleFeatured'], ['admin']);
+$router->get('/admin/guide-listings', [AdminController::class, 'guideListings'], ['admin']);
+$router->get('/admin/guide-listings/{id}', [AdminController::class, 'showGuideListing'], ['admin']);
+$router->post('/admin/guide-listings/{id}/approve', [AdminController::class, 'approveGuideListing'], ['admin']);
+$router->post('/admin/guide-listings/{id}/reject', [AdminController::class, 'rejectGuideListing'], ['admin']);
+$router->post('/admin/guide-listings/{id}/delete', [AdminController::class, 'deleteGuideListing'], ['admin']);
+$router->delete('/admin/guide-listings/{id}', [AdminController::class, 'deleteGuideListing'], ['admin']);
+
 $router->get('/admin/hotels', [AdminController::class, 'hotels'], ['admin']);
 $router->get('/admin/hotels/{id}', [AdminController::class, 'showHotel'], ['admin']);
 $router->post('/admin/hotels/{id}/approve', [AdminController::class, 'approveHotel'], ['admin']);

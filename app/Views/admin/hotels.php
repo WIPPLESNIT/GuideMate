@@ -6,6 +6,33 @@
  * @var string $status
  * @var int $pendingCount
  */
+
+$status = (string) ($status ?? 'all');
+$q = (string) ($_GET['q'] ?? '');
+
+$statusCounts = [
+    'all' => count($hotels),
+    'pending' => 0,
+    'approved' => 0,
+    'rejected' => 0,
+];
+
+foreach ($hotels as $h) {
+    $st = (string) ($h['status'] ?? 'pending');
+    if (isset($statusCounts[$st])) {
+        $statusCounts[$st]++;
+    }
+}
+
+$statusLabels = [
+    'all' => 'All Listings',
+    'pending' => 'Pending Review',
+    'approved' => 'Approved',
+    'rejected' => 'Rejected',
+];
+
+$activeStatusLabel = $statusLabels[$status] ?? 'All Listings';
+$isStatusFiltered = ($status !== 'all');
 ?>
 <div class="section-head" style="margin-bottom:1.25rem;">
     <div>
@@ -14,13 +41,76 @@
     </div>
 </div>
 
-<div class="tabs" style="display:flex;gap:0.5rem;margin-bottom:1.5rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;">
-    <a href="<?= e(url('/admin/hotels?status=pending')) ?>" class="btn btn-sm <?= $status === 'pending' ? 'btn-primary' : 'btn-ghost' ?>">
-        Pending Review <?php if ($pendingCount > 0): ?><span class="badge" style="background:#ef4444;color:#fff;margin-left:4px;"><?= $pendingCount ?></span><?php endif; ?>
-    </a>
-    <a href="<?= e(url('/admin/hotels?status=approved')) ?>" class="btn btn-sm <?= $status === 'approved' ? 'btn-primary' : 'btn-ghost' ?>">Approved</a>
-    <a href="<?= e(url('/admin/hotels?status=rejected')) ?>" class="btn btn-sm <?= $status === 'rejected' ? 'btn-primary' : 'btn-ghost' ?>">Rejected</a>
-    <a href="<?= e(url('/admin/hotels?status=all')) ?>" class="btn btn-sm <?= $status === 'all' ? 'btn-primary' : 'btn-ghost' ?>">All Listings</a>
+<!-- Unified Search & Filter Toolbar matching Users, Guide, and Vehicle sections -->
+<div class="users-toolbar listings-toolbar" style="margin-bottom:1.25rem;">
+    <div class="users-filters-group">
+        <!-- Search Field -->
+        <div class="filter-control users-search-wrap">
+            <span class="filter-icon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+            </span>
+            <input type="text"
+                   id="hotelSearchInput"
+                   class="filter-input users-search-input"
+                   placeholder="Search"
+                   value="<?= e($q) ?>"
+                   aria-label="Search hotel listings"
+                   autocomplete="off"
+                   spellcheck="false">
+            <button type="button" id="hotelSearchClear" class="users-search-clear" aria-label="Clear search" <?= $q === '' ? 'hidden' : '' ?>>&times;</button>
+        </div>
+
+        <!-- Status Custom Filter Dropdown -->
+        <div class="filter-control filter-custom-dropdown" data-filter="status" id="hotelStatusFilterControl">
+            <button type="button"
+                    class="filter-dropdown-btn <?= $isStatusFiltered ? 'is-filtered' : '' ?>"
+                    id="hotelStatusBtn"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-controls="hotelStatusPopover"
+                    aria-label="Filter by listing status">
+                <span class="filter-icon" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="8" r="6"></circle>
+                        <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"></path>
+                    </svg>
+                </span>
+                <span class="filter-dropdown-label" id="hotelStatusLabel"><?= e($activeStatusLabel) ?></span>
+                <span class="filter-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="filter-dropdown-popover" id="hotelStatusPopover" role="listbox" aria-labelledby="hotelStatusBtn" hidden>
+                <div class="filter-popover-head">
+                    <span class="filter-popover-title">Filter by Status</span>
+                    <button type="button" class="filter-popover-reset" id="hotelStatusReset">Reset</button>
+                </div>
+                <div class="filter-popover-options">
+                    <div class="filter-popover-item <?= $status === 'all' ? 'is-selected' : '' ?>" role="option" aria-selected="<?= $status === 'all' ? 'true' : 'false' ?>" data-value="all" tabindex="<?= $status === 'all' ? '0' : '-1' ?>">
+                        <span class="filter-item-indicator" aria-hidden="true"></span>
+                        <span class="filter-item-text">All Listings</span>
+                        <span class="filter-item-count"><?= (int) $statusCounts['all'] ?></span>
+                    </div>
+                    <div class="filter-popover-item <?= $status === 'pending' ? 'is-selected' : '' ?>" role="option" aria-selected="<?= $status === 'pending' ? 'true' : 'false' ?>" data-value="pending" tabindex="<?= $status === 'pending' ? '0' : '-1' ?>">
+                        <span class="filter-item-indicator" aria-hidden="true"></span>
+                        <span class="filter-item-text">Pending Review</span>
+                        <span class="filter-item-count" style="<?= $statusCounts['pending'] > 0 ? 'background:rgba(239,68,68,0.2);color:#fca5a5;' : '' ?>"><?= (int) $statusCounts['pending'] ?></span>
+                    </div>
+                    <div class="filter-popover-item <?= $status === 'approved' ? 'is-selected' : '' ?>" role="option" aria-selected="<?= $status === 'approved' ? 'true' : 'false' ?>" data-value="approved" tabindex="<?= $status === 'approved' ? '0' : '-1' ?>">
+                        <span class="filter-item-indicator" aria-hidden="true"></span>
+                        <span class="filter-item-text">Approved</span>
+                        <span class="filter-item-count"><?= (int) $statusCounts['approved'] ?></span>
+                    </div>
+                    <div class="filter-popover-item <?= $status === 'rejected' ? 'is-selected' : '' ?>" role="option" aria-selected="<?= $status === 'rejected' ? 'true' : 'false' ?>" data-value="rejected" tabindex="<?= $status === 'rejected' ? '0' : '-1' ?>">
+                        <span class="filter-item-indicator" aria-hidden="true"></span>
+                        <span class="filter-item-text">Rejected</span>
+                        <span class="filter-item-count"><?= (int) $statusCounts['rejected'] ?></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="panel">
@@ -29,10 +119,10 @@
             <div class="empty-state" style="padding:3rem 1rem;">
                 <div class="big">🏨</div>
                 <h3>No hotel listings found</h3>
-                <p>There are no hotel listings matching the current filter (<?= e(ucfirst($status)) ?>).</p>
+                <p>There are no hotel listings submitted yet.</p>
             </div>
         <?php else: ?>
-            <table class="table table-vehicles table-hotels">
+            <table class="table table-vehicles table-hotels" id="hotelListingsTable">
                 <thead>
                     <tr>
                         <th class="col-vehicle">Hotel</th>
@@ -44,24 +134,43 @@
                     </tr>
                 </thead>
                 <tbody>
-                <?php foreach ($hotels as $h):
+                <?php
+                $initialVisibleCount = 0;
+                foreach ($hotels as $h):
                     $hStatus = (string) ($h['status'] ?? 'pending');
                     $amenities = !empty($h['included']) ? array_map('trim', explode(',', (string) $h['included'])) : [];
                     $roomCount = (int) ($h['room_count'] ?? 0);
                     $thumb = !empty($h['cover_image']) ? $h['cover_image'] : 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80';
+
+                    $areaRaw = strtolower((string) ($h['area'] ?? ''));
+                    $titleLower = strtolower((string) ($h['title'] ?? ''));
+                    $partnerLower = strtolower((string) (($h['provider_name'] ?? '') . ' ' . ($h['provider_email'] ?? '')));
+                    $areaLower = $areaRaw;
+
+                    $matchesStatus = ($status === 'all' || $hStatus === $status);
+                    $matchesSearch = true;
+                    if ($q !== '') {
+                        $qLower = strtolower($q);
+                        $matchesSearch = (str_contains($titleLower, $qLower) || str_contains($partnerLower, $qLower) || str_contains($areaLower, $qLower));
+                    }
+                    $rowMatches = ($matchesStatus && $matchesSearch);
+                    if ($rowMatches) {
+                        $initialVisibleCount++;
+                    }
                 ?>
-                    <tr id="hotel-row-<?= (int) $h['id'] ?>" data-id="<?= (int) $h['id'] ?>" data-status="<?= e($hStatus) ?>">
+                    <tr id="hotel-row-<?= (int) $h['id'] ?>"
+                        data-id="<?= (int) $h['id'] ?>"
+                        data-status="<?= e($hStatus) ?>"
+                        data-title="<?= e($titleLower) ?>"
+                        data-partner="<?= e($partnerLower) ?>"
+                        data-area="<?= e($areaLower) ?>"
+                        class="hotel-listing-row"
+                        <?= $rowMatches ? '' : 'hidden' ?>>
                         <td class="vehicle-cell col-vehicle" data-label="Hotel">
                             <div class="vehicle-meta-wrap">
                                 <img src="<?= e(img_src($thumb, 'hotel-' . $h['id'])) ?>" alt="" class="vehicle-thumb" style="width:64px;height:48px;border-radius:6px;object-fit:cover;">
                                 <div class="vehicle-info">
                                     <a href="<?= e(url('/admin/hotels/' . (int) $h['id'])) ?>"><strong class="vehicle-title"><?= e($h['title']) ?></strong></a>
-                                    <div class="hint vehicle-sub"><?= e($h['area']) ?><?php if (!empty($h['address'])): ?> · <?= e($h['address']) ?><?php endif; ?></div>
-                                    <?php if ($amenities !== []): ?>
-                                        <div class="hint" style="font-size:0.75rem;margin-top:2px;">
-                                            <?= e(implode(' · ', array_slice($amenities, 0, 3))) ?>
-                                        </div>
-                                    <?php endif; ?>
                                 </div>
                             </div>
                         </td>
@@ -126,6 +235,15 @@
                         </td>
                     </tr>
                 <?php endforeach; ?>
+                    <tr id="hotelFilterEmptyRow" <?= $initialVisibleCount === 0 ? '' : 'style="display:none;"' ?>>
+                        <td colspan="6" style="padding:0;">
+                            <div class="empty-state" style="padding:3rem 1rem;">
+                                <div class="big">🏨</div>
+                                <h3>No hotel listings found</h3>
+                                <p>There are no hotel listings matching your current search and filter selection.</p>
+                            </div>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         <?php endif; ?>
@@ -219,6 +337,7 @@ function openRejectModal(hotelId, hotelTitle) {
 
 function closeRejectModal() {
     var modal = document.getElementById('adminRejectModal');
+    if (!modal) return;
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
     modal.classList.remove('is-open');
@@ -259,7 +378,7 @@ function handleDeleteSubmit(event) {
     var form = document.getElementById('adminDeleteForm');
     var btn = document.getElementById('confirmDeleteBtn');
     var targetId = currentDeleteId;
-    var tokenInput = form.querySelector('input[name="_token"]');
+    var tokenInput = form.querySelector('input[name="_csrf"]') || form.querySelector('input[name="_token"]');
     var token = tokenInput ? tokenInput.value : '';
     
     btn.disabled = true;
@@ -273,7 +392,7 @@ function handleDeleteSubmit(event) {
             'X-Requested-With': 'XMLHttpRequest',
             'X-CSRF-TOKEN': token
         },
-        body: '_token=' + encodeURIComponent(token)
+        body: '_csrf=' + encodeURIComponent(token) + '&_token=' + encodeURIComponent(token)
     })
     .then(function(res) {
         return res.json().then(function(data) {
@@ -295,12 +414,10 @@ function handleDeleteSubmit(event) {
             row.style.transform = 'translateX(20px)';
             setTimeout(function() {
                 row.remove();
-                var tbody = document.querySelector('.table-hotels tbody');
-                if (tbody && tbody.querySelectorAll('tr').length === 0) {
-                    var wrap = document.querySelector('.vehicles-table-wrap');
-                    if (wrap) {
-                        wrap.innerHTML = '<div class="empty-state" style="padding:3rem 1rem;"><div class="big">🏨</div><h3>No hotel listings found</h3><p>There are no hotel listings matching the current filter.</p></div>';
-                    }
+                var remaining = document.querySelectorAll('.hotel-listing-row:not([hidden])');
+                var emptyRow = document.getElementById('hotelFilterEmptyRow');
+                if (emptyRow && remaining.length === 0) {
+                    emptyRow.style.display = '';
                 }
             }, 300);
         }
@@ -347,6 +464,148 @@ document.addEventListener('keydown', function(e) {
         if (deleteModal && !deleteModal.hidden) {
             closeDeleteModal();
         }
+    }
+});
+
+// Interactive Search and Filter Dropdowns
+document.addEventListener('DOMContentLoaded', function () {
+    var searchInput = document.getElementById('hotelSearchInput');
+    var searchClear = document.getElementById('hotelSearchClear');
+    var statusBtn = document.getElementById('hotelStatusBtn');
+    var statusPop = document.getElementById('hotelStatusPopover');
+    var statusLabel = document.getElementById('hotelStatusLabel');
+    var statusReset = document.getElementById('hotelStatusReset');
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.hotel-listing-row'));
+    var emptyRow = document.getElementById('hotelFilterEmptyRow');
+
+    var curStatus = '<?= e($status) ?>';
+
+    function closeAllPopovers() {
+        if (statusPop) { statusPop.hidden = true; statusPop.classList.remove('open'); }
+        if (statusBtn) { statusBtn.setAttribute('aria-expanded', 'false'); }
+    }
+
+    function applyFilters() {
+        var q = searchInput ? searchInput.value.trim().toLowerCase() : '';
+        if (searchClear) {
+            searchClear.hidden = (q.length === 0);
+        }
+
+        var visibleCount = 0;
+        rows.forEach(function (row) {
+            var rowStatus = row.getAttribute('data-status') || '';
+            var matchesStatus = (curStatus === 'all' || rowStatus === curStatus);
+
+            var matchesSearch = true;
+            if (q !== '') {
+                var title = row.getAttribute('data-title') || '';
+                var partner = row.getAttribute('data-partner') || '';
+                var area = row.getAttribute('data-area') || '';
+                matchesSearch = (title.indexOf(q) !== -1 || partner.indexOf(q) !== -1 || area.indexOf(q) !== -1);
+            }
+
+            var show = matchesStatus && matchesSearch;
+            row.hidden = !show;
+            if (show) visibleCount++;
+        });
+
+        if (emptyRow) {
+            emptyRow.style.display = (visibleCount === 0) ? '' : 'none';
+        }
+
+        try {
+            var newUrl = new URL(window.location.href);
+            if (curStatus === 'all') { newUrl.searchParams.delete('status'); } else { newUrl.searchParams.set('status', curStatus); }
+            newUrl.searchParams.delete('location');
+            if (q === '') { newUrl.searchParams.delete('q'); } else { newUrl.searchParams.set('q', q); }
+            window.history.replaceState({}, '', newUrl.toString());
+        } catch (e) {}
+    }
+
+    // Toggle Status Popover
+    if (statusBtn && statusPop) {
+        statusBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var isOpen = !statusPop.hidden;
+            closeAllPopovers();
+            if (!isOpen) {
+                statusPop.hidden = false;
+                statusPop.classList.add('open');
+                statusBtn.setAttribute('aria-expanded', 'true');
+            }
+        });
+    }
+
+    // Click outside to close popovers
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('.filter-custom-dropdown')) {
+            closeAllPopovers();
+        }
+    });
+
+    // Option selection for Status
+    if (statusPop) {
+        statusPop.querySelectorAll('.filter-popover-item').forEach(function (item) {
+            item.addEventListener('click', function () {
+                var val = this.getAttribute('data-value') || 'all';
+                curStatus = val;
+                statusPop.querySelectorAll('.filter-popover-item').forEach(function (el) {
+                    el.classList.remove('is-selected');
+                    el.setAttribute('aria-selected', 'false');
+                });
+                this.classList.add('is-selected');
+                this.setAttribute('aria-selected', 'true');
+                if (statusLabel) {
+                    statusLabel.textContent = this.querySelector('.filter-item-text').textContent.trim();
+                }
+                if (statusBtn) {
+                    if (val !== 'all') {
+                        statusBtn.classList.add('is-filtered');
+                    } else {
+                        statusBtn.classList.remove('is-filtered');
+                    }
+                }
+                closeAllPopovers();
+                applyFilters();
+            });
+        });
+    }
+
+    // Reset button for Status
+    if (statusReset) {
+        statusReset.addEventListener('click', function (e) {
+            e.stopPropagation();
+            curStatus = 'all';
+            if (statusPop) {
+                statusPop.querySelectorAll('.filter-popover-item').forEach(function (el) {
+                    var isAll = el.getAttribute('data-value') === 'all';
+                    el.classList.toggle('is-selected', isAll);
+                    el.setAttribute('aria-selected', isAll ? 'true' : 'false');
+                });
+            }
+            if (statusLabel) { statusLabel.textContent = 'All Listings'; }
+            if (statusBtn) { statusBtn.classList.remove('is-filtered'); }
+            closeAllPopovers();
+            applyFilters();
+        });
+    }
+
+    // Search input typing
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            applyFilters();
+        });
+    }
+
+    // Search clear button
+    if (searchClear) {
+        searchClear.addEventListener('click', function () {
+            if (searchInput) {
+                searchInput.value = '';
+                searchInput.focus();
+            }
+            applyFilters();
+        });
     }
 });
 </script>

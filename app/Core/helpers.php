@@ -397,6 +397,9 @@ if (!function_exists('active_when')) {
         if ($targetPath === '/dashboard/hotels' && str_starts_with($currentPath, '/dashboard/hotels')) {
             return 'active';
         }
+        if ($targetPath === '/admin/guide-listings' && str_starts_with($currentPath, '/admin/guide-listings')) {
+            return 'active';
+        }
         if ($targetPath === '/admin/hotels' && str_starts_with($currentPath, '/admin/hotels')) {
             return 'active';
         }

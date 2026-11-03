@@ -52,6 +52,7 @@ final class Vehicle
     {
         return Database::first(
             'SELECT v.*, u.name AS provider_name, u.email AS provider_email, u.phone AS provider_phone,
+                    u.avatar AS provider_avatar, u.role AS provider_role, u.guide_status AS provider_status,
                     r.name AS reviewer_name
              FROM vehicles v
              JOIN users u ON u.id = v.user_id
@@ -68,6 +69,7 @@ final class Vehicle
     {
         return Database::first(
             'SELECT v.*, u.name AS provider_name, u.email AS provider_email, u.phone AS provider_phone,
+                    u.avatar AS provider_avatar, u.role AS provider_role, u.guide_status AS provider_status,
                     r.name AS reviewer_name
              FROM vehicles v
              JOIN users u ON u.id = v.user_id

@@ -661,8 +661,9 @@ final class GuideController extends Controller
         if ($price < 0) {
             $errors['price'] = 'Price cannot be negative.';
         }
-        $capacity = (int) $this->input('capacity', 0);
-        if ($capacity <= 0) {
+        $capacityRaw = $this->input('capacity');
+        $capacity = $capacityRaw !== null ? (int) $capacityRaw : 10;
+        if ($capacityRaw !== null && $capacity <= 0) {
             $errors['capacity'] = 'Please enter a valid capacity / slots (at least 1).';
         }
         $cover = trim((string) $this->input('cover_image', ''));
@@ -781,8 +782,14 @@ final class GuideController extends Controller
     private function normalizeStoredImagePath(string $path): string
     {
         $path = trim($path);
-        if (preg_match('#^https?://[^/]+/uploads/(.+)#i', $path, $m)) {
-            return 'uploads/' . $m[1];
+        if ($path === '') {
+            return '';
+        }
+        if (preg_match('#(?:https?://[^/]+)?(?:/.*?)*?/(uploads/.+)#i', $path, $m)) {
+            return $m[1];
+        }
+        if (str_starts_with($path, 'uploads/')) {
+            return $path;
         }
         if (str_starts_with($path, '/uploads/')) {
             return substr($path, 1);

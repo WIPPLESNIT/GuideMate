@@ -6,6 +6,8 @@ namespace App\Controllers;
 
 use App\Core\AdminAuth;
 use App\Core\Controller;
+use App\Core\Database;
+use App\Models\ListingSchedule;
 use App\Models\AccountAppeal;
 use App\Models\AuditLog;
 use App\Models\Booking;
@@ -146,11 +148,160 @@ final class AdminController extends Controller
 
     public function listings(): void
     {
+        $category = (string) $this->input('category', 'all');
+        $q = (string) $this->input('q', '');
+
         $this->view('admin/listings', [
             'title' => 'Manage Listings',
-            'pending' => Listing::pending(),
-            'all' => Listing::search(['sort' => 'newest']),
+            'listings' => Listing::allLiveForAdmin('all'),
+            'category' => $category,
+            'q' => $q,
+            'categoryCounts' => Listing::countLiveByCategory(),
+            'pendingGuideCount' => Listing::pendingGuideListingsCount(),
+            'pendingHotelsCount' => Listing::pendingHotelsCount(),
         ], 'admin');
+    }
+
+    public function guideListings(): void
+    {
+        $status = (string) $this->input('status', 'all');
+        $category = (string) $this->input('category', 'all');
+
+        $this->view('admin/guide-listings', [
+            'title' => 'Guide Listings Review',
+            'listings' => Listing::allGuideListingsForAdmin('all', 'all'),
+            'status' => $status,
+            'category' => $category,
+            'pendingCount' => Listing::pendingGuideListingsCount(),
+        ], 'admin');
+    }
+
+    public function showGuideListing(string $id): void
+    {
+        $listing = Listing::find((int) $id);
+        if ($listing === null) {
+            abort(404, 'Guide listing not found.');
+        }
+
+        $guide = User::find((int) $listing['user_id']);
+        $reviewer = !empty($listing['reviewed_by']) ? User::find((int) $listing['reviewed_by']) : null;
+        $schedules = Database::all(
+            'SELECT * FROM listing_schedules WHERE listing_id = ? ORDER BY schedule_date ASC, start_time ASC',
+            [(int) $listing['id']]
+        );
+
+        $this->view('admin/guide-listing-show', [
+            'title' => 'Review Guide Listing: ' . $listing['title'],
+            'listing' => $listing,
+            'guide' => $guide,
+            'reviewer' => $reviewer,
+            'schedules' => $schedules,
+            'gallery' => Listing::gallery((int) $listing['id']),
+        ], 'admin');
+    }
+
+    public function approveGuideListing(string $id): void
+    {
+        $this->verifyCsrf();
+        $listing = Listing::find((int) $id);
+        if ($listing === null) {
+            flash('error', 'Listing not found.');
+            redirect('/admin/guide-listings');
+        }
+
+        $adminId = (int) AdminAuth::id();
+        Listing::approveGuideListing((int) $id, $adminId);
+
+        AuditLog::recordAction('guide_listing.approve', 'listing', (int) $id, [
+            'title' => $listing['title'],
+            'guide_id' => $listing['user_id'],
+        ]);
+
+        $guide = User::find((int) $listing['user_id']);
+        if ($guide !== null && !empty($guide['email'])) {
+            NotificationService::guideListingApproved((string) $guide['email'], (string) $listing['title']);
+        }
+
+        flash('success', "Guide listing '{$listing['title']}' has been approved and published.");
+        redirect('/admin/guide-listings');
+    }
+
+    public function rejectGuideListing(string $id): void
+    {
+        $this->verifyCsrf();
+        $listing = Listing::find((int) $id);
+        if ($listing === null) {
+            flash('error', 'Listing not found.');
+            redirect('/admin/guide-listings');
+        }
+
+        $reason = trim((string) $this->input('reason', ''));
+        $adminId = (int) AdminAuth::id();
+        Listing::rejectGuideListing((int) $id, $adminId, $reason !== '' ? $reason : null);
+
+        AuditLog::recordAction('guide_listing.reject', 'listing', (int) $id, [
+            'title' => $listing['title'],
+            'guide_id' => $listing['user_id'],
+            'reason' => $reason,
+        ]);
+
+        $guide = User::find((int) $listing['user_id']);
+        if ($guide !== null && !empty($guide['email'])) {
+            NotificationService::guideListingRejected((string) $guide['email'], (string) $listing['title'], $reason);
+        }
+
+        flash('info', "Guide listing '{$listing['title']}' has been rejected.");
+        redirect('/admin/guide-listings');
+    }
+
+    public function deleteGuideListing(string $id): void
+    {
+        $this->verifyCsrf();
+        $listing = Listing::find((int) $id);
+        if ($listing === null) {
+            if ($this->isJson()) {
+                $this->json(['success' => false, 'message' => 'Listing not found.'], 404);
+                return;
+            }
+            flash('error', 'Listing not found.');
+            redirect('/admin/guide-listings');
+            return;
+        }
+
+        $status = (string) ($listing['status'] ?? '');
+        if ($status !== 'rejected') {
+            if ($this->isJson()) {
+                $this->json(['success' => false, 'message' => 'Only rejected listings can be permanently deleted.'], 400);
+                return;
+            }
+            flash('error', 'Only rejected listings can be permanently deleted.');
+            redirect('/admin/guide-listings');
+            return;
+        }
+
+        $listingId = (int) $listing['id'];
+        $listingTitle = (string) $listing['title'];
+        $guideId = (int) ($listing['user_id'] ?? 0);
+
+        Listing::delete($listingId);
+
+        AuditLog::recordAction('guide_listing.delete', 'listing', $listingId, [
+            'title' => $listingTitle,
+            'guide_id' => $guideId,
+            'deleted_by' => AdminAuth::id(),
+        ]);
+
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => "Rejected listing '{$listingTitle}' has been permanently deleted.",
+                'id' => $listingId,
+            ]);
+            return;
+        }
+
+        flash('success', "Rejected listing '{$listingTitle}' has been permanently deleted.");
+        redirect('/admin/guide-listings');
     }
 
     public function updateListingStatus(string $id): void
@@ -181,7 +332,7 @@ final class AdminController extends Controller
         $status = (string) $this->input('status', 'all');
         $this->view('admin/hotels', [
             'title' => 'Hotel Listings Review',
-            'hotels' => Listing::allHotelsForAdmin($status),
+            'hotels' => Listing::allHotelsForAdmin('all'),
             'status' => $status,
             'pendingCount' => Listing::pendingHotelsCount(),
         ], 'admin');
@@ -316,10 +467,12 @@ final class AdminController extends Controller
     public function vehicles(): void
     {
         $status = (string) $this->input('status', 'all');
+        $type = (string) $this->input('type', 'all');
         $this->view('admin/vehicles', [
             'title' => 'Vehicle Listings Review',
-            'vehicles' => Vehicle::allForAdmin($status),
+            'vehicles' => Vehicle::allForAdmin('all'),
             'status' => $status,
+            'type' => $type,
             'pendingCount' => Vehicle::pendingCount(),
         ], 'admin');
     }

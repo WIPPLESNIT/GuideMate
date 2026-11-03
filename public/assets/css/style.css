@@ -739,8 +739,14 @@ input[type="checkbox"].is-invalid { outline: 2px solid #DC2626; outline-offset: 
 
 .vehicle-meta-wrap {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.85rem;
+}
+.vehicle-meta-wrap:has(.admin-note-card) {
+    align-items: flex-start;
+}
+.vehicle-meta-wrap:has(.admin-note-card) .vehicle-thumb {
+    margin-top: 2px;
 }
 .vehicle-thumb {
     width: 58px;
@@ -749,7 +755,7 @@ input[type="checkbox"].is-invalid { outline: 2px solid #DC2626; outline-offset: 
     border-radius: 6px;
     border: 1px solid var(--line, #e2e8f0);
     flex-shrink: 0;
-    margin-top: 2px;
+    margin: 0;
 }
 .vehicle-info {
     flex: 1 1 auto;

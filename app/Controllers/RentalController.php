@@ -55,6 +55,9 @@ final class RentalController extends Controller
     public function show(string $slug): void
     {
         $vehicle = Vehicle::findBySlug($slug);
+        if ($vehicle === null && ctype_digit($slug)) {
+            $vehicle = Vehicle::find((int) $slug);
+        }
         if ($vehicle === null) {
             abort(404, 'Vehicle listing not found.');
         }

@@ -12,6 +12,7 @@ $pageTitle = $title ?? 'Admin';
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
+    <script>window.APP_BASE_URL = <?= json_encode(rtrim(url('/'), '/')) ?>;</script>
 </head>
 <body class="admin-body">
 <header class="admin-header">

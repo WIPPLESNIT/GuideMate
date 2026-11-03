@@ -241,6 +241,7 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                                 <span style="font-size:0.68rem;background:#dcfce7;color:#166534;font-weight:700;padding:1px 6px;border-radius:4px;">Cover</span>
                             </div>
                             <div id="gl_preview_wrap_0" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                <span id="nl_preview_wrap" style="display:none;" aria-hidden="true"></span>
                                 <img id="gl_preview_img_0" src="" alt="Photo 1" style="width:100%;height:100%;object-fit:cover;display:none;">
                                 <span id="gl_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
                                 <button type="button" id="gl_remove_btn_0" onclick="removeGuidePhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
@@ -412,12 +413,18 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
     var previewWrap = document.getElementById('nl_preview_wrap');
     var previewImg = document.getElementById('nl_preview_img');
 
-    function resolveImageUrl(src) {
-        if (!src) return '';
-        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) return src;
-        var clean = src.replace(/^\/+/, '');
-        var base = (window.APP_BASE_URL || '').replace(/\/+$/, '');
-        return base + '/' + clean;
+    function resolveImageUrl(path) {
+        if (!path) return '';
+        path = String(path).trim();
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:image/') || path.startsWith('data:')) {
+            return path;
+        }
+        var base = (window.APP_BASE_URL !== undefined ? window.APP_BASE_URL : <?= json_encode(rtrim(url('/'), '/')) ?>) || '';
+        if (base && (path === base || path.startsWith(base + '/'))) {
+            return path.startsWith('/') ? path : '/' + path;
+        }
+        var clean = path.replace(/^\/+/, '');
+        return (base ? base + '/' : '/') + clean;
     }
 
     window.handleGuideFileChange = function(slot, input) {
@@ -611,18 +618,47 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
             if (urlIn) urlIn.value = '';
         }
 
-        var photos = Array.isArray(listing.photos) && listing.photos.length > 0
-            ? listing.photos
-            : (listing.cover_image ? [listing.cover_image] : []);
+        function populatePhotos(photoList, coverImg, isAsync) {
+            var photos = Array.isArray(photoList) && photoList.length > 0
+                ? photoList
+                : (coverImg ? [coverImg] : []);
 
-        photos.slice(0, 3).forEach(function(src, i) {
-            var exist = document.getElementById('gl_existing_' + i);
-            if (exist) exist.value = src;
-            setGuideSlotPreview(i, src);
-        });
-        if (listing.cover_image) {
-            var cov = document.getElementById('gl_cover_image');
-            if (cov) cov.value = listing.cover_image;
+            photos.slice(0, 3).forEach(function(src, i) {
+                if (!src) return;
+                if (isAsync) {
+                    var fileIn = document.getElementById('gl_file_' + i);
+                    var urlIn = document.getElementById('gl_url_' + i);
+                    var remIn = document.getElementById('gl_removed_' + i);
+                    if ((fileIn && fileIn.files && fileIn.files.length > 0) || (urlIn && urlIn.value) || (remIn && remIn.value === '1')) {
+                        return;
+                    }
+                }
+                var exist = document.getElementById('gl_existing_' + i);
+                if (exist) exist.value = src;
+                setGuideSlotPreview(i, src);
+            });
+            if (coverImg || (photos && photos[0])) {
+                var cov = document.getElementById('gl_cover_image');
+                if (cov && (!isAsync || !cov.value)) cov.value = coverImg || photos[0];
+            }
+        }
+
+        populatePhotos(listing.photos, listing.cover_image, false);
+
+        if (listing.id) {
+            fetch(baseListingsUrl + '/' + listing.id + '/edit', {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(function(res) { return res.ok ? res.json() : null; })
+            .then(function(data) {
+                if (data && data.listing && Array.isArray(data.listing.photos) && data.listing.photos.length > 0) {
+                    populatePhotos(data.listing.photos, data.listing.cover_image, true);
+                }
+            })
+            .catch(function() {});
         }
 
         modal.hidden = false;

@@ -213,6 +213,25 @@ HTML;
         );
     }
 
+    public static function guideListingApproved(string $email, string $title): void
+    {
+        self::send(
+            $email,
+            'Listing approved — ' . $title,
+            "Great news! Your guide listing for {$title} has been approved by the administrator and is now published and visible to travelers."
+        );
+    }
+
+    public static function guideListingRejected(string $email, string $title, string $reason = ''): void
+    {
+        $body = "Your guide listing for {$title} was not approved by the administrator.";
+        if ($reason !== '') {
+            $body .= "\n\nReason: {$reason}";
+        }
+        $body .= "\n\nYou can review the feedback, update your listing details, photos, or schedule, and resubmit it for approval from your dashboard.";
+        self::send($email, 'Listing update — ' . $title, $body);
+    }
+
     public static function hotelRejected(string $email, string $hotelTitle, string $reason = ''): void
     {
         $body = "Your hotel property listing for {$hotelTitle} was not approved by the administrator.";
