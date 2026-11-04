@@ -22,6 +22,7 @@ $categoryCounts = [
     'all' => count($listings),
     'attractions' => 0,
     'things-to-do' => 0,
+    'packages' => 0,
 ];
 
 foreach ($listings as $l) {
@@ -32,6 +33,8 @@ foreach ($listings as $l) {
     $cSlug = (string) ($l['category_slug'] ?? '');
     if ($cSlug === 'attractions' || $cSlug === 'attraction-and-tours') {
         $categoryCounts['attractions']++;
+    } elseif ($cSlug === 'packages' || $cSlug === 'travel-packages') {
+        $categoryCounts['packages']++;
     } else {
         $categoryCounts['things-to-do']++;
     }
@@ -48,6 +51,7 @@ $categoryLabels = [
     'all' => 'All Types',
     'attractions' => 'Attractions',
     'things-to-do' => 'Things to Do',
+    'packages' => 'Package',
 ];
 
 $activeStatusLabel = $statusLabels[$status] ?? 'All Listings';
@@ -173,6 +177,11 @@ $isCatFiltered = ($category !== 'all');
                         <span class="filter-item-text">Things to Do</span>
                         <span class="filter-item-count"><?= (int) $categoryCounts['things-to-do'] ?></span>
                     </div>
+                    <div class="filter-popover-item <?= $category === 'packages' ? 'is-selected' : '' ?>" role="option" aria-selected="<?= $category === 'packages' ? 'true' : 'false' ?>" data-value="packages" tabindex="<?= $category === 'packages' ? '0' : '-1' ?>">
+                        <span class="filter-item-indicator" aria-hidden="true"></span>
+                        <span class="filter-item-text">Package</span>
+                        <span class="filter-item-count"><?= (int) ($categoryCounts['packages'] ?? 0) ?></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -207,7 +216,8 @@ $isCatFiltered = ($category !== 'all');
                     $thumb = !empty($l['cover_image']) ? $l['cover_image'] : 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80';
                     $cSlug = (string) ($l['category_slug'] ?? '');
                     $isAttraction = ($cSlug === 'attractions' || $cSlug === 'attraction-and-tours');
-                    $catGroup = $isAttraction ? 'attractions' : 'things-to-do';
+                    $isPackage = ($cSlug === 'packages' || $cSlug === 'travel-packages');
+                    $catGroup = $isPackage ? 'packages' : ($isAttraction ? 'attractions' : 'things-to-do');
                     $schedCount = (int) ($l['schedule_count'] ?? 0);
                     $cap = (int) ($l['total_capacity'] ?? $l['capacity'] ?? 10);
 
@@ -250,7 +260,11 @@ $isCatFiltered = ($category !== 'all');
                         </td>
                         <td class="col-type" data-label="Category / Rate">
                             <div style="margin-bottom:3px;">
-                                <?php if ($isAttraction): ?>
+                                <?php if ($isPackage): ?>
+                                    <span class="pill" style="font-size:0.72rem;padding:2px 7px;background:rgba(139,92,246,0.15);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);font-weight:600;border-radius:20px;">
+                                        Package
+                                    </span>
+                                <?php elseif ($isAttraction): ?>
                                     <span class="pill" style="font-size:0.72rem;padding:2px 7px;background:rgba(236,72,153,0.15);color:#f472b6;border:1px solid rgba(236,72,153,0.3);font-weight:600;border-radius:20px;">
                                         Attraction
                                     </span>
@@ -262,7 +276,11 @@ $isCatFiltered = ($category !== 'all');
                             </div>
                             <?php if ((float) ($l['price'] ?? 0) > 0): ?>
                                 <strong><?= money((float) $l['price']) ?></strong>
-                                <small class="hint">/ <?= e($l['price_unit'] ?? 'person') ?></small>
+                                <?php if ($isPackage): ?>
+                                    <small class="hint">Package Price</small>
+                                <?php else: ?>
+                                    <small class="hint">/ <?= e($l['price_unit'] ?? 'person') ?></small>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <strong style="color:var(--brand, #10B981);">Free</strong>
                             <?php endif; ?>

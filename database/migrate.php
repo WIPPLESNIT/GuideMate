@@ -84,6 +84,7 @@ function seed(PDO $pdo): void
         ['Tour Guides', 'tour-guides', 'user-check', 'Hire trusted local Cebuano guides', 2],
         ['Hotels & Stays', 'hotels', 'bed', 'Resorts, hotels and stays', 3],
         ['Restaurants', 'restaurants', 'utensils', 'Where to eat in Cebu', 4],
+        ['Travel Packages', 'packages', 'cube', 'All-inclusive multi-service trips curated by local guides', 5],
     ];
     $stmt = $pdo->prepare('INSERT INTO categories (name, slug, icon, description, sort_order) VALUES (?, ?, ?, ?, ?)');
     foreach ($categories as $c) {

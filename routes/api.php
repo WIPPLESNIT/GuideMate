@@ -56,6 +56,10 @@ $router->post('/api/messages/archive', [ApiController::class, 'archiveConversati
 $router->post('/api/messages/unarchive', [ApiController::class, 'unarchiveConversation']);
 $router->post('/api/messages/delete', [ApiController::class, 'deleteConversation']);
 
+$router->get('/api/packages', [ApiController::class, 'packages']);
+$router->get('/api/packages/{id}', [ApiController::class, 'packageDetail']);
+$router->post('/api/packages/{id}/book', [ApiController::class, 'bookPackage']);
+
 $router->get('/api/rentals', [ApiController::class, 'rentalUnits']);
 $router->get('/api/rentals/mine', [ApiController::class, 'myRentals']);
 $router->get('/api/rentals/{id}', [ApiController::class, 'rentalDetail']);

@@ -633,7 +633,7 @@ final class Listing
     public static function allGuideListingsForAdmin(?string $status = null, ?string $category = null): array
     {
         $params = [];
-        $where = ['c.slug IN ("attractions", "things-to-do", "attraction-and-tours", "tour-guides")'];
+        $where = ['c.slug IN ("attractions", "things-to-do", "attraction-and-tours", "tour-guides", "packages", "travel-packages")'];
 
         if ($status !== null && $status !== '' && $status !== 'all') {
             $where[] = 'l.status = ?';
@@ -645,6 +645,8 @@ final class Listing
                 $where[] = 'c.slug IN ("attractions", "attraction-and-tours")';
             } elseif ($category === 'things-to-do') {
                 $where[] = 'c.slug IN ("things-to-do", "tour-guides")';
+            } elseif ($category === 'packages' || $category === 'package' || $category === 'travel-packages') {
+                $where[] = 'c.slug IN ("packages", "travel-packages")';
             } else {
                 $where[] = 'c.slug = ?';
                 $params[] = $category;
@@ -674,7 +676,7 @@ final class Listing
         $res = Database::first(
             'SELECT COUNT(*) AS cnt FROM listings l
              JOIN categories c ON c.id = l.category_id
-             WHERE c.slug IN ("attractions", "things-to-do", "attraction-and-tours", "tour-guides")
+             WHERE c.slug IN ("attractions", "things-to-do", "attraction-and-tours", "tour-guides", "packages", "travel-packages")
                AND l.status = "pending"'
         );
         return (int) ($res['cnt'] ?? 0);
@@ -719,6 +721,8 @@ final class Listing
                 $where[] = 'c.slug IN ("things-to-do", "tour-guides")';
             } elseif ($category === 'hotels') {
                 $where[] = 'c.slug = "hotels"';
+            } elseif ($category === 'packages' || $category === 'package' || $category === 'travel-packages') {
+                $where[] = 'c.slug IN ("packages", "travel-packages")';
             } else {
                 $where[] = 'c.slug = ?';
                 $params[] = $category;

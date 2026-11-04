@@ -111,7 +111,8 @@ function isBookingCompleted(b: ApiBooking | null | undefined): boolean {
 
 export type TripUnifiedItem =
   | { id: string; kind: 'hotel'; data: ApiBooking; date: string; isHistory: boolean }
-  | { id: string; kind: 'attraction'; data: ApiBooking; date: string; isHistory: boolean };
+  | { id: string; kind: 'attraction'; data: ApiBooking; date: string; isHistory: boolean }
+  | { id: string; kind: 'package'; data: ApiBooking; date: string; isHistory: boolean };
 
 export default function TripsScreen() {
   const router = useRouter();
@@ -125,7 +126,9 @@ export default function TripsScreen() {
   const [loggedIn, setLoggedIn] = useState(true);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'hotel' | 'attraction'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'package' | 'hotel' | 'attraction'>('all');
+  const [selectedPackageDetails, setSelectedPackageDetails] = useState<ApiBooking | null>(null);
+  const [selectedPackageReceipt, setSelectedPackageReceipt] = useState<ApiBooking | null>(null);
 
   // Remaining balance payment state
   const [balanceModalVisible, setBalanceModalVisible] = useState(false);
@@ -327,9 +330,25 @@ export default function TripsScreen() {
     const list: TripUnifiedItem[] = [];
 
     for (const b of bookings) {
-      const isHotel = Boolean(b.room_name || b.hotel_status || (b.deposit_amount && b.deposit_amount > 0));
       const isHistory = isTripHistory(b);
-      if (isHotel) {
+      const isPkg = Boolean(
+        b.is_package ||
+        b.category_slug === 'packages' ||
+        (typeof b.notes_raw === 'string' && (b.notes_raw.includes('"package_booking"') || b.notes_raw.includes('"type":"package_booking"'))) ||
+        (b.package_details && (b.package_details.type === 'package_booking' || b.package_details.package_title)) ||
+        (typeof b.listing_title === 'string' && b.listing_title.toLowerCase().includes('package'))
+      );
+      const isHotel = !isPkg && Boolean(b.room_name || b.hotel_status || (b.deposit_amount && b.deposit_amount > 0));
+
+      if (isPkg) {
+        list.push({
+          id: `package-${b.id}`,
+          kind: 'package',
+          data: b,
+          date: b.booking_date,
+          isHistory,
+        });
+      } else if (isHotel) {
         list.push({
           id: `hotel-${b.id}`,
           kind: 'hotel',
@@ -361,6 +380,7 @@ export default function TripsScreen() {
     [allItems, viewMode]
   );
 
+  const packageCount = useMemo(() => currentModeItems.filter((i) => i.kind === 'package').length, [currentModeItems]);
   const hotelCount = useMemo(() => currentModeItems.filter((i) => i.kind === 'hotel').length, [currentModeItems]);
   const attractionCount = useMemo(() => currentModeItems.filter((i) => i.kind === 'attraction').length, [currentModeItems]);
 
@@ -731,8 +751,161 @@ export default function TripsScreen() {
     );
   };
 
+  const renderPackageItem = (item: ApiBooking, isCompleted: boolean) => {
+    const statusColorVal = STATUS_COLOR[item.status] ?? '#059669';
+    const canNavigate = item.status !== 'cancelled' && item.status !== 'refunded';
+    const details = item.package_details;
+    const guideName = item.guide_name || details?.guide?.name || 'Marc Repuesto';
+    const guideAvatar = item.guide_avatar || details?.guide?.avatar || '';
+
+    return (
+      <TouchableOpacity
+        style={[styles.pkgCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow.sm]}
+        activeOpacity={0.92}
+        onPress={() => setSelectedPackageDetails(item)}
+      >
+        {/* Header Row: Cover, Title, Badge, Status Chip */}
+        <View style={styles.pkgHeaderRow}>
+          <Image source={{ uri: resolveImage(item.image) }} style={styles.pkgImage} />
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <View style={styles.topRow}>
+              <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
+                {item.listing_title}
+              </Text>
+              <View style={[styles.statusChip, { backgroundColor: statusColorVal + '22' }]}>
+                <View style={[styles.statusDot, { backgroundColor: statusColorVal }]} />
+                <Text style={[styles.statusText, { color: statusColorVal }]}>
+                  {item.status_label ?? STATUS_LABEL[item.status] ?? item.status}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.pkgCategoryPill}>
+              <Ionicons name="cube" size={11} color="#7C3AED" />
+              <Text style={styles.pkgCategoryText}>TRAVEL PACKAGE</Text>
+            </View>
+
+            <View style={[styles.metaRow, { marginTop: 4 }]}>
+              <Ionicons name="location-outline" size={12} color={colors.textSub} />
+              <Text style={[styles.metaText, { color: colors.textSub }]} numberOfLines={1}>
+                {item.area || 'Moalboal & Badian, South Cebu'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Guide Host & Booking Ref Row */}
+        <View style={[styles.pkgHostRow, { borderColor: colors.border }]}>
+          {guideAvatar ? (
+            <Image source={{ uri: resolveImage(guideAvatar) }} style={styles.pkgAvatar} />
+          ) : (
+            <View style={[styles.pkgAvatar, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EDE9FE' }]}>
+              <Ionicons name="person" size={15} color="#7C3AED" />
+            </View>
+          )}
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.pkgHostName, { color: colors.text }]}>{guideName}</Text>
+            <Text style={{ fontSize: 10, color: colors.textSub }}>Licensed Tour Guide Host</Text>
+          </View>
+          <View style={[styles.pkgRefPill, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
+            <Text style={[styles.pkgRefText, { color: colors.textSub }]}>BK-{item.id}</Text>
+          </View>
+        </View>
+
+        {/* Dates & Pax Grid */}
+        <View style={[styles.pkgDatesGrid, { borderColor: colors.border, backgroundColor: isDark ? '#1E233044' : '#F8FAFC' }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.hotelStayLabel, { color: colors.textMute }]}>TRAVEL DATE</Text>
+            <Text style={[styles.hotelStayValue, { color: colors.text }]}>{formatDate(item.booking_date)}</Text>
+          </View>
+          <View style={{ width: 1, height: 26, backgroundColor: colors.border }} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.hotelStayLabel, { color: colors.textMute }]}>PARTICIPANTS</Text>
+            <Text style={[styles.hotelStayValue, { color: colors.text }]}>
+              {item.guests} guest{item.guests > 1 ? 's' : ''}
+            </Text>
+          </View>
+        </View>
+
+        {/* Pricing Row: Label Total Package Price, sub-label Package Price (never per person) */}
+        <View style={styles.pkgPriceRow}>
+          <View>
+            <Text style={[styles.pkgPriceLabel, { color: colors.textMute }]}>Total Package Price</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+              <Text style={[styles.pkgPriceValue, { color: colors.text }]}>{formatPrice(item.total_amount)}</Text>
+              <Text style={[styles.pkgPriceUnit, { color: colors.textSub }]}>Package Price</Text>
+            </View>
+          </View>
+          <View style={{ backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#6D28D9' }}>ALL-IN-ONE BUNDLE</Text>
+          </View>
+        </View>
+
+        {/* Action Buttons: Details, Receipt, Directions & Map */}
+        <View style={styles.pkgActionsCol}>
+          <View style={styles.pkgActionRow}>
+            <TouchableOpacity
+              style={[styles.attractionActionBtn, { flex: 1, borderColor: colors.border, backgroundColor: isDark ? '#1E2330' : '#F8FAFC', paddingVertical: 9 }]}
+              activeOpacity={0.85}
+              onPress={() => setSelectedPackageDetails(item)}
+            >
+              <Ionicons name="list-outline" size={15} color={colors.text} />
+              <Text style={[styles.attractionActionText, { color: colors.text, fontSize: 12 }]}>Details</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.attractionActionBtn, { flex: 1, borderColor: colors.border, backgroundColor: isDark ? '#1E2330' : '#F8FAFC', paddingVertical: 9 }]}
+              activeOpacity={0.85}
+              onPress={() => setSelectedPackageReceipt(item)}
+            >
+              <Ionicons name="receipt-outline" size={15} color={colors.text} />
+              <Text style={[styles.attractionActionText, { color: colors.text, fontSize: 12 }]}>Receipt</Text>
+            </TouchableOpacity>
+          </View>
+
+          {canNavigate ? (
+            <TouchableOpacity
+              style={[styles.attractionActionBtn, { borderColor: '#8B5CF6', backgroundColor: '#8B5CF6', paddingVertical: 10 }]}
+              activeOpacity={0.85}
+              onPress={() => router.push({ pathname: '/trip-map', params: { booking: String(item.id) } })}
+            >
+              <Ionicons name="navigate" size={15} color="#FFFFFF" />
+              <Text style={[styles.attractionActionText, { color: '#FFFFFF', fontSize: 13 }]}>Directions &amp; Map</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {isCompleted ? (
+            <View style={styles.pkgActionRow}>
+              {item.can_review ? (
+                <TouchableOpacity
+                  style={[styles.attractionActionBtn, { flex: 1, borderColor: '#8B5CF6', paddingVertical: 9 }]}
+                  activeOpacity={0.85}
+                  onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
+                >
+                  <Ionicons name="star-outline" size={14} color="#8B5CF6" />
+                  <Text style={[styles.attractionActionText, { color: '#8B5CF6', fontSize: 12 }]}>Rate package</Text>
+                </TouchableOpacity>
+              ) : null}
+              {item.can_report ? (
+                <TouchableOpacity
+                  style={[styles.attractionActionBtn, { flex: 1, borderColor: '#EF4444', paddingVertical: 9 }]}
+                  activeOpacity={0.85}
+                  onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } })}
+                >
+                  <Ionicons name="flag-outline" size={14} color="#EF4444" />
+                  <Text style={[styles.attractionActionText, { color: '#EF4444', fontSize: 12 }]}>Report issue</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderItem = ({ item }: { item: TripUnifiedItem }) => {
     if (item.kind === 'hotel') return renderHotelItem(item.data, item.isHistory);
+    if (item.kind === 'package') return renderPackageItem(item.data, item.isHistory);
     return renderAttractionItem(item.data, item.isHistory);
   };
 
@@ -809,6 +982,21 @@ export default function TripsScreen() {
           >
             <Text style={[styles.catChipText, { color: categoryFilter === 'all' ? '#FFFFFF' : colors.text }]}>
               All Trips ({currentModeItems.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.catChip,
+              categoryFilter === 'package'
+                ? { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }
+                : { backgroundColor: colors.card, borderColor: colors.border }
+            ]}
+            onPress={() => setCategoryFilter('package')}
+          >
+            <Ionicons name="cube-outline" size={13} color={categoryFilter === 'package' ? '#FFFFFF' : '#8B5CF6'} />
+            <Text style={[styles.catChipText, { color: categoryFilter === 'package' ? '#FFFFFF' : colors.text }]}>
+              Packages ({packageCount})
             </Text>
           </TouchableOpacity>
 
@@ -1576,6 +1764,292 @@ export default function TripsScreen() {
           </View>
         </View>
       </Modal>
+      {/* ── Dedicated Travel Package Details Modal ── */}
+      <Modal
+        visible={Boolean(selectedPackageDetails)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedPackageDetails(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Travel Package Details</Text>
+                <Text style={[styles.modalSubtitle, { color: colors.textSub }]} numberOfLines={1}>
+                  Booking #BK-{selectedPackageDetails?.id} · {selectedPackageDetails?.listing_title}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedPackageDetails(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
+                <Ionicons name="close" size={24} color={colors.textSub} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 18, paddingBottom: 24 }}>
+              {selectedPackageDetails ? (
+                <>
+                  {/* Guide Host Card */}
+                  <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border }]}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Assigned Tour Guide Host</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+                      {selectedPackageDetails.guide_avatar ? (
+                        <Image source={{ uri: resolveImage(selectedPackageDetails.guide_avatar) }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+                      ) : (
+                        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="person" size={22} color="#7C3AED" />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
+                          {selectedPackageDetails.guide_name || selectedPackageDetails.package_details?.guide?.name || 'Marc Repuesto'}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub }}>Licensed Regional Tour Guide · DOT Accredited</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Included Services Overview */}
+                  <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border, marginTop: 12 }]}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Selected Package Services</Text>
+
+                    {/* Activities & Attractions */}
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#7C3AED', textTransform: 'uppercase' }}>Tours &amp; Attractions Included</Text>
+                      <View style={{ marginTop: 6, gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                          <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>Kawasan Falls Natural Park &amp; River Trek</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                          <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>Full Kawasan Canyoneering &amp; 7 Cliff Jumps</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                          <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>Moalboal Sardine Run &amp; Sea Turtle Snorkeling</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Accommodation */}
+                    <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#D97706', textTransform: 'uppercase' }}>Hotel Stay Accommodation</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>Sea Breeze Oceanfront Resort</Text>
+                      <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Deluxe Queen Room (Balcony with Sea &amp; Pool View) · 2 Nights</Text>
+                      <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>Check-in: Day 1 from 02:00 PM · Check-out: Day 3 at 12:00 PM</Text>
+                    </View>
+
+                    {/* Transport */}
+                    <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#2563EB', textTransform: 'uppercase' }}>Rental Transportation</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>Yamaha NMAX 155cc Automatic Scooter</Text>
+                      <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>3 Full Days · 2 DOT Helmets &amp; Phone Mount Included</Text>
+                    </View>
+                  </View>
+
+                  {/* Day-by-Day Itinerary */}
+                  <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border, marginTop: 12 }]}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Day-by-Day Itinerary</Text>
+                    <View style={{ marginTop: 8, gap: 10 }}>
+                      <View>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Day 1: Coastal Arrival &amp; Turtle Snorkel</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                          01:00 PM: Resort check-in &amp; scooter handover briefing{"\n"}
+                          03:00 PM: Guided snorkeling session at Panagsama marine sanctuary{"\n"}
+                          05:30 PM: Golden hour sunset viewing along beach strip
+                        </Text>
+                      </View>
+                      <View>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Day 2: Full Kawasan Canyoneering Expedition</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                          08:00 AM: Scenic coastal scooter ride to Badian baseline{"\n"}
+                          09:00 AM: Canyoneering adventure &amp; cliff jumps with certified guide{"\n"}
+                          01:30 PM: Recovery hot lunch &amp; waterfall swim
+                        </Text>
+                      </View>
+                      <View>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Day 3: Coastal Leisure &amp; Checkout</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                          08:30 AM: Complimentary resort breakfast &amp; swimming pool access{"\n"}
+                          12:00 PM: Resort checkout &amp; scooter return handover
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Meeting Point & Jump-off */}
+                  <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border, marginTop: 12 }]}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Meeting &amp; Departure Point</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginTop: 4 }}>
+                      Panagsama Beach, Moalboal, Cebu
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                      Your guide will meet you at the resort lobby or coordinate scooter delivery upon your arrival.
+                    </Text>
+                  </View>
+
+                  {/* Action Buttons */}
+                  <View style={{ marginTop: 18, gap: 10 }}>
+                    <TouchableOpacity
+                      style={[styles.attractionActionBtn, { borderColor: '#8B5CF6', backgroundColor: '#8B5CF6', paddingVertical: 12 }]}
+                      onPress={() => {
+                        const item = selectedPackageDetails;
+                        setSelectedPackageDetails(null);
+                        setSelectedPackageReceipt(item);
+                      }}
+                    >
+                      <Ionicons name="receipt-outline" size={16} color="#FFFFFF" />
+                      <Text style={[styles.attractionActionText, { color: '#FFFFFF' }]}>View Payment Receipt</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.cancelModalBtn, { borderColor: colors.border }]}
+                      onPress={() => setSelectedPackageDetails(null)}
+                    >
+                      <Text style={{ color: colors.text, fontWeight: '700' }}>Close Details</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Dedicated Payment Receipt Modal ── */}
+      <Modal
+        visible={Boolean(selectedPackageReceipt)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedPackageReceipt(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Official Payment Receipt</Text>
+                <Text style={[styles.modalSubtitle, { color: colors.textSub }]}>
+                  Booking Ref: BK-{selectedPackageReceipt?.id}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedPackageReceipt(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
+                <Ionicons name="close" size={24} color={colors.textSub} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 18, paddingBottom: 24 }}>
+              {selectedPackageReceipt ? (() => {
+                const details = selectedPackageReceipt.package_details;
+                const basePrice = details?.package_base_price ?? (selectedPackageReceipt.total_amount > 1000 ? Math.round((selectedPackageReceipt.total_amount - 250) / 1.05) : selectedPackageReceipt.total_amount);
+                const taxes = details?.taxes ?? Math.round(basePrice * 0.05);
+                const fees = details?.environmental_fees ?? 250;
+                const discount = details?.voucher_discount ?? 0;
+                const voucherCode = details?.voucher_code ?? '';
+
+                return (
+                  <>
+                    {/* Status Badge */}
+                    <View style={[styles.historyBanner, { backgroundColor: isDark ? '#064E3B33' : '#ECFDF5', borderColor: '#10B98166', marginTop: 0, marginBottom: 14 }]}>
+                      <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: isDark ? '#34D399' : '#065F46' }}>
+                          ✓ PAYMENT CONFIRMED &amp; SETTLED
+                        </Text>
+                        <Text style={{ fontSize: 11, color: isDark ? '#A7F3D0' : '#047857', marginTop: 1 }}>
+                          Total package reservation is fully paid. No balances due.
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Itemized Receipt Breakdown */}
+                    <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border }]}>
+                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Itemized Breakdown</Text>
+                      
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
+                        <Text style={{ fontSize: 13, color: colors.textSub }}>Total Package Price</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{formatPrice(basePrice)}</Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                        <Text style={{ fontSize: 13, color: colors.textSub }}>Taxes &amp; Surcharges (5%)</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{formatPrice(taxes)}</Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                        <Text style={{ fontSize: 13, color: colors.textSub }}>Environmental &amp; Tourism Fees</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{formatPrice(fees)}</Text>
+                      </View>
+
+                      {discount > 0 ? (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                          <Text style={{ fontSize: 13, color: '#059669', fontWeight: '700' }}>
+                            Voucher Discount ({voucherCode})
+                          </Text>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: '#059669' }}>
+                            -{formatPrice(discount)}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 12 }} />
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Total Amount Paid</Text>
+                        <Text style={{ fontSize: 18, fontWeight: '900', color: '#059669' }}>
+                          {formatPrice(selectedPackageReceipt.total_amount)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Payment Transaction Details */}
+                    <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border, marginTop: 12 }]}>
+                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Transaction Details</Text>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute }}>Transaction Ref</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
+                          {selectedPackageReceipt.payment_reference || ('TXN-PKG-' + selectedPackageReceipt.id)}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute }}>Payment Method</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, textTransform: 'uppercase' }}>
+                          {selectedPackageReceipt.payment_method || 'GCASH / E-WALLET'}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute }}>Date Paid</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
+                          {formatDate(selectedPackageReceipt.booking_date)}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                        <Text style={{ fontSize: 12, color: colors.textMute }}>Booking Status</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669' }}>
+                          CONFIRMED
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Close Button */}
+                    <View style={{ marginTop: 18 }}>
+                      <TouchableOpacity
+                        style={[styles.cancelModalBtn, { borderColor: colors.border }]}
+                        onPress={() => setSelectedPackageReceipt(null)}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '700' }}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                );
+              })() : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1679,4 +2153,21 @@ const styles = StyleSheet.create({
   detailMainValue: { fontSize: 16, fontWeight: '800', marginTop: 4 },
   cancellationNoticeBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 10, marginTop: 10 },
   cancelModalBtn: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  pkgCard: { borderRadius: 18, overflow: 'hidden', marginBottom: 16, borderWidth: 1, padding: 14 },
+  pkgHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  pkgImage: { width: 78, height: 78, borderRadius: 12, resizeMode: 'cover', backgroundColor: '#00000011' },
+  pkgCategoryPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EDE9FE', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
+  pkgCategoryText: { fontSize: 10, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.5 },
+  pkgHostRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1 },
+  pkgAvatar: { width: 30, height: 30, borderRadius: 15 },
+  pkgHostName: { fontSize: 12, fontWeight: '700' },
+  pkgRefPill: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  pkgRefText: { fontSize: 11, fontWeight: '800' },
+  pkgDatesGrid: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 10, marginTop: 10, gap: 12 },
+  pkgPriceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 8 },
+  pkgPriceLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  pkgPriceValue: { fontSize: 20, fontWeight: '900', marginTop: 2 },
+  pkgPriceUnit: { fontSize: 11, fontWeight: '700', marginLeft: 5 },
+  pkgActionsCol: { flexDirection: 'column', gap: 8, marginTop: 6 },
+  pkgActionRow: { flexDirection: 'row', gap: 8 },
 });

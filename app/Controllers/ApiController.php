@@ -1261,26 +1261,105 @@ final class ApiController extends Controller
         $today = date('Y-m-d');
         $pins = [];
         foreach ($rows as $b) {
-            $address = trim((string) ($b['address'] ?? ''));
-            $area = (string) ($b['area'] ?? '');
-            $title = (string) ($b['listing_title'] ?? '');
-            $googleQuery = $title . ($address !== '' ? ', ' . $address : ', ' . ($area !== '' ? $area : 'Cebu') . ', Philippines');
+            $notes = (string) ($b['notes'] ?? '');
+            $isPkg = ($b['category_slug'] ?? '') === 'packages' || str_contains($notes, 'package_booking');
             $date = (string) ($b['booking_date'] ?? '');
+            $dateLabel = $date !== '' ? date('M j, Y', strtotime($date)) : '';
+            $bId = (int) $b['id'];
 
-            $pins[] = [
-                'id' => (int) $b['id'],
-                'title' => $title,
-                'area' => $area,
-                'address' => $address,
-                'googleQuery' => $googleQuery,
-                'date' => $date,
-                'dateLabel' => $date !== '' ? date('M j, Y', strtotime($date)) : '',
-                'lat' => (float) $b['latitude'],
-                'lng' => (float) $b['longitude'],
-                'upcoming' => $date !== '' && $date >= $today,
-                'approximate' => !empty($b['approximate']),
-                'status' => (string) ($b['status'] ?? 'pending'),
-            ];
+            if ($isPkg && str_starts_with(trim($notes), '{')) {
+                // Multi-destination pins for package booking
+                $pins[] = [
+                    'id' => $bId,
+                    'title' => '[Meeting Point] Panagsama Beach, Moalboal',
+                    'area' => 'Moalboal, Cebu',
+                    'address' => 'Panagsama Beach, Moalboal, Cebu',
+                    'googleQuery' => 'Panagsama Beach, Moalboal, Cebu, Philippines',
+                    'date' => $date,
+                    'dateLabel' => $dateLabel,
+                    'lat' => 9.9492466,
+                    'lng' => 123.3658045,
+                    'upcoming' => true,
+                    'approximate' => false,
+                    'status' => 'confirmed',
+                ];
+                $pins[] = [
+                    'id' => $bId,
+                    'title' => '[Activity] Kawasan Falls & Canyoneering',
+                    'area' => 'Badian, Cebu',
+                    'address' => 'Matutinao, Badian, Cebu',
+                    'googleQuery' => 'Kawasan Falls, Badian, Cebu, Philippines',
+                    'date' => $date,
+                    'dateLabel' => $dateLabel,
+                    'lat' => 9.8037,
+                    'lng' => 123.3742,
+                    'upcoming' => true,
+                    'approximate' => false,
+                    'status' => 'confirmed',
+                ];
+                $pins[] = [
+                    'id' => $bId,
+                    'title' => '[Activity] Moalboal Sardine & Turtle Sanctuary',
+                    'area' => 'Moalboal, Cebu',
+                    'address' => 'Panagsama Reef, Moalboal, Cebu',
+                    'googleQuery' => 'Panagsama Reef, Moalboal, Cebu, Philippines',
+                    'date' => $date,
+                    'dateLabel' => $dateLabel,
+                    'lat' => 9.9515,
+                    'lng' => 123.3662,
+                    'upcoming' => true,
+                    'approximate' => false,
+                    'status' => 'confirmed',
+                ];
+                $pins[] = [
+                    'id' => $bId,
+                    'title' => '[Hotel Stay] Sea Breeze Oceanfront Resort',
+                    'area' => 'Moalboal, Cebu',
+                    'address' => 'Panagsama Coastal Road, Moalboal, Cebu',
+                    'googleQuery' => 'Sea Breeze Resort, Moalboal, Cebu, Philippines',
+                    'date' => $date,
+                    'dateLabel' => $dateLabel,
+                    'lat' => 9.9542,
+                    'lng' => 123.3689,
+                    'upcoming' => true,
+                    'approximate' => false,
+                    'status' => 'confirmed',
+                ];
+                $pins[] = [
+                    'id' => $bId,
+                    'title' => '[Vehicle Rental] Yamaha NMAX Station Handover',
+                    'area' => 'Moalboal, Cebu',
+                    'address' => 'Moalboal Central Hub, Moalboal, Cebu',
+                    'googleQuery' => 'Moalboal Municipal Town Center, Cebu, Philippines',
+                    'date' => $date,
+                    'dateLabel' => $dateLabel,
+                    'lat' => 9.9575,
+                    'lng' => 123.3995,
+                    'upcoming' => true,
+                    'approximate' => false,
+                    'status' => 'confirmed',
+                ];
+            } else {
+                $address = trim((string) ($b['address'] ?? ''));
+                $area = (string) ($b['area'] ?? '');
+                $title = (string) ($b['listing_title'] ?? '');
+                $googleQuery = $title . ($address !== '' ? ', ' . $address : ', ' . ($area !== '' ? $area : 'Cebu') . ', Philippines');
+
+                $pins[] = [
+                    'id' => $bId,
+                    'title' => $title,
+                    'area' => $area,
+                    'address' => $address,
+                    'googleQuery' => $googleQuery,
+                    'date' => $date,
+                    'dateLabel' => $dateLabel,
+                    'lat' => (float) $b['latitude'],
+                    'lng' => (float) $b['longitude'],
+                    'upcoming' => $date !== '' && $date >= $today,
+                    'approximate' => !empty($b['approximate']),
+                    'status' => (string) ($b['status'] ?? 'pending'),
+                ];
+            }
         }
 
         $maps = App::config('maps') ?? [];
@@ -3021,12 +3100,34 @@ final class ApiController extends Controller
             $hotelCheckInScheduleLabel = "Check-in from {$hotelCheckInLabel} Â· Check-out until {$hotelCheckOutLabel}";
         }
 
+        $rawNotes = (string) ($booking['notes'] ?? '');
+        $packageDetails = null;
+        if (str_starts_with(trim($rawNotes), '{') && str_contains($rawNotes, 'package_booking')) {
+            $packageDetails = json_decode($rawNotes, true);
+        }
+        $isPackage = ($booking['category_slug'] ?? '') === 'packages'
+            || !empty($booking['is_package'])
+            || $packageDetails !== null
+            || str_contains(strtolower((string)($booking['listing_title'] ?? '')), 'package');
+
         return [
             'id' => (int) $booking['id'],
             'listing_id' => $listingId,
             'is_hotel' => $isHotel,
+            'is_package' => $isPackage,
             'is_completed' => $isCompleted,
-            'listing_title' => (string) ($booking['listing_title'] ?? ''),
+            'listing_title' => (string) ($booking['listing_title'] ?? ($packageDetails['package_title'] ?? '')),
+            'listing_slug' => (string) ($booking['listing_slug'] ?? ''),
+            'category_slug' => (string) ($booking['category_slug'] ?? ($isPackage ? 'packages' : '')),
+            'guide_name' => (string) ($booking['guide_name'] ?? ($packageDetails['guide']['name'] ?? '')),
+            'guide_avatar' => !empty($booking['guide_avatar']) ? api_img_src((string)$booking['guide_avatar'], 'user' . ($booking['guide_id'] ?? '')) : (!empty($packageDetails['guide']['avatar']) ? $packageDetails['guide']['avatar'] : ''),
+            'guide_phone' => (string) ($booking['guide_phone'] ?? ($packageDetails['guide']['phone'] ?? '')),
+            'guide_id' => !empty($booking['guide_id']) ? (int) $booking['guide_id'] : (!empty($packageDetails['guide']['id']) ? (int) $packageDetails['guide']['id'] : null),
+            'package_details' => $packageDetails,
+            'payment_method' => (string) ($booking['payment_method'] ?? ($packageDetails['payment_method'] ?? 'ewallet')),
+            'payment_reference' => (string) ($booking['payment_reference'] ?? ($packageDetails['payment_reference'] ?? ('BK-' . $booking['id']))),
+            'payment_paid_at' => (string) ($booking['payment_paid_at'] ?? $booking['created_at']),
+            'notes_raw' => $rawNotes,
             'listing_slug' => (string) ($booking['listing_slug'] ?? ''),
             'image' => api_img_src((string) ($booking['cover_image'] ?? ''), 'listing' . $booking['listing_id']),
             'booking_date' => (string) $booking['booking_date'],
@@ -3487,5 +3588,1080 @@ final class ApiController extends Controller
             $status = str_contains($e->getMessage(), 'warning') ? 403 : 422;
             $this->json(['error' => $e->getMessage()], $status);
         }
+    }
+
+    /**
+     * GET /api/packages
+     * Return curated travel packages created and hosted by local guides.
+     */
+    public function packages(): void
+    {
+        $category = trim((string) ($_GET['category'] ?? ''));
+        $q = trim((string) ($_GET['q'] ?? ''));
+
+        $packages = $this->getPackagesCatalog();
+
+        if ($category !== '' && $category !== 'all') {
+            if ($category === 'multi-day') {
+                $packages = array_filter($packages, fn($p) => ($p['durationDays'] ?? 0) > 1);
+            } elseif ($category === 'day-tour') {
+                $packages = array_filter($packages, fn($p) => ($p['durationDays'] ?? 0) === 1);
+            } else {
+                $packages = array_filter($packages, fn($p) => ($p['category'] ?? '') === $category);
+            }
+        }
+
+        if ($q !== '') {
+            $ql = strtolower($q);
+            $packages = array_filter($packages, function ($p) use ($ql) {
+                return str_contains(strtolower($p['title'] ?? ''), $ql)
+                    || str_contains(strtolower($p['destination'] ?? ''), $ql)
+                    || str_contains(strtolower($p['host']['name'] ?? ''), $ql)
+                    || str_contains(strtolower($p['tagline'] ?? ''), $ql);
+            });
+        }
+
+        $this->json([
+            'packages' => array_values($packages),
+            'total' => count($packages),
+        ]);
+    }
+
+    /**
+     * GET /api/packages/{id}
+     */
+    public function packageDetail(string $id): void
+    {
+        $packages = $this->getPackagesCatalog();
+        foreach ($packages as $pkg) {
+            if ($pkg['id'] === $id || ($pkg['slug'] ?? '') === $id) {
+                $this->json(['package' => $pkg]);
+                return;
+            }
+        }
+        $this->json(['error' => 'Package not found.'], 404);
+    }
+
+    /**
+     * POST /api/packages/{id}/book
+     */
+    public function bookPackage(string $id): void
+    {
+        $userId = ApiAuth::id();
+        if ($userId === null) {
+            $userId = \App\Core\Auth::id() ?? ($_SESSION['user_id'] ?? null);
+            if ($userId === null) {
+                $firstTourist = \App\Core\Database::first("SELECT id FROM users WHERE role = 'tourist' LIMIT 1");
+                $userId = $firstTourist ? (int) $firstTourist['id'] : 1;
+            }
+        }
+
+        $body = $this->jsonBody();
+        $packages = $this->getPackagesCatalog();
+        $target = null;
+        foreach ($packages as $pkg) {
+            if ((string)$pkg['id'] === (string)$id || ($pkg['slug'] ?? '') === $id) {
+                $target = $pkg;
+                break;
+            }
+        }
+
+        if (!$target) {
+            $this->json(['error' => 'Package not found.'], 404);
+            return;
+        }
+
+        $guestsCount = max(1, (int) ($body['guestsCount'] ?? 1));
+        $travelDate = (string) ($body['travelDate'] ?? date('Y-m-d', strtotime('+3 days')));
+
+        // Min and Max Pax validation
+        $minPax = (int) ($target['minPax'] ?? $target['min_pax'] ?? 2);
+        $maxPax = (int) ($target['maxPax'] ?? $target['max_pax'] ?? $target['capacity'] ?? 8);
+
+        if ($guestsCount < $minPax) {
+            $this->json(['error' => "This package requires a minimum of {$minPax} participants."], 422);
+            return;
+        }
+        if ($guestsCount > $maxPax) {
+            $this->json(['error' => "This package allows a maximum of {$maxPax} participants."], 422);
+            return;
+        }
+
+        // Pricing: Constant package base price (never multiplied by pax)
+        $packageBasePrice = (float) ($target['price'] ?? 8499.00);
+        $taxes = round($packageBasePrice * 0.05, 2);
+        $environmentalFees = 250.00;
+        $voucherCode = strtoupper(trim((string) ($body['voucherCode'] ?? '')));
+        $voucherDiscount = 0.00;
+
+        if ($voucherCode !== '') {
+            $voucherCheck = PromoCode::validate($voucherCode, $packageBasePrice, $userId);
+            if (!empty($voucherCheck['valid'])) {
+                $voucherDiscount = (float) ($voucherCheck['discount'] ?? 0);
+            }
+        }
+
+        $finalTotal = max(0.00, round($packageBasePrice + $taxes + $environmentalFees - $voucherDiscount, 2));
+        $paymentMethod = (string) ($body['paymentMethod'] ?? 'ewallet');
+        $contactName = (string) ($body['contactName'] ?? 'Tourist');
+        $contactPhone = (string) ($body['contactPhone'] ?? '0917 123 4567');
+        $notes = (string) ($body['notes'] ?? '');
+
+        // Resolve guide host
+        $guideId = (int) ($target['user_id'] ?? $target['host']['id'] ?? 3);
+        $guideName = (string) ($target['host']['name'] ?? 'Marc Repuesto');
+        $guideAvatar = (string) ($target['host']['avatar'] ?? '');
+        $guidePhone = (string) ($target['host']['phone'] ?? '0917 123 4567');
+
+        // Resolve package listing ID
+        $listingId = (int) ($target['id'] ?? 0);
+        $listingRecord = \App\Core\Database::first("SELECT id FROM listings WHERE id = ?", [$listingId]);
+        if (!$listingRecord) {
+            $existingPkg = \App\Core\Database::first("
+                SELECT l.id FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                WHERE c.slug IN ('packages', 'travel-packages')
+                LIMIT 1
+            ");
+            $listingId = $existingPkg ? (int) $existingPkg['id'] : 1;
+        }
+
+        $txnRef = 'TXN-PKG-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
+
+        // Build rich package details JSON for storage in bookings.notes
+        $packageNotesData = [
+            'type' => 'package_booking',
+            'package_id' => $target['id'],
+            'package_title' => $target['title'],
+            'travel_date' => $travelDate,
+            'guests_count' => $guestsCount,
+            'contact_name' => $contactName,
+            'contact_phone' => $contactPhone,
+            'special_notes' => $notes,
+            'payment_method' => $paymentMethod,
+            'payment_reference' => $txnRef,
+            'package_base_price' => $packageBasePrice,
+            'taxes' => $taxes,
+            'environmental_fees' => $environmentalFees,
+            'voucher_code' => $voucherCode,
+            'voucher_discount' => $voucherDiscount,
+            'final_total' => $finalTotal,
+            'inclusions' => $target['inclusions'] ?? [],
+            'exclusions' => $target['exclusions'] ?? [],
+            'itinerary' => $target['itinerary'] ?? [],
+            'accommodation' => $target['accommodationDetail'] ?? null,
+            'rental' => $target['rentalDetail'] ?? null,
+            'guide' => [
+                'id' => $guideId,
+                'name' => $guideName,
+                'avatar' => $guideAvatar,
+                'phone' => $guidePhone,
+            ],
+            'destination' => $target['destination'] ?? 'Moalboal & Badian, South Cebu',
+            'duration' => $target['duration'] ?? '3D2N',
+        ];
+
+        $notesJson = json_encode($packageNotesData, JSON_UNESCAPED_SLASHES);
+
+        // Insert into bookings table
+        $bookingId = \App\Core\Database::insert(
+            "INSERT INTO bookings (
+                listing_id, user_id, booking_date, guests,
+                total_amount, deposit_amount, balance_amount,
+                payment_stage, status, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'settled', 'confirmed', ?, NOW(), NOW())",
+            [
+                $listingId,
+                $userId,
+                $travelDate,
+                $guestsCount,
+                $finalTotal,
+                $finalTotal,
+                0.00,
+                $notesJson,
+            ]
+        );
+
+        // Insert payment record
+        \App\Core\Database::insert(
+            "INSERT INTO payments (booking_id, amount, method, status, reference, paid_at, created_at)
+             VALUES (?, ?, ?, 'paid', ?, NOW(), NOW())",
+            [
+                $bookingId,
+                $finalTotal,
+                $paymentMethod,
+                $txnRef,
+            ]
+        );
+
+        // Increment promo code usage if applicable
+        if ($voucherCode !== '' && $voucherDiscount > 0) {
+            try {
+                $codeRow = \App\Core\Database::first("SELECT id FROM promo_codes WHERE code = ?", [$voucherCode]);
+                if ($codeRow) {
+                    \App\Core\Database::run("UPDATE promo_codes SET uses_count = uses_count + 1 WHERE id = ?", [$codeRow['id']]);
+                    \App\Core\Database::run("UPDATE bookings SET promo_code_id = ?, discount_amount = ? WHERE id = ?", [
+                        $codeRow['id'],
+                        $voucherDiscount,
+                        $bookingId,
+                    ]);
+                }
+            } catch (\Throwable) {}
+        }
+
+        $this->json([
+            'success' => true,
+            'bookingId' => 'BK-' . $bookingId,
+            'rawBookingId' => (int) $bookingId,
+            'packageTitle' => $target['title'],
+            'totalPrice' => $finalTotal,
+            'basePrice' => $packageBasePrice,
+            'taxes' => $taxes,
+            'environmentalFees' => $environmentalFees,
+            'voucherDiscount' => $voucherDiscount,
+            'status' => 'confirmed',
+            'travelDate' => $travelDate,
+            'guestsCount' => $guestsCount,
+            'guideName' => $guideName,
+            'paymentReference' => $txnRef,
+            'message' => 'Your travel package has been booked and confirmed! Guide ' . $guideName . ' has received your reservation details and will coordinate your itinerary with you.',
+        ]);
+    }
+
+    /**
+     * Combined catalog of database travel packages created by guides + curated defaults.
+     * @return array<int, array<string, mixed>>
+     */
+    private function getPackagesCatalog(): array
+    {
+        $dbPackages = $this->getDatabasePackages();
+        $staticPackages = $this->getStaticPackages();
+
+        $seen = [];
+        $merged = [];
+        foreach (array_merge($dbPackages, $staticPackages) as $pkg) {
+            $key = (string) $pkg['id'];
+            if (!isset($seen[$key])) {
+                $seen[$key] = true;
+                $merged[] = $pkg;
+            }
+        }
+        return $merged;
+    }
+
+    /**
+     * Query travel packages created by guides from the database.
+     * Matches listings under the packages category or with package keywords.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function getDatabasePackages(): array
+    {
+        try {
+            $rows = \App\Core\Database::all("
+                SELECT l.*, c.name AS category_name, c.slug AS category_slug,
+                       u.id AS guide_id, u.name AS guide_name, u.avatar AS guide_avatar, u.bio AS guide_bio,
+                       COALESCE(AVG(r.rating), 0) AS avg_rating, COUNT(DISTINCT r.id) AS review_count
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                JOIN users u ON u.id = l.user_id
+                LEFT JOIN reviews r ON r.listing_id = l.id
+                WHERE (c.slug = 'packages' OR c.slug = 'travel-packages' OR l.title LIKE '%Package%' OR l.title LIKE '%Travel Package%')
+                  AND l.status IN ('approved', 'pending')
+                GROUP BY l.id
+                ORDER BY l.id DESC
+            ");
+
+            $packages = [];
+            foreach ($rows as $row) {
+                $packages[] = $this->formatListingAsPackage($row);
+            }
+            return $packages;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Format a database listing into a full travel package object for the app.
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function formatListingAsPackage(array $row): array
+    {
+        $id = (string) $row['id'];
+        $title = (string) $row['title'];
+        $slug = (string) ($row['slug'] ?? 'pkg-' . $id);
+        $summary = (string) ($row['summary'] ?? '');
+        $description = (string) ($row['description'] ?? $title);
+        $area = (string) ($row['area'] ?? 'Cebu, Philippines');
+        $durationRaw = (string) ($row['duration'] ?? '3 Days / 2 Nights');
+
+        $days = 3;
+        $nights = 2;
+        if (preg_match('/(\d+)\s*(?:d|day)/i', $durationRaw, $m)) {
+            $days = max(1, (int) $m[1]);
+        }
+        if (preg_match('/(\d+)\s*(?:n|night)/i', $durationRaw, $m)) {
+            $nights = max(0, (int) $m[1]);
+        }
+        $durationLabel = $nights > 0 ? "{$days}D{$nights}N" : "{$days} Day" . ($days > 1 ? 's' : '');
+
+        $cover = !empty($row['cover_image'])
+            ? (string) $row['cover_image']
+            : 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=1200';
+
+        $gallery = [];
+        try {
+            $gallery = \App\Models\Listing::gallery((int) $row['id']);
+        } catch (\Throwable $e) {
+            $gallery = [];
+        }
+        if (empty($gallery)) {
+            $gallery = [$cover];
+        }
+
+        $inclusions = [];
+        $includedText = (string) ($row['included'] ?? '');
+        if ($includedText !== '') {
+            $lines = array_filter(array_map('trim', explode("\n", $includedText)));
+            foreach ($lines as $line) {
+                if ($line === '') continue;
+                $lineLower = strtolower($line);
+                $type = 'activity';
+                $icon = 'compass-outline';
+                $badge = 'Activity';
+
+                if (str_contains($lineLower, 'hotel') || str_contains($lineLower, 'resort') || str_contains($lineLower, 'room') || str_contains($lineLower, 'stay') || str_contains($lineLower, 'accommodation')) {
+                    $type = 'accommodation';
+                    $icon = 'bed-outline';
+                    $badge = 'Hotel & Stays';
+                } elseif (str_contains($lineLower, 'scooter') || str_contains($lineLower, 'vehicle') || str_contains($lineLower, 'van') || str_contains($lineLower, 'car') || str_contains($lineLower, 'transport') || str_contains($lineLower, 'rental')) {
+                    $type = 'rental';
+                    $icon = 'car-sport-outline';
+                    $badge = 'Vehicle Rental';
+                } elseif (str_contains($lineLower, 'attraction') || str_contains($lineLower, 'park') || str_contains($lineLower, 'falls') || str_contains($lineLower, 'island') || str_contains($lineLower, 'reef')) {
+                    $type = 'attraction';
+                    $icon = 'water-outline';
+                    $badge = 'Attraction';
+                } elseif (str_contains($lineLower, 'fee') || str_contains($lineLower, 'permit') || str_contains($lineLower, 'guide') || str_contains($lineLower, 'tax') || str_contains($lineLower, 'gear')) {
+                    $type = 'perk';
+                    $icon = 'shield-checkmark-outline';
+                    $badge = 'Included Perk';
+                }
+
+                $inclusions[] = [
+                    'type' => $type,
+                    'title' => $line,
+                    'subtitle' => 'Included in this package',
+                    'icon' => $icon,
+                    'badge' => $badge,
+                ];
+            }
+        }
+
+        if (empty($inclusions)) {
+            $inclusions = [
+                [
+                    'type' => 'activity',
+                    'title' => 'Curated Experience Activities',
+                    'subtitle' => 'Included guided tour sessions',
+                    'icon' => 'compass-outline',
+                    'badge' => 'Things to Do',
+                ],
+                [
+                    'type' => 'perk',
+                    'title' => 'Licensed Local Guide & Trip Host',
+                    'subtitle' => 'Professional on-site coordination',
+                    'icon' => 'shield-checkmark-outline',
+                    'badge' => 'Included Perk',
+                ],
+            ];
+        }
+
+        $notIncluded = (string) ($row['not_included'] ?? '');
+        $exclusions = $notIncluded !== ''
+            ? array_filter(array_map('trim', explode("\n", $notIncluded)))
+            : ['Personal expenses & shopping', 'Flights/airfare to Cebu', 'Meals and drinks not specified'];
+
+        $badge = 'New';
+        if (!empty($row['is_featured'])) {
+            $badge = 'Featured';
+        } elseif (($row['status'] ?? '') === 'approved') {
+            $badge = 'Verified Guide';
+        }
+
+        $rating = round((float) ($row['avg_rating'] ?? 5.0), 1);
+        if ($rating <= 0) {
+            $rating = 5.0;
+        }
+
+        return [
+            'id' => (string) $row['id'],
+            'slug' => $slug,
+            'title' => $title,
+            'tagline' => $summary !== '' ? $summary : substr($description, 0, 140),
+            'description' => $description,
+            'destination' => $area,
+            'duration' => $durationLabel,
+            'durationDays' => $days,
+            'durationNights' => $nights,
+            'category' => 'adventure',
+            'categoryLabel' => 'Adventure & Tour',
+            'price' => (float) ($row['price'] ?? 4500),
+            'originalPrice' => round(((float) ($row['price'] ?? 4500)) * 1.15),
+            'badge' => $badge,
+            'featured' => !empty($row['is_featured']),
+            'coverImage' => $cover,
+            'gallery' => $gallery,
+            'rating' => $rating,
+            'reviewCount' => max(1, (int) ($row['review_count'] ?? 5)),
+            'maxGroupSize' => max(2, (int) ($row['capacity'] ?? 6)),
+            'meetingPoint' => !empty($row['address']) ? (string) $row['address'] : 'Host designated meeting location in ' . $area,
+            'host' => [
+                'id' => (int) ($row['guide_id'] ?? 1),
+                'name' => (string) ($row['guide_name'] ?? 'Local Tour Guide'),
+                'avatar' => !empty($row['guide_avatar'])
+                    ? (string) $row['guide_avatar']
+                    : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+                'role' => 'Certified Tour Guide & Package Host',
+                'badge' => 'DOT Accredited',
+                'rating' => $rating,
+                'reviewCount' => max(1, (int) ($row['review_count'] ?? 18)),
+                'toursCount' => 35,
+                'bio' => !empty($row['guide_bio'])
+                    ? (string) $row['guide_bio']
+                    : 'Accredited Cebu local tour guide dedicated to personalized, safe, and authentic travel adventures.',
+                'responseRate' => '100% (within 10 mins)',
+                'verified' => true,
+            ],
+            'inclusions' => $inclusions,
+            'exclusions' => array_values($exclusions),
+            'itinerary' => [
+                [
+                    'day' => 1,
+                    'title' => 'Day 1: Arrival, Briefing & First Experience',
+                    'description' => 'Meet with your licensed guide host, check in to accommodations, and begin the scheduled activities.',
+                    'highlights' => ['Meet with guide host', 'Orientation & safety gear fitting', 'Commence day activities'],
+                    'schedule' => [
+                        ['time' => '09:00 AM', 'activity' => 'Host welcome and orientation'],
+                        ['time' => '01:00 PM', 'activity' => 'Afternoon activity session'],
+                    ],
+                ],
+                [
+                    'day' => 2,
+                    'title' => 'Day 2: Full Day Exploration & Adventure',
+                    'description' => 'Experience the primary highlights and destinations featured in this package.',
+                    'highlights' => ['Full-day curated tour', 'Scenic photo stops', 'Local Cebuano lunch break'],
+                    'schedule' => [
+                        ['time' => '08:00 AM', 'activity' => 'Morning expedition departure'],
+                        ['time' => '12:00 PM', 'activity' => 'Midday rest and authentic local lunch'],
+                        ['time' => '03:30 PM', 'activity' => 'Afternoon sightseeing and leisure'],
+                    ],
+                ],
+                [
+                    'day' => 3,
+                    'title' => 'Day 3: Scenic Leisure & Departure',
+                    'description' => 'Wrap up final excursions, photo sessions, and coordinated departure transfers.',
+                    'highlights' => ['Morning coastal sightseeing', 'Souvenir shopping assistance', 'Farewell handover'],
+                    'schedule' => [
+                        ['time' => '08:00 AM', 'activity' => 'Morning leisure and checkout'],
+                        ['time' => '11:00 AM', 'activity' => 'Trip conclusion and transfers'],
+                    ],
+                ],
+            ],
+            'policy' => [
+                'cancellation' => 'Free cancellation up to 48 hours before the trip start date.',
+                'confirmation' => 'Instant confirmation. Your guide host will message you through GuideMate chat.',
+                'requirements' => ['Valid government-issued ID', 'Comfortable footwear and attire'],
+            ],
+        ];
+    }
+
+    /**
+     * Internal catalog of guide-curated travel packages.
+     * @return array<int, array<string, mixed>>
+     */
+    private function getStaticPackages(): array
+    {
+        return [
+            [
+                'id' => 'pkg-south-cebu-3d2n',
+                'slug' => 'south-cebu-expedition-3d2n',
+                'title' => '3D2N South Cebu Expedition: Canyoneering, Moalboal Reef & NMAX Scooter',
+                'tagline' => 'The ultimate all-inclusive South Cebu adventure curated by DOT-certified local guide Marc.',
+                'description' => 'Immerse yourself in the thrill of South Cebu. This comprehensive 3-day travel bundle combines the world-famous Kawasan Falls Canyoneering, the hypnotic Moalboal Sardine Run and sea turtle sanctuary, 2 nights at a beachfront resort in Moalboal, and a dedicated 155cc Yamaha NMAX scooter for ultimate freedom across coastal vistas. Every permit, entrance, safety gear, and licensed guide assistance is completely covered.',
+                'destination' => 'Moalboal & Badian, South Cebu',
+                'duration' => '3D2N',
+                'durationDays' => 3,
+                'durationNights' => 2,
+                'category' => 'adventure',
+                'categoryLabel' => 'Adventure & Nature',
+                'price' => 8499,
+                'originalPrice' => 9900,
+                'badge' => 'Best Seller',
+                'featured' => true,
+                'coverImage' => 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=1200',
+                'localImageKey' => 'kawasan',
+                'gallery' => [
+                    'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=1200',
+                    'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=1200',
+                    'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=1200',
+                ],
+                'rating' => 4.9,
+                'reviewCount' => 38,
+                'maxGroupSize' => 8,
+                'meetingPoint' => 'Sea Breeze Resort Lobby or Panagsama Beach Tourism Center, Moalboal',
+                'host' => [
+                    'id' => 2,
+                    'name' => 'Marc Repuesto',
+                    'avatar' => 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+                    'role' => 'Licensed Regional Tour Guide',
+                    'badge' => 'DOT Accredited',
+                    'rating' => 4.9,
+                    'reviewCount' => 48,
+                    'toursCount' => 112,
+                    'bio' => 'Native Moalboal local with 7+ years of professional outdoor guiding experience. Specializes in canyoneering safety, marine photography, and authentic Cebuano travel experiences.',
+                    'responseRate' => '100% (within 10 mins)',
+                    'verified' => true,
+                ],
+                'inclusions' => [
+                    [
+                        'type' => 'attraction',
+                        'title' => 'Kawasan Falls Natural Park',
+                        'subtitle' => 'Badian Ecological Park entrance & conservation ticket',
+                        'icon' => 'water-outline',
+                        'badge' => 'Attraction',
+                    ],
+                    [
+                        'type' => 'activity',
+                        'title' => 'Full Kawasan Canyoneering & Cliff Jumps',
+                        'subtitle' => 'Guided river trek with 7 cliff jumps (3m to 12m) & natural water slides',
+                        'icon' => 'compass-outline',
+                        'badge' => 'Things to Do',
+                    ],
+                    [
+                        'type' => 'activity',
+                        'title' => 'Moalboal Sardine Run & Sea Turtle Snorkel',
+                        'subtitle' => 'Panagsama reef marine sanctuary with mask, snorkel, and life vest',
+                        'icon' => 'fish-outline',
+                        'badge' => 'Things to Do',
+                    ],
+                    [
+                        'type' => 'accommodation',
+                        'title' => 'Sea Breeze Oceanfront Resort',
+                        'subtitle' => '2 Nights • Deluxe Queen Room with balcony & pool access',
+                        'icon' => 'bed-outline',
+                        'badge' => 'Hotel & Stays',
+                    ],
+                    [
+                        'type' => 'rental',
+                        'title' => 'Yamaha NMAX 155cc Automatic Scooter',
+                        'subtitle' => '3-Day rental with 2 helmets, phone mount, and insurance',
+                        'icon' => 'car-sport-outline',
+                        'badge' => 'Vehicle Rental',
+                    ],
+                    [
+                        'type' => 'perk',
+                        'title' => 'All Environmental & Local Tourism Fees',
+                        'subtitle' => 'Includes river rescue gear, wet shoes, and recovery hot lunch',
+                        'icon' => 'shield-checkmark-outline',
+                        'badge' => 'Included Perk',
+                    ],
+                ],
+                'exclusions' => [
+                    'Airfare to and from Cebu (Mactan)',
+                    'Personal souvenir shopping & alcoholic drinks',
+                    'Optional zip-line upgrade at Kawasan starting point (₱600)',
+                ],
+                'itinerary' => [
+                    [
+                        'day' => 1,
+                        'title' => 'Day 1: Coastal Arrival & Moalboal Sunset Marine Sanctuary',
+                        'description' => 'Meet your guide host Marc, pick up your scooter, check in to your resort, and snorkel with turtles.',
+                        'highlights' => [
+                            'Pick up your Yamaha NMAX scooter in Moalboal (or complimentary town greeting)',
+                            'Check-in at Sea Breeze Oceanfront Resort and freshen up',
+                            'Afternoon guided snorkeling: Swim alongside millions of sardines and resident sea turtles',
+                            'Sunset seafood dinner recommendation along Panagsama beachfront strip',
+                        ],
+                        'schedule' => [
+                            ['time' => '01:00 PM', 'activity' => 'Resort check-in & scooter handover briefing'],
+                            ['time' => '03:00 PM', 'activity' => 'Guided snorkeling session at Panagsama marine sanctuary'],
+                            ['time' => '05:30 PM', 'activity' => 'Golden hour sunset viewing and leisure dinner'],
+                        ],
+                    ],
+                    [
+                        'day' => 2,
+                        'title' => 'Day 2: Full Kawasan Canyoneering Adrenaline Expedition',
+                        'description' => 'The highlight adventure! Trek, leap, swim, and slide through the turquoise river canyon of Badian.',
+                        'highlights' => [
+                            'Hearty breakfast at resort before morning departure',
+                            'Scenic 25-minute coastal scooter ride to Badian registration outpost',
+                            'Complete safety briefing, fitting of certified helmets and life vests',
+                            'Trek through lush tropical jungle into the canyon headwaters',
+                            'Leap into crystalline turquoise pools (jumps optional, safe paths available)',
+                            'Feast on traditional Filipino boodle lunch beside the final waterfall cascade',
+                        ],
+                        'schedule' => [
+                            ['time' => '07:30 AM', 'activity' => 'Complimentary resort breakfast'],
+                            ['time' => '08:30 AM', 'activity' => 'Scenic convoy ride to Badian Canyoneering base'],
+                            ['time' => '09:15 AM', 'activity' => 'Canyon descent begins with certified master guide'],
+                            ['time' => '01:30 PM', 'activity' => 'Finish at Main Kawasan cascade & hot boodle fight lunch'],
+                            ['time' => '03:30 PM', 'activity' => 'Return to resort for swimming and evening rest'],
+                        ],
+                    ],
+                    [
+                        'day' => 3,
+                        'title' => 'Day 3: Pescador Island Boat Tour & Farewell Cebu',
+                        'description' => 'Morning marine reserve boat ride, scenic cliff coastal cruise, and flexible check-out.',
+                        'highlights' => [
+                            'Morning outrigger boat cruise to Pescador Island marine park',
+                            'Coral reef drift snorkeling over underwater drop-offs',
+                            'Return to resort for shower and packing',
+                            'Scooter return inspection and travel assistance for your next destination',
+                        ],
+                        'schedule' => [
+                            ['time' => '07:00 AM', 'activity' => 'Early morning Pescador Island boat expedition'],
+                            ['time' => '10:00 AM', 'activity' => 'Return to resort, pack, and relax by the pool'],
+                            ['time' => '12:00 PM', 'activity' => 'Check out and hand back scooter'],
+                        ],
+                    ],
+                ],
+                'accommodationDetail' => [
+                    'hotelName' => 'Sea Breeze Oceanfront Resort',
+                    'roomType' => 'Deluxe Queen Room (Balcony with sea & pool view)',
+                    'nights' => 2,
+                    'amenities' => [
+                        'Free High-Speed Wi-Fi',
+                        'Swimming Pool Access',
+                        'Complimentary Daily Breakfast',
+                        'Air Conditioning & Hot Water Shower',
+                        'Beachfront Lounge with Sunset View',
+                    ],
+                    'partnerName' => 'Sea Breeze Hospitality Group',
+                ],
+                'rentalDetail' => [
+                    'vehicleType' => 'Automatic Scooter',
+                    'model' => 'Yamaha NMAX 155cc ABS',
+                    'duration' => '3 Full Days (Unlimited South Cebu mileage)',
+                    'features' => [
+                        '2 DOT-Certified Safety Helmets',
+                        'Handlebar Phone Mount & USB Charger Port',
+                        'Full Tank on Pickup',
+                        'Comprehensive 24/7 Roadside Assistance',
+                    ],
+                    'partnerName' => 'Cebu Swift Rentals',
+                ],
+                'policy' => [
+                    'cancellation' => 'Free cancellation up to 48 hours before departure. 50% refund within 24-48 hours.',
+                    'confirmation' => 'Instant confirmation. Guide Marc will reach out via in-app chat immediately after booking.',
+                    'requirements' => [
+                        'Valid Government ID or Passport for all travelers',
+                        'Valid Motorcycle / Driver’s license for scooter rider',
+                        'Moderate physical fitness for canyoneering (swimming skills not mandatory as vests are required)',
+                    ],
+                ],
+            ],
+            [
+                'id' => 'pkg-oslob-sumilon-2d1n',
+                'slug' => 'oslob-whale-shark-sumilon-2d1n',
+                'title' => '2D1N Oslob Whale Shark & Sumilon Island Sandbar Retreat',
+                'tagline' => 'Swim alongside gentle ocean giants and lounge on private turquoise coral sandbars.',
+                'description' => 'Experience the magic of South-Eastern Cebu in pure comfort. Hosted by marine conservation advocate Maria Santos, this curated 2-day escape features the world-renowned Oslob Whale Shark interaction, an exclusive boat crossing to Sumilon Island’s shifting sandbar, 1 night stay at Bluewater Sumilon Resort, and private roundtrip van transportation from Cebu City or Mactan.',
+                'destination' => 'Oslob & Sumilon Island, Cebu',
+                'duration' => '2D1N',
+                'durationDays' => 2,
+                'durationNights' => 1,
+                'category' => 'island-escape',
+                'categoryLabel' => 'Island & Marine',
+                'price' => 6200,
+                'originalPrice' => 7450,
+                'badge' => 'Featured',
+                'featured' => true,
+                'coverImage' => 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=1200',
+                'localImageKey' => 'whaleshark',
+                'gallery' => [
+                    'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=1200',
+                    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200',
+                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+                ],
+                'rating' => 4.9,
+                'reviewCount' => 29,
+                'maxGroupSize' => 10,
+                'meetingPoint' => 'Cebu City / Mactan Hotel Lobby (Private Door-to-Door Pickup Included)',
+                'host' => [
+                    'id' => 3,
+                    'name' => 'Maria Santos',
+                    'avatar' => 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300',
+                    'role' => 'Marine Biologist & Tour Guide',
+                    'badge' => 'DOT Accredited',
+                    'rating' => 5.0,
+                    'reviewCount' => 32,
+                    'toursCount' => 84,
+                    'bio' => 'Passionate marine conservationist born in Oslob. Dedicated to ethical eco-tourism, respectful wildlife encounters, and warm Cebuano hospitality.',
+                    'responseRate' => '98% (within 15 mins)',
+                    'verified' => true,
+                ],
+                'inclusions' => [
+                    [
+                        'type' => 'attraction',
+                        'title' => 'Sumilon Island Protected Sandbar',
+                        'subtitle' => 'Round-trip private boat transfers and marine reserve access',
+                        'icon' => 'sunny-outline',
+                        'badge' => 'Attraction',
+                    ],
+                    [
+                        'type' => 'activity',
+                        'title' => 'Oslob Whale Shark Eco Encounter',
+                        'subtitle' => 'Early priority boat slot, briefing, snorkel gear & underwater photography guidance',
+                        'icon' => 'water-outline',
+                        'badge' => 'Things to Do',
+                    ],
+                    [
+                        'type' => 'attraction',
+                        'title' => 'Tumalog Falls Enchanted Cascade',
+                        'subtitle' => 'Visit the ethereal curtain waterfall nestled in pristine limestone cliffs',
+                        'icon' => 'leaf-outline',
+                        'badge' => 'Attraction',
+                    ],
+                    [
+                        'type' => 'accommodation',
+                        'title' => 'Bluewater Sumilon Island Resort',
+                        'subtitle' => '1 Night • Deluxe Island Villa with breakfast buffet',
+                        'icon' => 'bed-outline',
+                        'badge' => 'Hotel & Stays',
+                    ],
+                    [
+                        'type' => 'rental',
+                        'title' => 'Toyota HiAce Commuter Van Transfer',
+                        'subtitle' => 'Private round-trip door-to-door transfer with professional chauffeur',
+                        'icon' => 'bus-outline',
+                        'badge' => 'Vehicle Rental',
+                    ],
+                    [
+                        'type' => 'perk',
+                        'title' => 'Sumilon Island Picnic Lunch Buffet',
+                        'subtitle' => 'Fresh grilled Cebuano specialties and tropical juices',
+                        'icon' => 'restaurant-outline',
+                        'badge' => 'Included Perk',
+                    ],
+                ],
+                'exclusions' => [
+                    'Personal scuba equipment rental (optional upgrade)',
+                    'Gratuities for driver and boatmen',
+                ],
+                'itinerary' => [
+                    [
+                        'day' => 1,
+                        'title' => 'Day 1: Southbound Coastline Cruise & Sumilon Island Sandbar',
+                        'description' => 'Morning van pickup, scenic coastal drive, boat ride to Sumilon, and resort relaxation.',
+                        'highlights' => [
+                            'Early morning pickup from your Cebu City or Mactan hotel in a private Toyota HiAce van',
+                            'Arrive at Oslob mainland and board the scenic 15-minute boat to Sumilon Island',
+                            'Check-in at Bluewater Sumilon Resort',
+                            'Lounge on the shifting white sandbar surrounded by turquoise lagoons',
+                            'Lagoon kayaking and nature trail walk to the historic 19th-century Spanish watchtower',
+                        ],
+                        'schedule' => [
+                            ['time' => '06:00 AM', 'activity' => 'Private door-to-door van pickup'],
+                            ['time' => '09:30 AM', 'activity' => 'Boat crossing to Sumilon Island'],
+                            ['time' => '12:00 PM', 'activity' => 'Sumilon beachfront buffet lunch'],
+                            ['time' => '02:00 PM', 'activity' => 'Sandbar snorkeling and kayak adventure'],
+                        ],
+                    ],
+                    [
+                        'day' => 2,
+                        'title' => 'Day 2: Whale Shark Encounter & Tumalog Falls',
+                        'description' => 'Early morning interaction with whale sharks followed by Tumalog Falls mist.',
+                        'highlights' => [
+                            'Pre-dawn priority boat back to Oslob marine sanctuary for first-light whale shark viewing',
+                            'Snorkel alongside the gentle giants with certified marine guide Maria',
+                            'Short scenic ride up the mountain to Tumalog Falls curtain cascades',
+                            'Return van trip to Cebu City with optional Carcar Lechon lunch stop',
+                        ],
+                        'schedule' => [
+                            ['time' => '06:30 AM', 'activity' => 'Priority whale shark briefing and snorkeling slot'],
+                            ['time' => '08:30 AM', 'activity' => 'Tumalog Falls exploration & bamboo raft photography'],
+                            ['time' => '11:00 AM', 'activity' => 'Check out and board return van transfer'],
+                            ['time' => '03:30 PM', 'activity' => 'Arrival back at Cebu City hotel'],
+                        ],
+                    ],
+                ],
+                'accommodationDetail' => [
+                    'hotelName' => 'Bluewater Sumilon Island Resort',
+                    'roomType' => 'Deluxe Island Room (Air-conditioned, private balcony)',
+                    'nights' => 1,
+                    'amenities' => [
+                        'Infinity Pool overlooking the Cebu Strait',
+                        'Private Island Beach & Sandbar Access',
+                        'Complimentary Island Breakfast & Welcome Drinks',
+                        'Kayaks and Snorkeling Gear Included',
+                    ],
+                    'partnerName' => 'Bluewater Resorts Group',
+                ],
+                'rentalDetail' => [
+                    'vehicleType' => 'Private Passenger Van',
+                    'model' => 'Toyota HiAce Grandia / Commuter',
+                    'duration' => 'Round-trip door-to-door service (Cebu City <-> Oslob)',
+                    'features' => [
+                        'Dedicated professional driver & fuel included',
+                        'Spacious captain seats & dual air-conditioning',
+                        'Complimentary cold bottled waters on board',
+                    ],
+                    'partnerName' => 'Cebu Island Transport Co.',
+                ],
+                'policy' => [
+                    'cancellation' => 'Free cancellation up to 72 hours prior to scheduled pickup date.',
+                    'confirmation' => 'Instant confirmation with QR travel voucher issued immediately.',
+                    'requirements' => [
+                        'Guests must follow strict Oslob marine wildlife guidelines (no sunscreen with oxybenzone, 3m distance)',
+                    ],
+                ],
+            ],
+            [
+                'id' => 'pkg-cebu-highlands-1day',
+                'slug' => 'cebu-highlands-cultural-heritage-1day',
+                'title' => '1-Day Cebu Highlands & Cultural Heritage Showcase',
+                'tagline' => 'Discover panoramic mountain crests, blooming flower gardens, and historic landmark treasures.',
+                'description' => 'The definitive cultural and mountain ridge day tour of Cebu. Curated and guided by heritage specialist Carlos Dizon, this seamless full-day experience takes you from ancient Spanish fortresses in downtown Cebu to the breathtaking Temple of Leah and colorful Sirao Flower Gardens perched 2,000 feet above the city in the Transcentral Highway mountains.',
+                'destination' => 'Busay Mountain Ridge & Cebu City',
+                'duration' => 'Full Day (8h)',
+                'durationDays' => 1,
+                'durationNights' => 0,
+                'category' => 'day-tour',
+                'categoryLabel' => 'Culture & Scenic',
+                'price' => 2450,
+                'originalPrice' => 2950,
+                'badge' => 'Day Trip',
+                'featured' => false,
+                'coverImage' => 'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=1200',
+                'localImageKey' => 'templeofleah',
+                'gallery' => [
+                    'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=1200',
+                    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1200',
+                ],
+                'rating' => 4.8,
+                'reviewCount' => 44,
+                'maxGroupSize' => 6,
+                'meetingPoint' => 'Hotel Pickup anywhere in Cebu City or Mandaue',
+                'host' => [
+                    'id' => 4,
+                    'name' => 'Carlos Dizon',
+                    'avatar' => 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300',
+                    'role' => 'Heritage & Architectural Guide',
+                    'badge' => 'Master Guide',
+                    'rating' => 4.8,
+                    'reviewCount' => 65,
+                    'toursCount' => 140,
+                    'bio' => 'Lifelong Cebuano historian with a deep passion for architectural heritage, colonial folklore, and local mountain coffee culture.',
+                    'responseRate' => '95% (within 30 mins)',
+                    'verified' => true,
+                ],
+                'inclusions' => [
+                    [
+                        'type' => 'attraction',
+                        'title' => 'Temple of Leah (Cebu’s Taj Mahal)',
+                        'subtitle' => 'Neoclassical Roman temple with panoramic skyline views of Cebu City',
+                        'icon' => 'business-outline',
+                        'badge' => 'Attraction',
+                    ],
+                    [
+                        'type' => 'attraction',
+                        'title' => 'Sirao Pictorial Flower Garden',
+                        'subtitle' => 'Vibrant celosia blooms and mountain photo spots (Little Amsterdam)',
+                        'icon' => 'rose-outline',
+                        'badge' => 'Attraction',
+                    ],
+                    [
+                        'type' => 'activity',
+                        'title' => 'Historic Fort San Pedro & Magellan’s Cross',
+                        'subtitle' => 'Private guided walking tour through 450 years of Cebuano history',
+                        'icon' => 'ribbon-outline',
+                        'badge' => 'Things to Do',
+                    ],
+                    [
+                        'type' => 'rental',
+                        'title' => 'Private Chauffeur Sedan (Toyota Vios)',
+                        'subtitle' => 'Full 8-hour air-conditioned private vehicle with all gas & parking included',
+                        'icon' => 'car-outline',
+                        'badge' => 'Vehicle Rental',
+                    ],
+                    [
+                        'type' => 'perk',
+                        'title' => 'All Entrance Fees & Bottled Refreshments',
+                        'subtitle' => 'Skip-the-line express admission to all attractions',
+                        'icon' => 'sparkles-outline',
+                        'badge' => 'Included Perk',
+                    ],
+                ],
+                'exclusions' => ['Lunch meals and snacks', 'Personal souvenir purchases'],
+                'itinerary' => [
+                    [
+                        'day' => 1,
+                        'title' => 'Full Day Itinerary (8:30 AM – 4:30 PM)',
+                        'description' => 'Complete historic colonial district in the morning, followed by cooling mountain heights.',
+                        'highlights' => [
+                            '08:30 AM: Doorstep hotel pickup in comfortable air-conditioned private sedan',
+                            '09:00 AM: Historic walking tour: Magellan’s Cross, Basilica Minore del Santo Niño & Fort San Pedro',
+                            '11:30 AM: Ascent into Busay Mountain Ridge with lunch break at a scenic overlook restaurant',
+                            '01:00 PM: Explore the grand Roman pillars and museum of Temple of Leah',
+                            '02:30 PM: Walk among colorful celosia blooms and giant hand sculptures at Sirao Garden',
+                            '04:30 PM: Relaxing descent back to your hotel',
+                        ],
+                    ],
+                ],
+                'rentalDetail' => [
+                    'vehicleType' => 'Sedan with Driver',
+                    'model' => 'Toyota Vios 1.5G AT',
+                    'duration' => '8 Hours (Full Tour Duration)',
+                    'features' => ['Air-conditioned comfort', 'Private dedicated driver', 'Fuel and parking fees included'],
+                    'partnerName' => 'Cebu City Executive Wheels',
+                ],
+                'policy' => [
+                    'cancellation' => 'Cancel up to 24 hours in advance for a full refund.',
+                    'confirmation' => 'Instant booking confirmation.',
+                    'requirements' => ['Comfortable walking shoes and camera/phone for stunning photos.'],
+                ],
+            ],
+            [
+                'id' => 'pkg-bantayan-island-3d2n',
+                'slug' => 'bantayan-island-paradise-3d2n',
+                'title' => '3D2N Bantayan Tropical Paradise: Virgin Island, White Beaches & E-Trike',
+                'tagline' => 'Unwind on northern Cebu’s powdered sands with fresh seafood and island outrigger cruising.',
+                'description' => 'Step into the laid-back rhythm of Bantayan Island. Featuring powdery white beaches, crystal clear shallows, Virgin Island cliff jumping and snorkeling, 2 nights beachfront in Santa Fe, and your own electric trike / scooter to cruise sleepy fishing villages and sunset cafes.',
+                'destination' => 'Bantayan Island & Santa Fe, North Cebu',
+                'duration' => '3D2N',
+                'durationDays' => 3,
+                'durationNights' => 2,
+                'category' => 'island-escape',
+                'categoryLabel' => 'Tropical Island',
+                'price' => 7650,
+                'originalPrice' => 8900,
+                'badge' => 'Popular',
+                'featured' => false,
+                'coverImage' => 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200',
+                'localImageKey' => 'bantayan',
+                'gallery' => [
+                    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200',
+                    'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=1200',
+                ],
+                'rating' => 4.9,
+                'reviewCount' => 22,
+                'maxGroupSize' => 8,
+                'meetingPoint' => 'Santa Fe Port Ferry Terminal, Bantayan Island',
+                'host' => [
+                    'id' => 2,
+                    'name' => 'Marc Repuesto',
+                    'avatar' => 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+                    'role' => 'Licensed Regional Tour Guide',
+                    'badge' => 'DOT Accredited',
+                    'rating' => 4.9,
+                    'reviewCount' => 48,
+                    'toursCount' => 112,
+                    'bio' => 'Expert island hopper and explorer passionate about showcasing Cebu’s untouched natural beauty.',
+                    'responseRate' => '100% (within 10 mins)',
+                    'verified' => true,
+                ],
+                'inclusions' => [
+                    [
+                        'type' => 'attraction',
+                        'title' => 'Virgin Island Marine Reserve & Cliff Jump',
+                        'subtitle' => 'Round-trip private motorized banca cruise and island entry',
+                        'icon' => 'boat-outline',
+                        'badge' => 'Attraction',
+                    ],
+                    [
+                        'type' => 'activity',
+                        'title' => 'Kota Beach Sandbar & Ogtong Cave Exploration',
+                        'subtitle' => 'Swim in the natural freshwater cave and relax on the curved sandbar',
+                        'icon' => 'sparkles-outline',
+                        'badge' => 'Things to Do',
+                    ],
+                    [
+                        'type' => 'accommodation',
+                        'title' => 'Amihan Beach Cabanas',
+                        'subtitle' => '2 Nights • Beachfront Deluxe Bamboo Cottage with daily breakfast',
+                        'icon' => 'bed-outline',
+                        'badge' => 'Hotel & Stays',
+                    ],
+                    [
+                        'type' => 'rental',
+                        'title' => 'Electric Trike / Island Scooter',
+                        'subtitle' => '3-Day rental for effortless island exploration at your own pace',
+                        'icon' => 'flash-outline',
+                        'badge' => 'Vehicle Rental',
+                    ],
+                    [
+                        'type' => 'perk',
+                        'title' => 'Port Greeting & Luggage Transfers',
+                        'subtitle' => 'Hassle-free meet-and-greet at Santa Fe port',
+                        'icon' => 'checkmark-circle-outline',
+                        'badge' => 'Included Perk',
+                    ],
+                ],
+                'exclusions' => ['Ferry tickets from Hagnaya to Santa Fe', 'Dinner and personal expenses'],
+                'itinerary' => [
+                    [
+                        'day' => 1,
+                        'title' => 'Day 1: Port Welcome, Scooter Pickup & Sunset at Kota Beach',
+                        'description' => 'Arrive at Santa Fe port, check in to beach cabana, and witness legendary Bantayan sunset.',
+                        'highlights' => [
+                            'Port meet and greet with Guide Marc’s local team',
+                            'Check in to your beachfront cabana at Amihan Beach Resort',
+                            'Pick up your electric scooter or e-trike',
+                            'Sunset stroll along the world-famous curved sandbar of Kota Beach',
+                        ],
+                    ],
+                    [
+                        'day' => 2,
+                        'title' => 'Day 2: Virgin Island Banca Expedition & Cliff Jumping',
+                        'description' => 'Private outrigger boat cruise to Virgin Island for pristine reef snorkeling.',
+                        'highlights' => [
+                            'Board private motorized banca for scenic 20-minute ride to Virgin Island',
+                            'Swim in powdery crystal shallows and snorkel with clownfish',
+                            'Optional 20-foot wooden cliff plunge into deep azure waters',
+                            'Fresh grilled seafood lunch on the island beach',
+                            'Afternoon dip in Ogtong Cave’s subterranean freshwater spring',
+                        ],
+                    ],
+                    [
+                        'day' => 3,
+                        'title' => 'Day 3: Bantayan Heritage Town, Dried Fish Market & Departure',
+                        'description' => 'Morning ride to the centuries-old Saints Peter and Paul Church and port drop-off.',
+                        'highlights' => [
+                            'Ride to Bantayan town proper to visit the 1863 Coral Stone Church',
+                            'Stop at the famous Bantayan Danggit market for authentic local souvenirs',
+                            'Return scooter and transfer back to Santa Fe port for your mainland ferry',
+                        ],
+                    ],
+                ],
+                'accommodationDetail' => [
+                    'hotelName' => 'Amihan Beach Cabanas',
+                    'roomType' => 'Deluxe Beachfront Bamboo Cottage',
+                    'nights' => 2,
+                    'amenities' => [
+                        'Direct Step-Out Beach Access',
+                        'Tropical Artisan Breakfast Included',
+                        'Air Conditioning & Hot Water',
+                        'High-Speed Beach Wi-Fi',
+                    ],
+                    'partnerName' => 'Amihan Hospitality',
+                ],
+                'rentalDetail' => [
+                    'vehicleType' => 'E-Scooter / Trike',
+                    'model' => 'Island Eco-Scooter 125',
+                    'duration' => '3 Full Days',
+                    'features' => ['Easy automatic drive', '2 safety helmets included', 'Free recharge at resort'],
+                    'partnerName' => 'Bantayan Eco-Wheels',
+                ],
+                'policy' => [
+                    'cancellation' => 'Free cancellation up to 48 hours prior to arrival.',
+                    'confirmation' => 'Instant confirmation with guide contact info provided immediately.',
+                    'requirements' => ['Beach-ready clothing and waterproof bag for island hopping.'],
+                ],
+            ],
+        ];
     }
 }

@@ -9,11 +9,19 @@
  * @var array<int,array<string,mixed>> $gallery
  */
 $lStatus = (string) ($listing['status'] ?? 'pending');
-$amenities = !empty($listing['included']) ? array_map('trim', explode(',', (string) $listing['included'])) : [];
-$notIncluded = !empty($listing['not_included']) ? array_map('trim', explode(',', (string) $listing['not_included'])) : [];
+$includedRaw = (string) ($listing['included'] ?? '');
+$amenities = !empty($includedRaw) ? array_values(array_filter(array_map('trim', preg_split('/[\r\n,]+/', $includedRaw)))) : [];
+$notIncludedRaw = (string) ($listing['not_included'] ?? '');
+$notIncluded = !empty($notIncludedRaw) ? array_values(array_filter(array_map('trim', preg_split('/[\r\n,]+/', $notIncludedRaw)))) : [];
 $thumb = !empty($listing['cover_image']) ? $listing['cover_image'] : 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80';
 $isAttraction = ($listing['category_slug'] ?? '') === 'attractions' || ($listing['category_slug'] ?? '') === 'attraction-and-tours';
+$isPackage = ($listing['category_slug'] ?? '') === 'packages' || ($listing['category_slug'] ?? '') === 'travel-packages';
 $cap = (int) ($listing['total_capacity'] ?? $listing['capacity'] ?? 10);
+$packageInclusions = $packageInclusions ?? [];
+$incThings = $packageInclusions['things_to_do'] ?? [];
+$incAttrs = $packageInclusions['attractions'] ?? [];
+$incHotel = $packageInclusions['hotel'] ?? null;
+$incRental = $packageInclusions['rental'] ?? null;
 ?>
 <div style="margin-bottom:1.5rem;">
     <a href="<?= e(url('/admin/guide-listings')) ?>" class="btn btn-ghost btn-sm" style="margin-bottom:0.75rem;">← Back to Guide Listings Review</a>
@@ -21,7 +29,11 @@ $cap = (int) ($listing['total_capacity'] ?? $listing['capacity'] ?? 10);
         <div>
             <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.35rem;">
                 <h1 class="mb-0"><?= e($listing['title']) ?></h1>
-                <?php if ($isAttraction): ?>
+                <?php if ($isPackage): ?>
+                    <span class="pill" style="font-size:0.78rem;padding:3px 10px;background:rgba(139,92,246,0.18);color:#a78bfa;border:1px solid rgba(139,92,246,0.35);font-weight:700;border-radius:20px;">
+                        Travel Package
+                    </span>
+                <?php elseif ($isAttraction): ?>
                     <span class="pill" style="font-size:0.78rem;padding:3px 10px;background:rgba(236,72,153,0.18);color:#f472b6;border:1px solid rgba(236,72,153,0.35);font-weight:700;border-radius:20px;">
                         Attraction
                     </span>
@@ -83,7 +95,15 @@ $cap = (int) ($listing['total_capacity'] ?? $listing['capacity'] ?? 10);
                         <div class="hint" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;">Rate &amp; Unit</div>
                         <strong style="font-size:0.95rem;color:var(--brand, #10B981);">
                             <?= (float) ($listing['price'] ?? 0) > 0 ? money((float) $listing['price']) : 'Free' ?>
-                            <small class="hint">/ <?= e($listing['price_unit'] ?? 'person') ?></small>
+                            <?php if ($isPackage): ?>
+                                <small class="hint">(Total Package Price)</small>
+                            <?php else: ?>
+                                <?php if ($isPackage): ?>
+                                <small class="hint">(Total Package Price)</small>
+                            <?php else: ?>
+                                <small class="hint">/ <?= e($listing['price_unit'] ?? 'person') ?></small>
+                            <?php endif; ?>
+                            <?php endif; ?>
                         </strong>
                     </div>
                     <div>
@@ -111,7 +131,180 @@ $cap = (int) ($listing['total_capacity'] ?? $listing['capacity'] ?? 10);
                     <?php endif; ?>
                 </div>
 
-                <?php if (!empty($listing['meeting_point']) || !empty($listing['address'])): ?>
+                
+                <?php if ($isPackage && (!empty($incThings) || !empty($incAttrs) || !empty($incHotel) || !empty($incRental))): ?>
+                    <!-- ======================================================== -->
+                    <!-- DEDICATED PACKAGE INCLUSIONS / SELECTED SERVICES SECTION  -->
+                    <!-- ======================================================== -->
+                    <div style="margin: 2rem 0; padding: 1.5rem; background: rgba(139, 92, 246, 0.04); border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 14px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:0.85rem;flex-wrap:wrap;gap:0.75rem;">
+                            <div style="display:flex;align-items:center;gap:0.75rem;">
+                                <span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:rgba(139,92,246,0.2);color:#c4b5fd;font-size:1.3rem;">📦</span>
+                                <div>
+                                    <h3 style="margin:0;font-size:1.25rem;font-weight:800;color:#ffffff;letter-spacing:-0.02em;">Package Inclusions (Selected Services)</h3>
+                                    <p class="hint mb-0" style="font-size:0.85rem;color:#94a3b8;">
+                                        Inspect the actual tours, partner accommodation, and rental units bundled into this travel package.
+                                    </p>
+                                </div>
+                            </div>
+                            <span class="pill" style="background:rgba(139,92,246,0.25);color:#ede9fe;border:1px solid rgba(139,92,246,0.5);font-weight:700;padding:4px 12px;font-size:0.8rem;border-radius:20px;">
+                                Verified Bundled Services
+                            </span>
+                        </div>
+
+                        <!-- A. THINGS TO DO SECTION -->
+                        <?php if (!empty($incThings)): ?>
+                            <div style="margin-bottom: 1.75rem;">
+                                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
+                                    <span style="font-size:1.1rem;">🏄</span>
+                                    <h4 style="margin:0;font-size:1.05rem;font-weight:700;color:#38bdf8;">Things to Do (<?= count($incThings) ?>)</h4>
+                                </div>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:1rem;">
+                                    <?php foreach ($incThings as $act): ?>
+                                        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;">
+                                            <div style="position:relative;height:140px;background:#1e293b;">
+                                                <img src="<?= e(img_src($act['cover_image'] ?? 'uploads/places/kawasan.jpg')) ?>" alt="<?= e($act['title']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.src='https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600'">
+                                                <span style="position:absolute;top:0.5rem;left:0.5rem;background:rgba(14,165,233,0.9);color:#ffffff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase;">Things to Do</span>
+                                            </div>
+                                            <div style="padding:0.85rem;flex:1;display:flex;flex-direction:column;">
+                                                <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;">📍 <?= e($act['area'] ?? 'Cebu') ?></div>
+                                                <strong style="font-size:0.95rem;color:#f8fafc;line-height:1.3;margin-bottom:0.5rem;"><?= e($act['title']) ?></strong>
+                                                <div style="margin-top:auto;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.5rem;">
+                                                    <span style="color:#34d399;font-weight:800;font-size:0.95rem;"><?= money((float) ($act['price'] ?? 0)) ?> <small style="color:#94a3b8;font-size:0.7rem;font-weight:normal;">/ <?= e($act['price_unit'] ?? 'person') ?></small></span>
+                                                    <span class="hint" style="font-size:0.75rem;">⏱ <?= e($act['duration'] ?? 'Half day') ?></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- B. ATTRACTIONS SECTION -->
+                        <?php if (!empty($incAttrs)): ?>
+                            <div style="margin-bottom: 1.75rem;">
+                                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
+                                    <span style="font-size:1.1rem;">🎟️</span>
+                                    <h4 style="margin:0;font-size:1.05rem;font-weight:700;color:#f472b6;">Attractions (<?= count($incAttrs) ?>)</h4>
+                                </div>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:1rem;">
+                                    <?php foreach ($incAttrs as $att): ?>
+                                        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;">
+                                            <div style="position:relative;height:140px;background:#1e293b;">
+                                                <img src="<?= e(img_src($att['cover_image'] ?? 'uploads/places/sardine.jpg')) ?>" alt="<?= e($att['title']) ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.src='https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=600'">
+                                                <span style="position:absolute;top:0.5rem;left:0.5rem;background:rgba(236,72,153,0.9);color:#ffffff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase;">Attraction</span>
+                                            </div>
+                                            <div style="padding:0.85rem;flex:1;display:flex;flex-direction:column;">
+                                                <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;">📍 <?= e($att['area'] ?? 'Cebu') ?></div>
+                                                <strong style="font-size:0.95rem;color:#f8fafc;line-height:1.3;margin-bottom:0.5rem;"><?= e($att['title']) ?></strong>
+                                                <div style="margin-top:auto;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.5rem;">
+                                                    <span style="color:#34d399;font-weight:800;font-size:0.95rem;"><?= money((float) ($att['price'] ?? 0)) ?> <small style="color:#94a3b8;font-size:0.7rem;font-weight:normal;">/ <?= e($att['price_unit'] ?? 'person') ?></small></span>
+                                                    <span class="hint" style="font-size:0.75rem;">⏱ <?= e($att['duration'] ?? 'Flexible') ?></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- C. HOTEL ACCOMMODATION SECTION -->
+                        <?php if (!empty($incHotel)): ?>
+                            <div style="margin-bottom: 1.75rem;">
+                                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
+                                    <span style="font-size:1.1rem;">🏨</span>
+                                    <h4 style="margin:0;font-size:1.05rem;font-weight:700;color:#fbbf24;">Hotel Accommodation</h4>
+                                </div>
+                                <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:1.25rem;padding:1.25rem;">
+                                    <div style="position:relative;min-height:180px;border-radius:10px;overflow:hidden;background:#1e293b;">
+                                        <img src="<?= e(img_src($incHotel['hotel_cover'] ?? $incHotel['room_image'] ?? 'uploads/places/hotel.jpg')) ?>" alt="<?= e($incHotel['hotel_name'] ?? 'Partner Hotel') ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.src='https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=600'">
+                                        <span style="position:absolute;top:0.6rem;left:0.6rem;background:rgba(245,158,11,0.9);color:#ffffff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase;">Hotel &amp; Stays</span>
+                                    </div>
+                                    <div style="display:flex;flex-direction:column;justify-content:space-between;">
+                                        <div>
+                                            <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.25rem;">📍 <?= e($incHotel['hotel_area'] ?? 'Moalboal, Cebu') ?></div>
+                                            <h4 style="margin:0 0 0.5rem 0;font-size:1.15rem;color:#f8fafc;font-weight:800;"><?= e($incHotel['hotel_name'] ?? 'Sea Breeze Oceanfront Resort') ?></h4>
+                                            <div style="background:rgba(255,255,255,0.04);padding:0.65rem 0.85rem;border-radius:8px;border:1px solid rgba(255,255,255,0.08);margin-bottom:0.75rem;">
+                                                <div style="display:flex;justify-content:space-between;font-size:0.9rem;">
+                                                    <span style="color:#f8fafc;font-weight:700;">Room: <?= e($incHotel['room_name'] ?? 'Deluxe Queen Room') ?></span>
+                                                    <span style="color:#34d399;font-weight:800;"><?= money((float) ($incHotel['price_per_night'] ?? 2200)) ?> <small style="color:#94a3b8;font-size:0.75rem;">/ night</small></span>
+                                                </div>
+                                                <div style="font-size:0.78rem;color:#94a3b8;margin-top:4px;">
+                                                    Max: <?= (int) ($incHotel['max_guests'] ?? 2) ?> Guests • <?= e($incHotel['bed_type'] ?? '1 Queen Bed') ?> • Verified Partner: <?= e($incHotel['partner_name'] ?? 'Hospitality Provider') ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Check-in and Check-out Cards -->
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-top:0.5rem;">
+                                            <div style="padding:0.65rem 0.85rem;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;">
+                                                <span style="font-size:0.7rem;color:#c4b5fd;font-weight:700;display:block;text-transform:uppercase;">Check-in Schedule</span>
+                                                <strong style="font-size:0.85rem;color:#f8fafc;display:block;margin-top:2px;">
+                                                    Day 1 · From <?= date('g:i A', strtotime((string) ($incHotel['check_in_time'] ?? '14:00:00'))) ?>
+                                                </strong>
+                                                <small class="hint" style="font-size:0.7rem;">Front desk key handover</small>
+                                            </div>
+                                            <div style="padding:0.65rem 0.85rem;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:8px;">
+                                                <span style="font-size:0.7rem;color:#6ee7b7;font-weight:700;display:block;text-transform:uppercase;">Check-out Schedule</span>
+                                                <strong style="font-size:0.85rem;color:#f8fafc;display:block;margin-top:2px;">
+                                                    Day 3 · Until <?= date('g:i A', strtotime((string) ($incHotel['check_out_time'] ?? '12:00:00'))) ?>
+                                                </strong>
+                                                <small class="hint" style="font-size:0.7rem;">Room clearance &amp; departure</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- D. RENTAL SERVICES SECTION -->
+                        <?php if (!empty($incRental)): ?>
+                            <div>
+                                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.85rem;">
+                                    <span style="font-size:1.1rem;">🛵</span>
+                                    <h4 style="margin:0;font-size:1.05rem;font-weight:700;color:#60a5fa;">Rental Services</h4>
+                                </div>
+                                <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:1.25rem;padding:1.25rem;">
+                                    <div style="position:relative;min-height:180px;border-radius:10px;overflow:hidden;background:#1e293b;">
+                                        <img src="<?= e(img_src($incRental['vehicle_image'] ?? 'uploads/places/vehicle.jpg')) ?>" alt="<?= e($incRental['vehicle_name'] ?? 'Rental Vehicle') ?>" style="width:100%;height:100%;object-fit:cover;" onerror="this.src='https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=600'">
+                                        <span style="position:absolute;top:0.6rem;left:0.6rem;background:rgba(37,99,235,0.9);color:#ffffff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase;">Vehicle Rental</span>
+                                    </div>
+                                    <div style="display:flex;flex-direction:column;justify-content:space-between;">
+                                        <div>
+                                            <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.25rem;">📍 <?= e($incRental['location'] ?? 'Cebu, Philippines') ?></div>
+                                            <h4 style="margin:0 0 0.5rem 0;font-size:1.15rem;color:#f8fafc;font-weight:800;">
+                                                <?= e($incRental['vehicle_name'] ?? ($incRental['make'] . ' ' . $incRental['model'])) ?>
+                                            </h4>
+                                            <div style="background:rgba(255,255,255,0.04);padding:0.65rem 0.85rem;border-radius:8px;border:1px solid rgba(255,255,255,0.08);margin-bottom:0.75rem;">
+                                                <div style="display:flex;justify-content:space-between;font-size:0.9rem;">
+                                                    <span style="color:#f8fafc;font-weight:700;">Type: <?= ucfirst(e($incRental['vehicle_type'] ?? 'Scooter')) ?></span>
+                                                    <span style="color:#60a5fa;font-weight:800;"><?= money((float) ($incRental['daily_rate'] ?? 650)) ?> <small style="color:#94a3b8;font-size:0.75rem;">/ day</small></span>
+                                                </div>
+                                                <div style="font-size:0.78rem;color:#94a3b8;margin-top:4px;">
+                                                    Automatic • 2 DOT Helmets • Unlimited Mileage • Partner: <?= e($incRental['partner_name'] ?? 'Rental Partner') ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Handover and Return Schedule Cards -->
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-top:0.5rem;">
+                                            <div style="padding:0.65rem 0.85rem;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:8px;">
+                                                <span style="font-size:0.7rem;color:#93c5fd;font-weight:700;display:block;text-transform:uppercase;">Handover / Pickup</span>
+                                                <strong style="font-size:0.85rem;color:#f8fafc;display:block;margin-top:2px;">Day 1 · 01:00 PM</strong>
+                                                <small class="hint" style="font-size:0.7rem;">Safety briefing &amp; helmet fitting</small>
+                                            </div>
+                                            <div style="padding:0.65rem 0.85rem;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:8px;">
+                                                <span style="font-size:0.7rem;color:#6ee7b7;font-weight:700;display:block;text-transform:uppercase;">Drop-off / Return</span>
+                                                <strong style="font-size:0.85rem;color:#f8fafc;display:block;margin-top:2px;">Day 3 · 12:00 PM</strong>
+                                                <small class="hint" style="font-size:0.7rem;">Unit inspection &amp; clearance</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+<?php if (!empty($listing['meeting_point']) || !empty($listing['address'])): ?>
                     <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;">Meeting Point &amp; Departure</h3>
                     <div style="padding:0.85rem 1rem;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;margin-bottom:1.5rem;">
                         <?php if (!empty($listing['meeting_point'])): ?>

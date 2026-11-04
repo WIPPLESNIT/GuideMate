@@ -1,6 +1,6 @@
 import { ApiListing } from '../services/api';
 
-const HIDDEN_CATEGORY_SLUGS = new Set(['restaurants', 'restaurant']);
+const HIDDEN_CATEGORY_SLUGS = new Set(['restaurants', 'restaurant', 'packages', 'travel-packages']);
 
 export function isHiddenCategorySlug(slug?: string | null): boolean {
   if (!slug) return false;

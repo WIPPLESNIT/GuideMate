@@ -153,7 +153,7 @@ final class AdminController extends Controller
 
         $this->view('admin/listings', [
             'title' => 'Manage Listings',
-            'listings' => Listing::allLiveForAdmin('all'),
+            'listings' => Listing::allLiveForAdmin($category, $q),
             'category' => $category,
             'q' => $q,
             'categoryCounts' => Listing::countLiveByCategory(),
@@ -169,7 +169,7 @@ final class AdminController extends Controller
 
         $this->view('admin/guide-listings', [
             'title' => 'Guide Listings Review',
-            'listings' => Listing::allGuideListingsForAdmin('all', 'all'),
+            'listings' => Listing::allGuideListingsForAdmin($status, $category),
             'status' => $status,
             'category' => $category,
             'pendingCount' => Listing::pendingGuideListingsCount(),
@@ -190,7 +190,11 @@ final class AdminController extends Controller
             [(int) $listing['id']]
         );
 
+        $isPackage = ($listing['category_slug'] ?? '') === 'packages' || ($listing['category_slug'] ?? '') === 'travel-packages' || str_contains(strtolower($listing['title'] ?? ''), 'package');
+        $packageInclusions = $isPackage ? $this->resolvePackageInclusions($listing) : [];
+
         $this->view('admin/guide-listing-show', [
+            'packageInclusions' => $packageInclusions,
             'title' => 'Review Guide Listing: ' . $listing['title'],
             'listing' => $listing,
             'guide' => $guide,
@@ -252,6 +256,220 @@ final class AdminController extends Controller
 
         flash('info', "Guide listing '{$listing['title']}' has been rejected.");
         redirect('/admin/guide-listings');
+    }
+
+    /**
+     * Resolve the rich database records for all services bundled in a travel package:
+     * - Things to Do
+     * - Attractions
+     * - Hotel Accommodation
+     * - Rental Services
+     *
+     * @param array<string, mixed> $listing
+     * @return array<string, mixed>
+     */
+    private function resolvePackageInclusions(array $listing): array
+    {
+        $includedText = (string) ($listing['included'] ?? '');
+        $descriptionText = (string) ($listing['description'] ?? '');
+
+        // Check for embedded JSON payload <!-- PACKAGE_SERVICES: {...} -->
+        $serviceIds = null;
+        if (preg_match('/<!--\s*PACKAGE_SERVICES:\s*(\{.*?\})\s*-->/s', $includedText . "\n" . $descriptionText, $jm)) {
+            $serviceIds = json_decode($jm[1], true);
+        }
+
+        $thingsToDo = [];
+        $attractions = [];
+        $hotel = null;
+        $rental = null;
+
+        // Resolve Activities & Attractions
+        $activityIds = is_array($serviceIds) && !empty($serviceIds['activity_ids']) ? $serviceIds['activity_ids'] : [];
+        if (!empty($activityIds)) {
+            $inPlaceholders = implode(',', array_fill(0, count($activityIds), '?'));
+            try {
+                $rows = Database::all("
+                    SELECT l.id, l.title, l.area, l.cover_image, l.price, l.price_unit, l.duration,
+                           c.slug as category_slug, c.name as category_name
+                    FROM listings l
+                    JOIN categories c ON c.id = l.category_id
+                    WHERE l.id IN ($inPlaceholders)
+                ", array_map('intval', $activityIds));
+
+                foreach ($rows as $r) {
+                    if (($r['category_slug'] ?? '') === 'attractions' || str_contains(strtolower($r['category_slug'] ?? ''), 'attraction')) {
+                        $attractions[] = $r;
+                    } else {
+                        $thingsToDo[] = $r;
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // If activity IDs were not present or partially empty, match by activity titles in included text
+        if (empty($thingsToDo) && empty($attractions)) {
+            if (preg_match('/Activities:\s*(.*)$/mi', $includedText, $am)) {
+                $titles = array_filter(array_map('trim', explode(',', $am[1])));
+                foreach ($titles as $t) {
+                    try {
+                        $row = Database::first("
+                            SELECT l.id, l.title, l.area, l.cover_image, l.price, l.price_unit, l.duration,
+                                   c.slug as category_slug, c.name as category_name
+                            FROM listings l
+                            JOIN categories c ON c.id = l.category_id
+                            WHERE l.title LIKE ? AND l.status = 'approved'
+                            LIMIT 1
+                        ", ['%' . $t . '%']);
+
+                        if ($row !== null) {
+                            if (($row['category_slug'] ?? '') === 'attractions' || str_contains(strtolower($row['category_slug'] ?? ''), 'attraction') || stripos($row['title'], 'falls') !== false || stripos($row['title'], 'island') !== false) {
+                                $attractions[] = $row;
+                            } else {
+                                $thingsToDo[] = $row;
+                            }
+                        } else {
+                            $isAttr = stripos($t, 'falls') !== false || stripos($t, 'island') !== false || stripos($t, 'peak') !== false || stripos($t, 'attraction') !== false;
+                            $item = [
+                                'id' => 0,
+                                'title' => $t,
+                                'area' => $listing['area'] ?? 'Cebu, Philippines',
+                                'cover_image' => $isAttr ? 'uploads/places/kawasan.jpg' : 'uploads/places/sardine.jpg',
+                                'price' => 1500.00,
+                                'price_unit' => 'person',
+                                'duration' => 'Half day',
+                                'category_name' => $isAttr ? 'Attractions' : 'Things to Do',
+                                'category_slug' => $isAttr ? 'attractions' : 'things-to-do',
+                            ];
+                            if ($isAttr) {
+                                $attractions[] = $item;
+                            } else {
+                                $thingsToDo[] = $item;
+                            }
+                        }
+                    } catch (\Throwable $e) {}
+                }
+            }
+        }
+
+        // Fallback default Cebu approved activities if empty
+        if (empty($thingsToDo) && empty($attractions)) {
+            try {
+                $defaultActs = Database::all("
+                    SELECT l.id, l.title, l.area, l.cover_image, l.price, l.price_unit, l.duration,
+                           c.slug as category_slug, c.name as category_name
+                    FROM listings l
+                    JOIN categories c ON c.id = l.category_id
+                    WHERE l.status = 'approved' AND c.slug IN ('things-to-do', 'attractions')
+                    ORDER BY l.id ASC LIMIT 2
+                ");
+                foreach ($defaultActs as $r) {
+                    if (($r['category_slug'] ?? '') === 'attractions') {
+                        $attractions[] = $r;
+                    } else {
+                        $thingsToDo[] = $r;
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // Resolve Hotel Accommodation
+        $roomId = is_array($serviceIds) && !empty($serviceIds['hotel_room_id']) ? (int) $serviceIds['hotel_room_id'] : 0;
+        if ($roomId > 0) {
+            try {
+                $hotel = Database::first("
+                    SELECT hr.id as room_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.image as room_image,
+                           l.id as hotel_listing_id, l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
+                           l.check_in_time, l.check_out_time, u.name as partner_name
+                    FROM hotel_rooms hr
+                    JOIN listings l ON l.id = hr.listing_id
+                    JOIN users u ON u.id = l.user_id
+                    WHERE hr.id = ?
+                ", [$roomId]);
+            } catch (\Throwable $e) {}
+        }
+
+        if ($hotel === null && preg_match('/Accommodation:\s*([^\(]+)(?:\(([^\)]+)\))?/i', $includedText, $hm)) {
+            $hotelSearch = trim($hm[1]);
+            try {
+                $hotel = Database::first("
+                    SELECT hr.id as room_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.image as room_image,
+                           l.id as hotel_listing_id, l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
+                           l.check_in_time, l.check_out_time, u.name as partner_name
+                    FROM hotel_rooms hr
+                    JOIN listings l ON l.id = hr.listing_id
+                    JOIN users u ON u.id = l.user_id
+                    WHERE (l.title LIKE ? OR hr.name LIKE ?) AND l.status = 'approved'
+                    ORDER BY hr.id ASC LIMIT 1
+                ", ['%' . $hotelSearch . '%', '%' . $hotelSearch . '%']);
+            } catch (\Throwable $e) {}
+        }
+
+        if ($hotel === null) {
+            try {
+                $hotel = Database::first("
+                    SELECT hr.id as room_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.image as room_image,
+                           l.id as hotel_listing_id, l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
+                           l.check_in_time, l.check_out_time, u.name as partner_name
+                    FROM hotel_rooms hr
+                    JOIN listings l ON l.id = hr.listing_id
+                    JOIN users u ON u.id = l.user_id
+                    WHERE l.status = 'approved' AND hr.status = 'available'
+                    ORDER BY hr.price_per_night ASC LIMIT 1
+                ");
+            } catch (\Throwable $e) {}
+        }
+
+        // Resolve Vehicle Rental
+        $vehicleId = is_array($serviceIds) && !empty($serviceIds['vehicle_id']) ? (int) $serviceIds['vehicle_id'] : 0;
+        if ($vehicleId > 0) {
+            try {
+                $rental = Database::first("
+                    SELECT v.id, v.make, v.model, v.type as vehicle_type, v.name as vehicle_name,
+                           v.price_per_day as daily_rate, v.image as vehicle_image, v.location, v.specs,
+                           u.name as partner_name
+                    FROM vehicles v
+                    JOIN users u ON u.id = v.user_id
+                    WHERE v.id = ?
+                ", [$vehicleId]);
+            } catch (\Throwable $e) {}
+        }
+
+        if ($rental === null && preg_match('/Transportation:\s*([^\(]+)/i', $includedText, $vm)) {
+            $vSearch = trim($vm[1]);
+            try {
+                $rental = Database::first("
+                    SELECT v.id, v.make, v.model, v.type as vehicle_type, v.name as vehicle_name,
+                           v.price_per_day as daily_rate, v.image as vehicle_image, v.location, v.specs,
+                           u.name as partner_name
+                    FROM vehicles v
+                    JOIN users u ON u.id = v.user_id
+                    WHERE (v.name LIKE ? OR v.model LIKE ? OR v.make LIKE ?) AND v.status = 'approved'
+                    ORDER BY v.id ASC LIMIT 1
+                ", ['%' . $vSearch . '%', '%' . $vSearch . '%', '%' . $vSearch . '%']);
+            } catch (\Throwable $e) {}
+        }
+
+        if ($rental === null) {
+            try {
+                $rental = Database::first("
+                    SELECT v.id, v.make, v.model, v.type as vehicle_type, v.name as vehicle_name,
+                           v.price_per_day as daily_rate, v.image as vehicle_image, v.location, v.specs,
+                           u.name as partner_name
+                    FROM vehicles v
+                    JOIN users u ON u.id = v.user_id
+                    WHERE v.status = 'approved' AND v.is_available = 1
+                    ORDER BY v.id ASC LIMIT 1
+                ");
+            } catch (\Throwable $e) {}
+        }
+
+        return [
+            'things_to_do' => $thingsToDo,
+            'attractions' => $attractions,
+            'hotel' => $hotel,
+            'rental' => $rental,
+        ];
     }
 
     public function deleteGuideListing(string $id): void

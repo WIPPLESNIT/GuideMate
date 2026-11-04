@@ -19,7 +19,14 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
         <div>
             <div class="section-head" style="margin-bottom:1rem;">
                 <div><h1><?= $isHotel ? 'My hotels' : e(__('d_my_listings', 'My listings')) ?></h1></div>
-                <a <?= $newBtnAttrs ?> class="btn btn-primary">+ <?= $isHotel ? 'New hotel listing' : e(__('d_new_listing', 'New listing')) ?></a>
+                <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+                    <?php if (!$isHotel): ?>
+                        <a href="<?= e(url('/dashboard/packages/create')) ?>" class="btn" style="background:#8b5cf6;color:#ffffff;border:1px solid #7c3aed;display:inline-flex;align-items:center;gap:0.4rem;font-weight:700;box-shadow:0 2px 4px rgba(139,92,246,0.25);">
+                            + New Travel Package
+                        </a>
+                    <?php endif; ?>
+                    <a <?= $newBtnAttrs ?> class="btn btn-primary">+ <?= $isHotel ? 'New hotel listing' : e(__('d_new_listing', 'New listing')) ?></a>
+                </div>
             </div>
 
             <div class="panel">
@@ -62,12 +69,25 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                                             </div>
                                         </div>
                                     </td>
-                                    <td><?= e($l['category_name']) ?></td>
+                                    <td>
+                                        <?= e($l['category_name']) ?>
+                                    </td>
                                     <td>
                                         <strong style="color:var(--brand, #059669);"><?= money($l['price']) ?></strong>
-                                        <small class="hint"><?= e(__('g_unit_' . str_replace(' ', '_', (string) $l['price_unit']), (string) $l['price_unit'])) ?></small>
+                                        <?php if (($l['category_slug'] ?? '') === 'packages'): ?>
+                                            <small class="hint">Package Price</small>
+                                        <?php else: ?>
+                                            <small class="hint"><?= e(__('g_unit_' . str_replace(' ', '_', (string) $l['price_unit']), (string) $l['price_unit'])) ?></small>
+                                        <?php endif; ?>
                                     </td>
-                                    <td><span class="pill pill-<?= e($l['status']) ?>"><?= e(status_label((string) $l['status'])) ?></span></td>
+                                    <td>
+                                        <span class="pill pill-<?= e($l['status']) ?>"><?= e(status_label((string) $l['status'])) ?></span>
+                                        <?php if ($l['status'] === 'rejected' && !empty($l['rejection_reason'])): ?>
+                                            <div style="font-size:0.75rem;color:#e11d48;margin-top:4px;max-width:180px;line-height:1.2;" title="<?= e($l['rejection_reason']) ?>">
+                                                ⚠️ <?= e(mb_strimwidth($l['rejection_reason'], 0, 35, '...')) ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td style="text-align:right;white-space:nowrap;">
                                         <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:6px;">
                                             <div class="res-action-wrap">
@@ -85,12 +105,20 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                                                      id="listingActionMenu_<?= (int) $l['id'] ?>"
                                                      role="menu"
                                                      aria-labelledby="listingActionBtn_<?= (int) $l['id'] ?>">
-                                                    <button type="button"
-                                                            class="res-action-item"
-                                                            onclick='openEditListingModal(<?= htmlspecialchars(json_encode($l, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, "UTF-8") ?>)'
-                                                            role="menuitem">
-                                                        <?= admin_icon('edit', 14) ?> <?= e(__('g_edit', 'Edit')) ?>
-                                                    </button>
+                                                    <?php if (($l['category_slug'] ?? '') === 'packages'): ?>
+                                                        <a href="<?= e(url('/dashboard/packages/' . (int) $l['id'] . '/edit')) ?>"
+                                                           class="res-action-item"
+                                                           role="menuitem">
+                                                            <?= admin_icon('edit', 14) ?> <?= e(__('g_edit', 'Edit')) ?>
+                                                        </a>
+                                                    <?php else: ?>
+                                                        <button type="button"
+                                                                class="res-action-item"
+                                                                onclick='openEditListingModal(<?= htmlspecialchars(json_encode($l, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, "UTF-8") ?>)'
+                                                                role="menuitem">
+                                                            <?= admin_icon('edit', 14) ?> <?= e(__('g_edit', 'Edit')) ?>
+                                                        </button>
+                                                    <?php endif; ?>
                                                     <?php if (!$isHotel): ?>
                                                     <button type="button"
                                                             class="res-action-item"

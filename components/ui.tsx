@@ -180,12 +180,12 @@ export function RatingPill({
   compact?: boolean;
 }) {
   const { brand } = useTheme();
-  if (!rating || rating <= 0) return null;
+  const safeRating = typeof rating === "number" && !isNaN(rating) ? rating : 0;
   return (
     <View style={[styles.ratingPill, compact && { paddingVertical: 2, paddingHorizontal: 6 }]}>
       <Ionicons name="star" size={compact ? 10 : 12} color={brand.gold} />
       <Text style={[styles.ratingText, compact && { fontSize: 10 }]}>
-        {rating.toFixed(1)}
+        {safeRating > 0 ? safeRating.toFixed(1) : "0"}
         {count ? ` (${count})` : ''}
       </Text>
     </View>

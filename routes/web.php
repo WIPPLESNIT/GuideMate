@@ -117,6 +117,10 @@ $router->get('/dashboard/verification/status', [GuideController::class, 'verific
 
 // ---- Listing management (guides + hotel partners) -------------------------
 $router->get('/dashboard/listings', [GuideController::class, 'listings'], ['listing_provider']);
+$router->get('/dashboard/packages/create', [GuideController::class, 'createPackage'], ['listing_provider']);
+$router->post('/dashboard/packages', [GuideController::class, 'storePackage'], ['listing_provider']);
+$router->get('/dashboard/packages/{id}/edit', [GuideController::class, 'editPackage'], ['listing_provider']);
+$router->post('/dashboard/packages/{id}', [GuideController::class, 'updatePackage'], ['listing_provider']);
 $router->get('/dashboard/listings/create', [GuideController::class, 'create'], ['listing_provider']);
 $router->post('/dashboard/listings', [GuideController::class, 'store'], ['listing_provider']);
 $router->get('/dashboard/listings/{id}/edit', [GuideController::class, 'edit'], ['listing_provider']);

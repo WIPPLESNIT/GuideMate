@@ -45,7 +45,7 @@ function categoryStyle(slug: string) {
 const SERVICES: { key: string; label: string; icon: string; color: string; bg: string }[] = [
   { key: 'guides', label: 'Tour Guides', icon: 'people', color: '#10B981', bg: '#E6F0FA' },
   { key: 'car', label: 'Car Rentals', icon: 'car-sport', color: '#3B82F6', bg: '#E0EDFF' },
-  { key: 'flights', label: 'Flights', icon: 'airplane', color: '#8B5CF6', bg: '#EDE9FE' },
+  { key: 'packages', label: 'Packages', icon: 'cube', color: '#8B5CF6', bg: '#EDE9FE' },
   { key: 'weather', label: 'Weather', icon: 'partly-sunny', color: '#0EA5E9', bg: '#E0F2FE' },
   { key: 'traffic', label: 'Traffic', icon: 'car', color: '#F97316', bg: '#FFEDD5' },
 ];
@@ -127,7 +127,7 @@ export default function HomeScreen() {
 
   const gridItems: GridItem[] = [
     ...(data?.categories ?? [])
-      .filter((category) => !isHiddenCategorySlug(category.slug))
+      .filter((category) => !isHiddenCategorySlug(category.slug) && category.slug !== 'packages' && category.slug !== 'travel-packages')
       .map((category) => {
       const s = categoryStyle(category.slug);
       return {
@@ -151,9 +151,8 @@ export default function HomeScreen() {
         if (s.key === 'car') return router.push('/car-rentals');
         if (s.key === 'weather') return router.push('/weather');
         if (s.key === 'traffic') return router.push('/traffic');
-        if (s.key === 'flights') {
-          return Alert.alert('Coming Soon', 'Stay tuned! Flight bookings are on the way. ✈️');
-        }
+        if (s.key === 'packages') return router.push('/packages');
+
         return openExplore();
       },
     })),
@@ -339,6 +338,7 @@ export default function HomeScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[brand.primary]} />
         }
+
         ListEmptyComponent={
           <EmptyState
             icon={error ? 'cloud-offline-outline' : 'compass-outline'}
@@ -348,6 +348,7 @@ export default function HomeScreen() {
             onAction={load}
           />
         }
+
       />
     </View>
   );

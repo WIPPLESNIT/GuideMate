@@ -842,4 +842,619 @@ final class GuideController extends Controller
         }
         return $slug;
     }
+
+    /**
+     * Display the 5-Step Travel Package Builder Wizard.
+     */
+    public function createPackage(): void
+    {
+        if (Auth::hasRole('hotel_provider') || Auth::hasRole('hotel_admin')) {
+            redirect('/dashboard/hotels');
+            return;
+        }
+
+        if (!$this->ensureApproved()) {
+            return;
+        }
+
+        Category::ensurePackagesCategory();
+
+        $userId = (int) Auth::id();
+
+        // 1. Guide's own approved activities & attractions, plus approved Cebu destinations
+        $myActivities = [];
+        try {
+            $myActivities = \App\Core\Database::all("
+                SELECT l.id, l.title, l.area, l.price, l.price_unit, l.duration, l.cover_image, l.summary,
+                       c.name as category_name, c.slug as category_slug,
+                       (CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) as is_mine
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                WHERE l.status = 'approved' AND c.slug IN ('things-to-do', 'attractions', 'attraction-and-tours')
+                ORDER BY (CASE WHEN l.user_id = ? THEN 0 ELSE 1 END), l.id DESC
+            ", [$userId, $userId]);
+        } catch (\Throwable $e) {
+            $myActivities = [];
+        }
+
+        // 2. Approved hotel rooms from accommodation partners with actual listing cover photos & check-in times
+        $hotelRooms = [];
+        try {
+            $hotelRooms = \App\Core\Database::all("
+                SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.amenities, hr.image as room_image,
+                       l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover, l.check_in_time, l.check_out_time,
+                       u.name as partner_name
+                FROM hotel_rooms hr
+                JOIN listings l ON l.id = hr.listing_id
+                JOIN users u ON u.id = l.user_id
+                WHERE l.status = 'approved' AND hr.status = 'available'
+                ORDER BY hr.price_per_night ASC
+                LIMIT 20
+            ");
+        } catch (\Throwable $e) {
+            $hotelRooms = [];
+        }
+
+        if ($hotelRooms === []) {
+            $hotelRooms = [
+                [
+                    'id' => 101,
+                    'listing_id' => 1,
+                    'room_name' => 'Deluxe Poolside Queen Room',
+                    'price_per_night' => 2200.00,
+                    'max_guests' => 2,
+                    'bed_type' => '1 Queen Bed',
+                    'amenities' => '["Free High-Speed Wi-Fi", "Swimming Pool Access", "Complimentary Daily Breakfast", "Air Conditioning & Hot Water"]',
+                    'hotel_name' => 'Moalboal Beach Haven Resort',
+                    'hotel_area' => 'Moalboal, Cebu',
+                    'hotel_cover' => 'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&q=80',
+                    'check_in_time' => '14:00:00',
+                    'check_out_time' => '12:00:00',
+                    'partner_name' => 'Sea Breeze Hospitality',
+                ],
+                [
+                    'id' => 102,
+                    'listing_id' => 2,
+                    'room_name' => 'Family Garden Villa Suite',
+                    'price_per_night' => 3800.00,
+                    'max_guests' => 4,
+                    'bed_type' => '2 Double Beds',
+                    'amenities' => '["Free High-Speed Wi-Fi", "Garden Balcony", "Air Conditioning", "Hot Water Shower"]',
+                    'hotel_name' => 'Kawasan Eco-Lodge & Spa',
+                    'hotel_area' => 'Badian, Cebu',
+                    'hotel_cover' => 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&q=80',
+                    'check_in_time' => '14:00:00',
+                    'check_out_time' => '12:00:00',
+                    'partner_name' => 'Eco-Lodge Partner',
+                ],
+            ];
+        }
+
+        // 3. Approved vehicles from rental partners with actual vehicle images
+        $vehicles = [];
+        try {
+            $vehicles = \App\Core\Database::all("
+                SELECT v.id, v.user_id, v.make, v.model, v.year, v.type as vehicle_type, v.name as vehicle_name,
+                       v.price_per_day as daily_rate, v.image as vehicle_image, v.location, v.description, v.specs,
+                       u.name as partner_name
+                FROM vehicles v
+                JOIN users u ON u.id = v.user_id
+                WHERE v.status = 'approved' AND v.is_available = 1
+                ORDER BY v.price_per_day ASC
+                LIMIT 20
+            ");
+        } catch (\Throwable $e) {
+            $vehicles = [];
+        }
+
+        if (count($vehicles) < 2) {
+            $vehicles[] = [
+                'id' => 201,
+                'user_id' => 167,
+                'make' => 'Yamaha',
+                'model' => 'NMAX 155cc ABS',
+                'year' => 2023,
+                'vehicle_type' => 'Scooter',
+                'vehicle_name' => 'Yamaha NMAX 155cc ABS Automatic',
+                'daily_rate' => 650.00,
+                'vehicle_image' => 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&q=80',
+                'location' => 'Moalboal, Cebu',
+                'description' => 'Top-of-the-line maxi-scooter with ABS, phone mount, and dual helmets.',
+                'specs' => '["Automatic Transmission", "ABS Brakes", "2 Helmets Included"]',
+                'partner_name' => 'Cebu South Moto Rentals',
+            ];
+            $vehicles[] = [
+                'id' => 202,
+                'user_id' => 167,
+                'make' => 'Toyota',
+                'model' => 'HiAce Commuter Van',
+                'year' => 2022,
+                'vehicle_type' => 'Van',
+                'vehicle_name' => 'Toyota HiAce Commuter 12-Seater (with Driver)',
+                'daily_rate' => 3800.00,
+                'vehicle_image' => 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&q=80',
+                'location' => 'Cebu City / South Cebu',
+                'description' => 'Spacious air-conditioned passenger van for groups and families.',
+                'specs' => '["12 Seats", "Air Conditioned", "Professional Driver Included"]',
+                'partner_name' => 'Island Tour Van Fleet',
+            ];
+        }
+
+        $this->view('guide/package-builder', [
+            'title' => 'New Travel Package',
+            'user' => Auth::user(),
+            'myActivities' => $myActivities,
+            'hotelRooms' => $hotelRooms,
+            'vehicles' => $vehicles,
+            'package' => null,
+            'isEdit' => false,
+            'existingPhotos' => [],
+            'selectedActivities' => [],
+            'errors' => errors(),
+        ]);
+    }
+
+    /**
+     * Display the 5-Step Travel Package Builder in Edit Mode for an existing package.
+     */
+    public function editPackage(string $id): void
+    {
+        if (Auth::hasRole('hotel_provider') || Auth::hasRole('hotel_admin')) {
+            redirect('/dashboard/hotels');
+            return;
+        }
+
+        if (!$this->ensureApproved()) {
+            return;
+        }
+
+        Category::ensurePackagesCategory();
+
+        $userId = (int) Auth::id();
+        $package = $this->ownedListing((int) $id);
+
+        if (($package['category_slug'] ?? '') !== 'packages') {
+            redirect('/dashboard/listings/' . (int) $id . '/edit');
+            return;
+        }
+
+        // 1. Guide's own approved activities & attractions
+        $myActivities = [];
+        try {
+            $myActivities = \App\Core\Database::all("
+                SELECT l.id, l.title, l.area, l.price, l.price_unit, l.duration, l.cover_image, l.summary,
+                       c.name as category_name, c.slug as category_slug,
+                       (CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) as is_mine
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                WHERE l.status = 'approved' AND c.slug IN ('things-to-do', 'attractions', 'attraction-and-tours')
+                ORDER BY (CASE WHEN l.user_id = ? THEN 0 ELSE 1 END), l.id DESC
+            ", [$userId, $userId]);
+        } catch (\Throwable $e) {
+            $myActivities = [];
+        }
+
+        // 2. Approved hotel rooms
+        $hotelRooms = [];
+        try {
+            $hotelRooms = \App\Core\Database::all("
+                SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.amenities, hr.image as room_image,
+                       l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover, l.check_in_time, l.check_out_time,
+                       u.name as partner_name
+                FROM hotel_rooms hr
+                JOIN listings l ON l.id = hr.listing_id
+                JOIN users u ON u.id = l.user_id
+                WHERE l.status = 'approved' AND hr.status = 'available'
+                ORDER BY hr.price_per_night ASC
+                LIMIT 20
+            ");
+        } catch (\Throwable $e) {
+            $hotelRooms = [];
+        }
+
+        // 3. Approved vehicles
+        $vehicles = [];
+        try {
+            $vehicles = \App\Core\Database::all("
+                SELECT v.id, v.user_id, v.make, v.model, v.year, v.type as vehicle_type, v.name as vehicle_name,
+                       v.price_per_day as daily_rate, v.image as vehicle_image, v.location, v.description, v.specs,
+                       u.name as partner_name
+                FROM vehicles v
+                JOIN users u ON u.id = v.user_id
+                WHERE v.status = 'approved' AND v.is_available = 1
+                ORDER BY v.price_per_day ASC
+                LIMIT 20
+            ");
+        } catch (\Throwable $e) {
+            $vehicles = [];
+        }
+
+        // 4. Retrieve existing photos
+        $photos = Listing::getPhotos((int) $id);
+        if ($photos === [] && !empty($package['cover_image'])) {
+            $photos = [$package['cover_image']];
+        }
+
+        // 5. Parse structured description parts
+        $rawDesc = (string) ($package['description'] ?? '');
+        $itinerary = '';
+        $policies = '';
+        $tags = '';
+        $cleanDesc = $rawDesc;
+
+        if (preg_match('/--- Policies & Requirements ---\s*(.*)$/s', $cleanDesc, $m)) {
+            $policies = trim($m[1]);
+            $cleanDesc = trim(str_replace($m[0], '', $cleanDesc));
+        }
+        if (preg_match('/--- Day-by-Day Itinerary ---\s*(.*)$/s', $cleanDesc, $m)) {
+            $itinerary = trim($m[1]);
+            $cleanDesc = trim(str_replace($m[0], '', $cleanDesc));
+        }
+        if (preg_match('/Experience Tags:\s*(.*)$/m', $cleanDesc, $m)) {
+            $tags = trim(str_replace(', ', "\n", $m[1]));
+            $cleanDesc = trim(str_replace($m[0], '', $cleanDesc));
+        }
+
+        // 6. Parse duration days and nights
+        $durationDays = 3;
+        $durationNights = 2;
+        if (!empty($package['duration']) && preg_match('/(\d+)\s*Days?\s*\/\s*(\d+)\s*Nights?/i', (string) $package['duration'], $dm)) {
+            $durationDays = (int) $dm[1];
+            $durationNights = (int) $dm[2];
+        }
+
+        // 7. Parse included activities
+        $includedText = (string) ($package['included'] ?? '');
+        $selectedActivities = [];
+        if (preg_match('/Activities:\s*(.*)$/m', $includedText, $am)) {
+            $actTitles = array_map('trim', explode(',', $am[1]));
+            foreach ($actTitles as $idx => $aTitle) {
+                foreach ($myActivities as $mAct) {
+                    if (strcasecmp($mAct['title'], $aTitle) === 0) {
+                        $selectedActivities[] = [
+                            'id' => (int) $mAct['id'],
+                            'title' => $mAct['title'],
+                            'rate' => (float) $mAct['price'],
+                            'area' => $mAct['area'],
+                            'cover' => $mAct['cover_image'],
+                            'category' => $mAct['category_name'] ?? 'Things to Do',
+                            'day' => 'Day ' . min(3, $idx + 1),
+                            'time' => '09:00 AM',
+                        ];
+                        break;
+                    }
+                }
+            }
+        }
+
+        $this->view('guide/package-builder', [
+            'title' => 'Edit Travel Package: ' . $package['title'],
+            'user' => Auth::user(),
+            'myActivities' => $myActivities,
+            'hotelRooms' => $hotelRooms,
+            'vehicles' => $vehicles,
+            'package' => $package,
+            'isEdit' => true,
+            'parsedDesc' => $cleanDesc,
+            'parsedItinerary' => $itinerary,
+            'parsedPolicies' => $policies,
+            'parsedTags' => $tags,
+            'durationDays' => $durationDays,
+            'durationNights' => $durationNights,
+            'existingPhotos' => $photos,
+            'selectedActivities' => $selectedActivities,
+            'errors' => errors(),
+        ]);
+    }
+
+    /**
+     * Store a new multi-service travel package created via the wizard.
+     */
+    public function storePackage(): void
+    {
+        if (Auth::hasRole('hotel_provider') || Auth::hasRole('hotel_admin')) {
+            redirect('/dashboard/hotels');
+            return;
+        }
+
+        if (!$this->ensureApproved()) {
+            return;
+        }
+
+        $this->verifyCsrf();
+
+        $title = trim((string) $this->input('title', ''));
+        if ($title === '') {
+            flash('error', 'Package title is required.');
+            redirect('/dashboard/packages/create');
+            return;
+        }
+
+        $area = trim((string) $this->input('area', 'Cebu, Philippines'));
+        $days = max(1, (int) $this->input('duration_days', 3));
+        $nights = max(0, (int) $this->input('duration_nights', 2));
+        $durationText = $days . ' Days / ' . $nights . ' Nights';
+        
+        $minPax = max(1, (int) $this->input('min_pax', 2));
+        $maxPax = max($minPax, (int) $this->input('max_pax', 8));
+        $baseDeparture = trim((string) $this->input('base_departure', 'Moalboal, Cebu'));
+        $summary = trim((string) $this->input('summary', ''));
+
+        // Experience tags parsed from textarea (one per line)
+        $tagsRaw = trim((string) $this->input('tags', ''));
+        $tagsList = array_values(array_filter(array_map('trim', explode("\n", $tagsRaw))));
+        $tagsString = implode(', ', $tagsList);
+
+        $description = trim((string) $this->input('description', ''));
+        $itinerary = trim((string) $this->input('itinerary', ''));
+        $inclusionsCustom = trim((string) $this->input('inclusions', ''));
+        $exclusionsCustom = trim((string) $this->input('exclusions', ''));
+        $policiesCustom = trim((string) $this->input('policies', ''));
+
+        $finalPrice = (float) $this->input('final_price_per_pax', 0);
+        if ($finalPrice <= 0) {
+            $finalPrice = (float) $this->input('total_package_price', 8499.00);
+        }
+
+        // Collect Inclusions
+        $activities = (array) ($this->input('activities') ?? []);
+        $hotelName = trim((string) $this->input('selected_hotel_name', ''));
+        $vehicleName = trim((string) $this->input('selected_vehicle_name', ''));
+        $activityIds = array_map('intval', (array) ($this->input('selected_activity_ids') ?? []));
+        $hotelRoomId = (int) $this->input('selected_hotel_room', 0);
+        $vehicleId = (int) $this->input('selected_vehicle_id', 0);
+
+        $includedLines = [];
+        if (!empty($activities)) {
+            $includedLines[] = 'Activities: ' . implode(', ', array_map('strval', $activities));
+        }
+        if ($hotelName !== '' && $hotelName !== 'none' && !str_contains(strtolower($hotelName), 'no hotel')) {
+            $includedLines[] = 'Accommodation: ' . $hotelName . ' (' . $nights . ' Nights)';
+        }
+        if ($vehicleName !== '' && $vehicleName !== 'none' && !str_contains(strtolower($vehicleName), 'no vehicle')) {
+            $includedLines[] = 'Transportation: ' . $vehicleName . ' (' . $days . ' Days)';
+        }
+        if ($inclusionsCustom !== '') {
+            $includedLines[] = $inclusionsCustom;
+        } else {
+            $includedLines[] = "Licensed Local Tour Guide Host & Trip Coordination\nAll Environmental & Local Tourism Fees\nFull safety equipment, life vests & rescue gear";
+        }
+
+        $servicesMeta = [
+            'activity_ids' => $activityIds,
+            'hotel_room_id' => $hotelRoomId,
+            'vehicle_id' => $vehicleId,
+        ];
+        $includedLines[] = '<!-- PACKAGE_SERVICES: ' . json_encode($servicesMeta) . ' -->';
+        $includedText = implode("\n", $includedLines);
+
+        $notIncludedText = $exclusionsCustom !== '' 
+            ? $exclusionsCustom 
+            : "Airfare to and from Cebu (Mactan)\nPersonal souvenir shopping & alcoholic drinks\nOptional upgrades & meals not specified";
+
+        // Structured package overview
+        $fullDescription = $description !== '' ? $description : $title;
+        if ($tagsString !== '') {
+            $fullDescription .= "\n\nExperience Tags: " . $tagsString;
+        }
+        if ($itinerary !== '') {
+            $fullDescription .= "\n\n--- Day-by-Day Itinerary ---\n" . $itinerary;
+        }
+        if ($policiesCustom !== '') {
+            $fullDescription .= "\n\n--- Policies & Requirements ---\n" . $policiesCustom;
+        }
+
+        // Find or ensure category for packages
+        Category::ensurePackagesCategory();
+        $pkgCat = Category::findBySlug('packages');
+        $catId = $pkgCat ? (int) $pkgCat['id'] : 1;
+
+        // Process photos using the structured 3-photo slot system
+        $photos = [];
+        for ($i = 0; $i < 3; $i++) {
+            $fileInputKey = 'photo_file_' . $i;
+            $urlInputKey = 'photo_url_' . $i;
+
+            if (isset($_FILES[$fileInputKey]) && is_array($_FILES[$fileInputKey]) && $_FILES[$fileInputKey]['error'] === UPLOAD_ERR_OK) {
+                try {
+                    $uploadedPath = Upload::store($_FILES[$fileInputKey], 'listings/' . Auth::id(), ['jpg', 'jpeg', 'png', 'webp']);
+                    $photos[] = $uploadedPath;
+                    continue;
+                } catch (\Throwable $e) {}
+            }
+
+            $urlVal = trim((string) $this->input($urlInputKey, ''));
+            if ($urlVal !== '') {
+                $photos[] = $this->normalizeStoredImagePath($urlVal);
+            }
+        }
+
+        $cover = $photos[0] ?? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80';
+        if ($photos === []) {
+            $photos = [$cover];
+        }
+
+        $slug = $this->uniqueSlug($title);
+        $listingId = Listing::create([
+            'user_id' => (int) Auth::id(),
+            'category_id' => $catId,
+            'title' => $title,
+            'slug' => $slug,
+            'summary' => $summary !== '' ? $summary : substr($description, 0, 160),
+            'description' => $fullDescription,
+            'area' => $area,
+            'address' => $baseDeparture,
+            'price' => $finalPrice,
+            'price_unit' => 'package',
+            'duration' => $durationText,
+            'capacity' => $maxPax,
+            'included' => $includedText,
+            'not_included' => $notIncludedText,
+            'cover_image' => $cover,
+            'status' => 'pending',
+        ]);
+
+        Listing::syncImages($listingId, $photos);
+
+        flash('success', 'Travel Package submitted successfully! It is now pending admin review and will be live once approved.');
+        redirect('/dashboard/listings');
+    }
+
+    /**
+     * Update an existing multi-service travel package.
+     */
+    public function updatePackage(string $id): void
+    {
+        if (Auth::hasRole('hotel_provider') || Auth::hasRole('hotel_admin')) {
+            redirect('/dashboard/hotels');
+            return;
+        }
+
+        if (!$this->ensureApproved()) {
+            return;
+        }
+
+        $this->verifyCsrf();
+
+        $package = $this->ownedListing((int) $id);
+        $title = trim((string) $this->input('title', ''));
+        if ($title === '') {
+            flash('error', 'Package title is required.');
+            redirect('/dashboard/packages/' . (int) $id . '/edit');
+            return;
+        }
+
+        $area = trim((string) $this->input('area', 'Cebu, Philippines'));
+        $days = max(1, (int) $this->input('duration_days', 3));
+        $nights = max(0, (int) $this->input('duration_nights', 2));
+        $durationText = $days . ' Days / ' . $nights . ' Nights';
+
+        $minPax = max(1, (int) $this->input('min_pax', 2));
+        $maxPax = max($minPax, (int) $this->input('max_pax', 8));
+        $baseDeparture = trim((string) $this->input('base_departure', 'Moalboal, Cebu'));
+        $summary = trim((string) $this->input('summary', ''));
+
+        // Experience tags parsed from textarea (one per line)
+        $tagsRaw = trim((string) $this->input('tags', ''));
+        $tagsList = array_values(array_filter(array_map('trim', explode("\n", $tagsRaw))));
+        $tagsString = implode(', ', $tagsList);
+
+        $description = trim((string) $this->input('description', ''));
+        $itinerary = trim((string) $this->input('itinerary', ''));
+        $inclusionsCustom = trim((string) $this->input('inclusions', ''));
+        $exclusionsCustom = trim((string) $this->input('exclusions', ''));
+        $policiesCustom = trim((string) $this->input('policies', ''));
+
+        $finalPrice = (float) $this->input('total_package_price', 0);
+        if ($finalPrice <= 0) {
+            $finalPrice = (float) $this->input('final_price_per_pax', 8499.00);
+        }
+
+        // Collect Inclusions
+        $activities = (array) ($this->input('activities') ?? []);
+        $hotelName = trim((string) $this->input('selected_hotel_name', ''));
+        $vehicleName = trim((string) $this->input('selected_vehicle_name', ''));
+
+        $includedLines = [];
+        if (!empty($activities)) {
+            $includedLines[] = 'Activities: ' . implode(', ', array_map('strval', $activities));
+        }
+        if ($hotelName !== '' && $hotelName !== 'none' && !str_contains(strtolower($hotelName), 'no hotel')) {
+            $includedLines[] = 'Accommodation: ' . $hotelName . ' (' . $nights . ' Nights)';
+        }
+        if ($vehicleName !== '' && $vehicleName !== 'none' && !str_contains(strtolower($vehicleName), 'no vehicle')) {
+            $includedLines[] = 'Transportation: ' . $vehicleName . ' (' . $days . ' Days)';
+        }
+        if ($inclusionsCustom !== '') {
+            $includedLines[] = $inclusionsCustom;
+        } else {
+            $includedLines[] = "Licensed Local Tour Guide Host & Trip Coordination\nAll Environmental & Local Tourism Fees\nFull safety equipment, life vests & rescue gear";
+        }
+
+        $includedText = implode("\n", $includedLines);
+
+        $notIncludedText = $exclusionsCustom !== ''
+            ? $exclusionsCustom
+            : "Airfare to and from Cebu (Mactan)\nPersonal souvenir shopping & alcoholic drinks\nOptional upgrades & meals not specified";
+
+        // Structured package overview
+        $fullDescription = $description !== '' ? $description : $title;
+        if ($tagsString !== '') {
+            $fullDescription .= "\n\nExperience Tags: " . $tagsString;
+        }
+        if ($itinerary !== '') {
+            $fullDescription .= "\n\n--- Day-by-Day Itinerary ---\n" . $itinerary;
+        }
+        if ($policiesCustom !== '') {
+            $fullDescription .= "\n\n--- Policies & Requirements ---\n" . $policiesCustom;
+        }
+
+        Category::ensurePackagesCategory();
+        $pkgCat = Category::findBySlug('packages');
+        $catId = $pkgCat ? (int) $pkgCat['id'] : (int) $package['category_id'];
+
+        // Process photos (existing, uploaded, or URL)
+        $photos = [];
+        for ($i = 0; $i < 3; $i++) {
+            $existing = trim((string) $this->input('photo_existing_' . $i, ''));
+            $removed = (string) $this->input('photo_removed_' . $i, '0') === '1';
+            $fileInputKey = 'photo_file_' . $i;
+            $urlInputKey = 'photo_url_' . $i;
+
+            if (isset($_FILES[$fileInputKey]) && is_array($_FILES[$fileInputKey]) && $_FILES[$fileInputKey]['error'] === UPLOAD_ERR_OK) {
+                try {
+                    $uploadedPath = Upload::store($_FILES[$fileInputKey], 'listings/' . Auth::id(), ['jpg', 'jpeg', 'png', 'webp']);
+                    $photos[] = $uploadedPath;
+                    continue;
+                } catch (\Throwable $e) {}
+            }
+
+            $urlVal = trim((string) $this->input($urlInputKey, ''));
+            if ($urlVal !== '') {
+                $photos[] = $this->normalizeStoredImagePath($urlVal);
+            } elseif (!$removed && $existing !== '') {
+                $photos[] = $existing;
+            }
+        }
+
+        $cover = $photos[0] ?? $package['cover_image'] ?? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80';
+        if ($photos === []) {
+            $photos = [$cover];
+        }
+
+        Listing::update((int) $id, [
+            'category_id' => $catId,
+            'title' => $title,
+            'summary' => $summary !== '' ? $summary : substr($description, 0, 160),
+            'description' => $fullDescription,
+            'area' => $area,
+            'address' => $baseDeparture,
+            'price' => $finalPrice,
+            'price_unit' => 'package',
+            'duration' => $durationText,
+            'capacity' => $maxPax,
+            'included' => $includedText,
+            'not_included' => $notIncludedText,
+            'cover_image' => $cover,
+        ]);
+
+        Listing::syncImages((int) $id, $photos);
+
+        // Status transition handling:
+        // If the package was rejected, resubmit it for review (status = 'pending') and clear rejection reason
+        if ($package['status'] === 'rejected') {
+            \App\Core\Database::run(
+                "UPDATE listings SET status = 'pending', rejection_reason = NULL, submitted_at = NOW() WHERE id = ?",
+                [(int) $id]
+            );
+        } elseif ($package['status'] === 'pending') {
+            \App\Core\Database::run(
+                "UPDATE listings SET submitted_at = NOW() WHERE id = ?",
+                [(int) $id]
+            );
+        }
+
+        flash('success', 'Travel Package updated successfully!');
+        redirect('/dashboard/listings');
+    }
 }

@@ -385,6 +385,9 @@ if (!function_exists('active_when')) {
         if ($currentPath === $targetPath) {
             return 'active';
         }
+        if ($targetPath === '/dashboard/listings' && (str_starts_with($currentPath, '/dashboard/listings') || str_starts_with($currentPath, '/dashboard/packages'))) {
+            return 'active';
+        }
         if ($targetPath === '/profile' && (str_starts_with($currentPath, '/profile') || str_starts_with($currentPath, '/dashboard/verification'))) {
             return 'active';
         }

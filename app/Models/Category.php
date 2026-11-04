@@ -9,7 +9,7 @@ use App\Core\Database;
 final class Category
 {
     /** Categories hidden from the tourist catalog (same as the mobile app). */
-    public const HIDDEN_SLUGS = ['restaurants'];
+    public const HIDDEN_SLUGS = ['restaurants', 'packages', 'travel-packages'];
 
     public static function isHiddenSlug(?string $slug): bool
     {
@@ -41,12 +41,31 @@ final class Category
     }
 
     /**
+     * Ensure the Travel Packages category exists in the database.
+     */
+    public static function ensurePackagesCategory(): void
+    {
+        try {
+            $exists = Database::first('SELECT id FROM categories WHERE slug = ?', ['packages']);
+            if (!$exists) {
+                Database::insert(
+                    'INSERT INTO categories (name, slug, icon, description, sort_order) VALUES (?, ?, ?, ?, ?)',
+                    ['Travel Packages', 'packages', 'cube', 'All-inclusive multi-service trips curated and hosted by local guides', 5]
+                );
+            }
+        } catch (\Throwable) {
+            // Safe fallback
+        }
+    }
+
+    /**
      * Categories available for tour guides (excludes hotels and hidden categories).
      *
      * @return array<int, array<string, mixed>>
      */
     public static function forGuides(): array
     {
+        self::ensurePackagesCategory();
         return array_values(array_filter(
             self::publicAll(),
             static fn (array $row): bool => ($row['slug'] ?? '') !== 'hotels'

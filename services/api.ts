@@ -192,6 +192,17 @@ export type ApiBooking = {
   can_report?: boolean;
   dispute_status?: string;
   is_hotel?: boolean;
+  is_package?: boolean;
+  category_slug?: string;
+  guide_name?: string;
+  guide_avatar?: string;
+  guide_phone?: string;
+  guide_id?: number | null;
+  package_details?: any;
+  payment_method?: string;
+  payment_reference?: string;
+  payment_paid_at?: string;
+  notes_raw?: string;
   is_completed?: boolean;
   cancellation?: CancellationPolicyMeta;
 };

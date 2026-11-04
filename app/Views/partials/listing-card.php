@@ -49,6 +49,8 @@ $isHotel = (($l['category_slug'] ?? '') === 'hotels') || (strtolower((string) ($
                 <?php else: ?>
                     <span class="price" style="font-size:0.95rem;color:var(--text-muted,#64748B);font-weight:600;">Price unavailable</span>
                 <?php endif; ?>
+            <?php elseif (($l['category_slug'] ?? '') === 'packages'): ?>
+                <span class="price"><?= money($displayPrice) ?> <span class="price-unit">Package Price</span></span>
             <?php else: ?>
                 <span class="price"><?= money($displayPrice) ?> <span><?= e($l['price_unit']) ?></span></span>
             <?php endif; ?>

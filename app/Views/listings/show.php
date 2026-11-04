@@ -19,6 +19,7 @@ $gallery = $gallery ?: [];
 $host = host_labels($listing['owner_role'] ?? null);
 
 $isHotel = ($listing['category_slug'] ?? '') === 'hotels';
+$isPackage = ($listing['category_slug'] ?? '') === 'packages' || ($listing['category_slug'] ?? '') === 'travel-packages';
 $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int) $listing['id']) : []);
 $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $listing['id']) : null;
 ?>
@@ -351,7 +352,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                         <?php if (isset($displayPrice) && (float) $displayPrice < (float) $listing['price']): ?>
                             <s style="font-size:.85rem;color:var(--ink-300);"><?= money($listing['price']) ?></s>
                         <?php endif; ?>
-                        <span class="price-unit">/ <?= e($listing['price_unit']) ?></span>
+                        <?php if ($isPackage): ?><span class="price-unit">Package Price</span><?php else: ?><span class="price-unit">/ <?= e($listing['price_unit']) ?></span><?php endif; ?>
                     <?php endif; ?>
                 </div>
 

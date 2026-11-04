@@ -77,6 +77,8 @@ export default function RootLayout() {
         <Stack.Screen name="call/[id]" options={{ presentation: 'fullScreenModal' }} />
 
         {/* 9. Travel services: vehicle rentals, weather, live traffic */}
+        <Stack.Screen name="packages" />
+        <Stack.Screen name="package/[id]" />
         <Stack.Screen name="car-rentals" />
         <Stack.Screen name="rental/[id]" />
         <Stack.Screen name="weather" />

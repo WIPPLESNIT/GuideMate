@@ -22,7 +22,7 @@ $pendingGuideCount = $pendingGuideCount ?? \App\Models\Listing::pendingGuideList
 $pendingHotelsCount = $pendingHotelsCount ?? \App\Models\Listing::pendingHotelsCount();
 
 // Normalize initial selected category
-$validCategories = ['all', 'attractions', 'things-to-do', 'hotels'];
+$validCategories = ['all', 'attractions', 'things-to-do', 'hotels', 'packages'];
 $selectedCategory = in_array($category, $validCategories, true) ? $category : 'all';
 
 $categoryLabels = [
@@ -30,6 +30,7 @@ $categoryLabels = [
     'attractions' => 'Attractions',
     'things-to-do' => 'Things to Do',
     'hotels' => 'Hotel & Stays',
+    'packages' => 'Package',
 ];
 
 $activeLabel = $categoryLabels[$selectedCategory] ?? 'All Live Listings';
@@ -127,6 +128,15 @@ $isFiltered = ($selectedCategory !== 'all');
                         <span class="filter-item-text">Hotel & Stays</span>
                         <span class="filter-item-count"><?= (int) ($categoryCounts['hotels'] ?? 0) ?></span>
                     </div>
+                    <div class="filter-popover-item <?= $selectedCategory === 'packages' ? 'is-selected' : '' ?>"
+                         role="option"
+                         aria-selected="<?= $selectedCategory === 'packages' ? 'true' : 'false' ?>"
+                         data-value="packages"
+                         tabindex="<?= $selectedCategory === 'packages' ? '0' : '-1' ?>">
+                        <span class="filter-item-indicator" aria-hidden="true"></span>
+                        <span class="filter-item-text">Package</span>
+                        <span class="filter-item-count"><?= (int) ($categoryCounts['packages'] ?? 0) ?></span>
+                    </div>
                 </div>
             </div>
             <!-- Synchronized backing select for accessibility and automated testing -->
@@ -135,6 +145,7 @@ $isFiltered = ($selectedCategory !== 'all');
                 <option value="attractions" <?= $selectedCategory === 'attractions' ? 'selected' : '' ?>>Attractions</option>
                 <option value="things-to-do" <?= $selectedCategory === 'things-to-do' ? 'selected' : '' ?>>Things to Do</option>
                 <option value="hotels" <?= $selectedCategory === 'hotels' ? 'selected' : '' ?>>Hotel & Stays</option>
+                <option value="packages" <?= $selectedCategory === 'packages' ? 'selected' : '' ?>>Package</option>
             </select>
         </div>
     </div>
@@ -237,7 +248,11 @@ $isFiltered = ($selectedCategory !== 'all');
                             </div>
                             <?php if ((float) ($l['price'] ?? 0) > 0): ?>
                                 <strong><?= money((float) $l['price']) ?></strong>
-                                <small class="hint">/ <?= e($l['price_unit'] ?? ($isHotel ? 'night' : 'person')) ?></small>
+                                <?php if (($l['category_slug'] ?? '') === 'packages'): ?>
+                                    <small class="hint">Package Price</small>
+                                <?php else: ?>
+                                    <small class="hint">/ <?= e($l['price_unit'] ?? ($isHotel ? 'night' : 'person')) ?></small>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <strong style="color:var(--brand, #10B981);"><?= $isHotel ? 'Contact' : 'Free' ?></strong>
                             <?php endif; ?>
