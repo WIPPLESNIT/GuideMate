@@ -16,11 +16,10 @@ export default function GuidesScreen() {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
     try {
       const data = await getGuides();
       setGuides(data.guides);
+      setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load tour guides.');
     } finally {
@@ -29,8 +28,22 @@ export default function GuidesScreen() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    const fetchGuides = async () => {
+      try {
+        const data = await getGuides();
+        if (active) setGuides(data.guides);
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load tour guides.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchGuides();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const initials = (name: string) =>
     name
@@ -121,7 +134,7 @@ export default function GuidesScreen() {
               <Text style={[styles.subtitle, { color: colors.textSub }]}>
                 Verified local guides in Cebu. Tap Message to plan your tour.
               </Text>
-            ) : null
+            ) : undefined
           }
           ListEmptyComponent={
             <EmptyState

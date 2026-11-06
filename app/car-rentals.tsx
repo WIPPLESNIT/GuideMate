@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -75,28 +75,31 @@ export default function CarRentalsScreen() {
   const [payReference, setPayReference] = useState('');
   const [cardLast4, setCardLast4] = useState('');
 
-  const loadVehicles = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getRentalVehicles();
-      setVehicles(data.vehicles);
-    } catch (e) {
-      if (isUnauthorized(e)) {
-        Alert.alert('Sign in required', 'Please log in to browse and request vehicle rentals.', [
-          { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
-          { text: 'Log in', onPress: () => router.replace('/(auth)/login') },
-        ]);
-      } else {
-        Alert.alert('Could not load rentals', 'Check your connection and try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
-
   useEffect(() => {
-    loadVehicles();
-  }, [loadVehicles]);
+    let active = true;
+    const fetchVehicles = async () => {
+      try {
+        const data = await getRentalVehicles();
+        if (active) setVehicles(data.vehicles);
+      } catch (e) {
+        if (!active) return;
+        if (isUnauthorized(e)) {
+          Alert.alert('Sign in required', 'Please log in to browse and request vehicle rentals.', [
+            { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
+            { text: 'Log in', onPress: () => router.replace('/(auth)/login') },
+          ]);
+        } else {
+          Alert.alert('Could not load rentals', 'Check your connection and try again.');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchVehicles();
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   const total = useMemo(
     () => (selected ? selected.price_per_day * rentalDays : 0),

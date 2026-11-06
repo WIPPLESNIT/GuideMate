@@ -33,9 +33,9 @@ export default function TabsLayout() {
         // Icons only — labels hidden for a cleaner, self-explanatory tab bar.
         tabBarShowLabel: false,
         tabBarStyle: {
-          backgroundColor: colors.card,
+          backgroundColor: colors.card as string,
           borderTopWidth: 1,
-          borderTopColor: colors.border,
+          borderTopColor: colors.border as string,
           height: barHeight,
           paddingBottom: bottomPad,
           paddingTop: 0,
@@ -53,7 +53,7 @@ export default function TabsLayout() {
         options={{
           title: t('tab_home'),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={23} color={color} />
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={23} color={typeof color === 'string' ? color : colors.primary} />
           ),
         }}
       />
@@ -62,7 +62,7 @@ export default function TabsLayout() {
         options={{
           title: t('tab_wishlist'),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'heart' : 'heart-outline'} size={23} color={color} />
+            <Ionicons name={focused ? 'heart' : 'heart-outline'} size={23} color={typeof color === 'string' ? color : colors.primary} />
           ),
         }}
       />
@@ -71,7 +71,7 @@ export default function TabsLayout() {
         options={{
           title: t('tab_sale'),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'pricetag' : 'pricetag-outline'} size={23} color={color} />
+            <Ionicons name={focused ? 'pricetag' : 'pricetag-outline'} size={23} color={typeof color === 'string' ? color : colors.primary} />
           ),
         }}
       />
@@ -80,7 +80,7 @@ export default function TabsLayout() {
         options={{
           title: t('tab_trips'),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'briefcase' : 'briefcase-outline'} size={23} color={color} />
+            <Ionicons name={focused ? 'briefcase' : 'briefcase-outline'} size={23} color={typeof color === 'string' ? color : colors.primary} />
           ),
         }}
       />
@@ -89,7 +89,7 @@ export default function TabsLayout() {
         options={{
           title: t('tab_account'),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} size={23} color={color} />
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={23} color={typeof color === 'string' ? color : colors.primary} />
           ),
         }}
       />

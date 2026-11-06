@@ -101,7 +101,11 @@ export default function MessagesScreen() {
         text: archived ? 'Unarchive' : 'Archive',
         onPress: async () => {
           try {
-            archived ? await unarchiveConversation(conv.partner_id) : await archiveConversation(conv.partner_id);
+            if (archived) {
+              await unarchiveConversation(conv.partner_id);
+            } else {
+              await archiveConversation(conv.partner_id);
+            }
             load(true);
           } catch {
             Alert.alert('Action failed', 'Please try again.');

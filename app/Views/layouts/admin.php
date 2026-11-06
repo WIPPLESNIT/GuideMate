@@ -1,6 +1,11 @@
 <?php
 /** @var string $content */
 $pageTitle = $title ?? 'Admin';
+$adminUser = \App\Core\AdminAuth::user() ?? \App\Core\Auth::user() ?? \App\Models\User::adminAccount();
+$adminId = $adminUser ? (int) $adminUser['id'] : 0;
+$adminUnread = $adminId > 0 ? \App\Models\Message::unreadCount($adminId) : 0;
+$adminName = $adminUser ? explode(' ', (string) ($adminUser['name'] ?? 'Admin'))[0] : 'Admin';
+$adminAvatar = $adminUser ? img_src($adminUser['avatar'] ?? null, 'avatar' . ($adminUser['id'] ?? 1)) : asset('img/default-avatar.svg');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -12,21 +17,43 @@ $pageTitle = $title ?? 'Admin';
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
+    <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
     <script>window.APP_BASE_URL = <?= json_encode(rtrim(url('/'), '/')) ?>;</script>
+    <?php if ($adminUser !== null): ?>
+        <meta name="auth-user-id" content="<?= (int) $adminUser['id'] ?>">
+        <meta name="auth-user-role" content="<?= e((string) ($adminUser['role'] ?? 'admin')) ?>">
+    <?php endif; ?>
 </head>
 <body class="admin-body">
-<header class="admin-header">
+<header class="admin-header" id="siteHeader">
     <div class="admin-header-inner">
         <a href="<?= e(url('/admin')) ?>" class="brand brand-light">
             <span class="brand-mark"></span><span class="brand-text">Guide<strong>Mate</strong></span>
             <span class="admin-tag">Admin</span>
         </a>
         <div class="admin-user">
-            <a href="<?= e(url('/')) ?>" target="_blank" class="btn btn-ghost btn-sm" style="color:#fff;border-color:rgba(255,255,255,.25);"><?= admin_icon('external', 15) ?>View site</a>
-            <form method="post" action="<?= e(url('/admin/logout')) ?>" style="display:inline;">
-                <?= csrf_field() ?>
-                <button type="submit" class="btn btn-primary btn-sm"><?= admin_icon('logout', 15) ?>Sign out</button>
-            </form>
+            <a href="<?= e(url('/admin/messages')) ?>" class="nav-icon admin-nav-icon" title="Messages" aria-label="Messages">
+                <?= admin_icon('messages', 22) ?>
+                <?php if ($adminUnread > 0): ?>
+                    <span class="badge"><?= (int) $adminUnread ?></span>
+                <?php endif; ?>
+            </a>
+
+            <div class="nav-spacer admin-nav-spacer"></div>
+
+            <div class="nav-menu admin-nav-menu">
+                <button class="nav-avatar admin-nav-avatar" id="userMenuBtn" type="button" aria-expanded="false" aria-haspopup="true" aria-label="Admin profile menu">
+                    <img src="<?= e($adminAvatar) ?>" alt="<?= e($adminName) ?>">
+                    <span><?= e($adminName) ?></span>
+                </button>
+                <div class="dropdown" id="userMenu" role="menu">
+                    <a href="<?= e(url('/admin')) ?>" role="menuitem">Dashboard</a>
+                    <form method="post" action="<?= e(url('/admin/logout')) ?>">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="link-button" role="menuitem">Logout</button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 </header>

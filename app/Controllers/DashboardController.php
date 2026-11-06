@@ -46,7 +46,7 @@ final class DashboardController extends Controller
             abort(403, 'Service providers only.');
         }
 
-        if (($user['role'] ?? '') === 'rental_provider') {
+        if (in_array(($user['role'] ?? ''), ['rental_provider', 'rental_admin'], true)) {
             $reviews = RentalReview::forProvider((int) $user['id']);
             $stats = RentalReview::providerStats((int) $user['id']);
             $summary = [

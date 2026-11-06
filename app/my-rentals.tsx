@@ -367,7 +367,7 @@ export default function MyRentalsScreen() {
 
               {item.review?.feedback ? (
                 <Text style={[styles.reviewedFeedbackText, { color: colors.textSub }]} numberOfLines={3}>
-                  "{item.review.feedback}"
+                  &quot;{item.review.feedback}&quot;
                 </Text>
               ) : null}
             </View>

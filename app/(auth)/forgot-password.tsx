@@ -103,7 +103,7 @@ export default function ForgotPasswordScreen() {
 
         <View style={styles.taglineContainer}>
           <Text style={styles.taglineText}>Forgot your password?</Text>
-          <Text style={styles.taglineSubText}>No worries, we'll help you reset it.</Text>
+          <Text style={styles.taglineSubText}>No worries, we&apos;ll help you reset it.</Text>
         </View>
 
         <TouchableOpacity style={styles.closeButton} onPress={handleClose} activeOpacity={0.8}>
@@ -121,7 +121,7 @@ export default function ForgotPasswordScreen() {
           <View style={styles.authContent}>
             <Text style={[styles.sectionLabel, { color: theme.textMain }]}>Reset Password</Text>
             <Text style={[styles.instructionText, { color: theme.textSub }]}>
-              Enter the email address associated with your account and we'll send you a reset link.
+              Enter the email address associated with your account and we&apos;ll send you a reset link.
             </Text>
 
             {/* Email input */}
@@ -192,7 +192,7 @@ export default function ForgotPasswordScreen() {
 
             {/* Resend */}
             <TouchableOpacity style={styles.backButton} onPress={() => setSent(false)} activeOpacity={0.7}>
-              <Text style={[styles.backText, { color: theme.textSub }]}>Didn't receive it? </Text>
+              <Text style={[styles.backText, { color: theme.textSub }]}>Didn&apos;t receive it? </Text>
               <Text style={[styles.resendLink, { color: theme.accent }]}>Resend</Text>
             </TouchableOpacity>
           </View>
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.42)',
   },
   brandContainer: {

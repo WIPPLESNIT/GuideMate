@@ -4,7 +4,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -54,7 +53,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, formatPrice } = usePreferences();
-  const { colors, isDark, radius, shadow, gradients, brand } = useTheme();
+  const { colors, isDark, shadow, gradients, brand } = useTheme();
 
   const [data, setData] = useState<HomePayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,14 +118,21 @@ export default function HomeScreen() {
     slug === 'tour-guides'
       ? router.push('/guides')
       : router.push({ pathname: '/things-to-do', params: { category: slug } });
-  const openAttractions = () => router.push({ pathname: '/things-to-do', params: { category: 'attractions' } });
   const openExplore = () => router.push('/things-to-do');
   const openSearch = () => router.push('/search');
 
   type GridItem = { key: string; label: string; icon: string; bg: string; color: string; onPress: () => void };
 
+  const availableCategories = (data?.categories && data.categories.length > 0)
+    ? data.categories
+    : [
+        { id: 1, name: 'Things to Do', slug: 'things-to-do', icon: 'compass', listing_count: 0 },
+        { id: 2, name: 'Attractions', slug: 'attractions', icon: 'ticket', listing_count: 0 },
+        { id: 3, name: 'Hotels & Stays', slug: 'hotels', icon: 'bed', listing_count: 0 },
+      ];
+
   const gridItems: GridItem[] = [
-    ...(data?.categories ?? [])
+    ...availableCategories
       .filter((category) => !isHiddenCategorySlug(category.slug) && category.slug !== 'packages' && category.slug !== 'travel-packages')
       .map((category) => {
       const s = categoryStyle(category.slug);

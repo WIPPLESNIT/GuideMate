@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -45,15 +45,6 @@ const ID_TYPES = [
 const QR_EWALLET = require('../../assets/images/payment/qr-ewallet.png');
 const QR_INSTAPAY = require('../../assets/images/payment/qr-instapay.png');
 
-const LOCAL_FALLBACKS: Record<string, number> = {
-  scooter: require('../../assets/images/rentals/scooter.jpg'),
-  motorcycle: require('../../assets/images/rentals/motorcycle.png'),
-  ebike: require('../../assets/images/rentals/ebike.jpg'),
-  sedan: require('../../assets/images/rentals/sedan.jpg'),
-  suv: require('../../assets/images/rentals/suv.jpg'),
-  van: require('../../assets/images/rentals/van.jpg'),
-};
-
 export default function VehicleDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -82,46 +73,49 @@ export default function VehicleDetailsScreen() {
   const [payReference, setPayReference] = useState('');
   const [cardLast4, setCardLast4] = useState('');
 
-  const loadVehicle = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      try {
-        const res = await getRentalVehicle(id);
-        if (res.vehicle) {
-          setVehicle(res.vehicle);
-          return;
-        }
-      } catch {
-        // Fallback to catalog lookup
-      }
-
-      const listRes = await getRentalVehicles();
-      const match = listRes.vehicles.find((v) => String(v.id) === String(id) || v.slug === id);
-      if (match) {
-        setVehicle(match);
-      } else {
-        Alert.alert('Vehicle not found', 'This rental unit is no longer available.', [
-          { text: 'Go Back', onPress: () => router.back() },
-        ]);
-      }
-    } catch (e) {
-      if (isUnauthorized(e)) {
-        Alert.alert('Sign in required', 'Please sign in to view vehicle details.', [
-          { text: 'Log in', onPress: () => router.replace('/(auth)/login') },
-          { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
-        ]);
-      } else {
-        Alert.alert('Could not load vehicle', 'Please check your connection and try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [id, router]);
-
   useEffect(() => {
-    loadVehicle();
-  }, [loadVehicle]);
+    if (!id) return;
+    let active = true;
+    const fetchVehicle = async () => {
+      try {
+        let vehicle: ApiRentalVehicle | null = null;
+        try {
+          const result = await getRentalVehicle(id);
+          vehicle = result.vehicle ?? null;
+        } catch {
+          // Fallback to catalog lookup
+        }
+        if (!vehicle) {
+          const result = await getRentalVehicles();
+          vehicle = result.vehicles.find((item) => String(item.id) === String(id) || item.slug === id) ?? null;
+        }
+        if (!active) return;
+        if (vehicle) {
+          setVehicle(vehicle);
+        } else {
+          Alert.alert('Vehicle not found', 'This rental unit is no longer available.', [
+            { text: 'Go Back', onPress: () => router.back() },
+          ]);
+        }
+      } catch (e) {
+        if (!active) return;
+        if (isUnauthorized(e)) {
+          Alert.alert('Sign in required', 'Please sign in to view vehicle details.', [
+            { text: 'Log in', onPress: () => router.replace('/(auth)/login') },
+            { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
+          ]);
+        } else {
+          Alert.alert('Could not load vehicle', 'Please check your connection and try again.');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchVehicle();
+    return () => {
+      active = false;
+    };
+  }, [id, router]);
 
   // Gallery image list
   const galleryImages = useMemo(() => {

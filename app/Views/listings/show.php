@@ -208,8 +208,24 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                 </section>
             <?php endif; ?>
 
+            <?php
+            $displayDesc = (string) ($listing['description'] ?? '');
+            if ($isPackage) {
+                $displayDesc = preg_replace('/<!--\s*PACKAGE_OVERVIEW:\s*.*?\s*-->/s', '', $displayDesc);
+                if (preg_match('/--- Day-by-Day Itinerary ---\s*(.*?)(?:--- Policies & Requirements ---|$)/s', $displayDesc, $m)) {
+                    $displayDesc = trim(str_replace($m[0], '', $displayDesc));
+                }
+                if (preg_match('/--- Policies & Requirements ---\s*(.*)$/s', $displayDesc, $pm)) {
+                    $displayDesc = trim(str_replace($pm[0], '', $displayDesc));
+                }
+                if (preg_match('/Experience Tags:\s*(.*)$/mi', $displayDesc, $tm)) {
+                    $displayDesc = trim(str_replace($tm[0], '', $displayDesc));
+                }
+                $displayDesc = trim($displayDesc);
+            }
+            ?>
             <h2 class="mt-3">About this <?= e(strtolower($listing['category_name'])) ?></h2>
-            <p class="prose"><?= nl2br(e($listing['description'])) ?></p>
+            <p class="prose"><?= nl2br(e($displayDesc)) ?></p>
 
             <?php if (!empty($listing['included']) || !empty($listing['not_included'])): ?>
                 <div class="inclusion-box mt-3">
@@ -217,8 +233,11 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                         <div class="inclusion-col">
                             <h3>What's included</h3>
                             <ul class="inclusion-list">
-                                <?php foreach (preg_split('/\r\n|\r|\n/', (string) $listing['included']) ?: [] as $line): ?>
-                                    <?php if (trim($line) !== ''): ?><li><?= e(trim($line)) ?></li><?php endif; ?>
+                                <?php foreach (preg_split('/\r\n|\r|\n/', (string) $listing['included']) ?: [] as $line):
+                                    $line = trim($line);
+                                    if ($line === '' || str_starts_with($line, '<!--')) continue;
+                                ?>
+                                    <li><?= e($line) ?></li>
                                 <?php endforeach; ?>
                             </ul>
                         </div>

@@ -24,11 +24,14 @@ type Props = {
 export default function FavoriteHeart({ listingId, favorited = false, size = 34, style, onChange }: Props) {
   const router = useRouter();
   const { colors, isDark } = useTheme();
+  const [previousFavorited, setPreviousFavorited] = useState(favorited);
   const [fav, setFav] = useState(favorited);
   const [busy, setBusy] = useState(false);
 
-  // Keep in sync if the parent list re-renders with fresh data.
-  React.useEffect(() => setFav(favorited), [favorited]);
+  if (favorited !== previousFavorited) {
+    setPreviousFavorited(favorited);
+    setFav(favorited);
+  }
 
   const onPress = async () => {
     if (busy) return;

@@ -284,10 +284,12 @@ export function AppToast({
   top?: number;
 }) {
   const { colors, radius, shadow, gradients, isDark } = useTheme();
-  const opacity = React.useRef(new Animated.Value(0)).current;
-  const translateY = React.useRef(new Animated.Value(-12)).current;
+  const [opacity] = React.useState(() => new Animated.Value(0));
+  const [translateY] = React.useState(() => new Animated.Value(-12));
   const onHideRef = React.useRef(onHide);
-  onHideRef.current = onHide;
+  React.useEffect(() => {
+    onHideRef.current = onHide;
+  }, [onHide]);
 
   React.useEffect(() => {
     if (!visible) {

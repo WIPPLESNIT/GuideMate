@@ -132,8 +132,8 @@ export default function TripsScreen() {
 
   // Remaining balance payment state
   const [balanceModalVisible, setBalanceModalVisible] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<ApiBooking | null>(null);
-  const [balanceToPay, setBalanceToPay] = useState(0);
+  const [selectedBooking] = useState<ApiBooking | null>(null);
+  const [balanceToPay] = useState(0);
   const [payStep, setPayStep] = useState<'method' | 'qr' | 'card'>('method');
   const [payMethod, setPayMethod] = useState<PaymentMethod>('gcash');
   const [payReference, setPayReference] = useState('');
@@ -160,7 +160,7 @@ export default function TripsScreen() {
 
     const refundAmount = booking.cancellation?.refund_amount || 0;
     const confirmMessage = refundAmount > 0
-      ? `Are you sure you want to cancel your booking for "${booking.listing_title}"?\n\nA full refund of ${formatPrice(refundAmount)} will be automatically initiated to your original payment method (1–3 business days).`
+      ? `Are you sure you want to cancel your booking for "${booking.listing_title}"?\n\nA full refund of ${formatPrice(refundAmount)} will be automatically initiated to your original payment method (1ΓÇô3 business days).`
       : `Are you sure you want to cancel your booking for "${booking.listing_title}"? No charges will be incurred.`;
 
     Alert.alert(
@@ -194,19 +194,6 @@ export default function TripsScreen() {
         },
       ]
     );
-  };
-
-  const openBalancePayment = (item: ApiBooking, balance: number) => {
-    setSelectedBooking(item);
-    setBalanceToPay(balance);
-    setPayStep('method');
-    setPayMethod('gcash');
-    setPayReference('');
-    setCardName('');
-    setCardNumber('');
-    setCardExpiry('');
-    setCardCvv('');
-    setBalanceModalVisible(true);
   };
 
   const formatCardNumber = (text: string) => {
@@ -303,7 +290,7 @@ export default function TripsScreen() {
       setBookings(Array.isArray(bookingData?.bookings) ? bookingData.bookings : []);
     } catch (e) {
       if (isUnauthorized(e)) {
-        // Token expired/invalid — clear it and show the friendly sign-in prompt.
+        // Token expired/invalid ΓÇö clear it and show the friendly sign-in prompt.
         await clearSession();
         setLoggedIn(false);
       } else {
@@ -445,7 +432,7 @@ export default function TripsScreen() {
           <View style={[styles.historyBanner, { backgroundColor: isDark ? '#064E3B22' : '#F0FDF4', borderColor: isDark ? '#05966955' : '#BBF7D0' }]}>
             <Ionicons name="checkmark-circle" size={15} color="#059669" />
             <Text style={[styles.historyBannerText, { color: isDark ? '#34D399' : '#166534' }]}>
-              {item.hotel_status === 'completed' || item.status === 'completed' ? 'Completed Hotel Stay · In History' : `${item.status_label || 'Archived'} · In History`}
+              {item.hotel_status === 'completed' || item.status === 'completed' ? 'Completed Hotel Stay ┬╖ In History' : `${item.status_label || 'Archived'} ┬╖ In History`}
             </Text>
           </View>
         ) : null}
@@ -455,7 +442,7 @@ export default function TripsScreen() {
           <View style={[styles.confirmBanner, { backgroundColor: isDark ? '#064E3B33' : '#ECFDF5', borderColor: isDark ? '#05966966' : '#A7F3D0' }]}>
             <Ionicons name="checkmark-circle" size={18} color="#059669" />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={[styles.confirmBannerTitle, { color: isDark ? '#34D399' : '#065F46' }]}>Reservation Confirmed · Room Held</Text>
+              <Text style={[styles.confirmBannerTitle, { color: isDark ? '#34D399' : '#065F46' }]}>Reservation Confirmed ┬╖ Room Held</Text>
               <Text style={[styles.confirmBannerSubtitle, { color: isDark ? '#A7F3D0' : '#047857' }]}>Your room is reserved and guaranteed for your stay.</Text>
             </View>
           </View>
@@ -463,7 +450,7 @@ export default function TripsScreen() {
           <View style={[styles.confirmBanner, { backgroundColor: isDark ? '#0F766E33' : '#F0FDFA', borderColor: isDark ? '#14B8A666' : '#99F6E4' }]}>
             <Ionicons name="shield-checkmark" size={18} color="#0D9488" />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={[styles.confirmBannerTitle, { color: isDark ? '#2DD4BF' : '#115E59' }]}>Deposit Paid · Verification in Progress</Text>
+              <Text style={[styles.confirmBannerTitle, { color: isDark ? '#2DD4BF' : '#115E59' }]}>Deposit Paid ┬╖ Verification in Progress</Text>
               <Text style={[styles.confirmBannerSubtitle, { color: isDark ? '#99F6E4' : '#0F766E' }]}>The hotel front desk is verifying your payment.</Text>
             </View>
           </View>
@@ -519,7 +506,7 @@ export default function TripsScreen() {
           <View style={[styles.priceCol, styles.priceColDivider, { borderColor: colors.border }]}>
             <Text style={[styles.priceColLabel, { color: colors.textMute }]}>Deposit Paid</Text>
             <Text style={[styles.priceColDeposit, { color: isCancelled ? (isDark ? '#60A5FA' : '#2563EB') : '#059669' }]}>
-              {isCancelled ? 'Refunded' : (deposit > 0 ? `✓ ${formatPrice(deposit)}` : '₱0')}
+              {isCancelled ? 'Refunded' : (deposit > 0 ? `Γ£ô ${formatPrice(deposit)}` : 'Γé▒0')}
             </Text>
           </View>
           <View style={styles.priceCol}>
@@ -669,7 +656,7 @@ export default function TripsScreen() {
                 <Ionicons name="time-outline" size={13} color={colors.textSub} />
                 <Text style={[styles.metaText, { color: colors.textSub }]}>
                   {formatTime(item.booking_time)}
-                  {item.booking_end_time ? ` – ${formatTime(item.booking_end_time)}` : ''}
+                  {item.booking_end_time ? ` ΓÇô ${formatTime(item.booking_end_time)}` : ''}
                 </Text>
               </View>
             ) : null}
@@ -685,7 +672,7 @@ export default function TripsScreen() {
           <View style={[styles.historyBanner, { backgroundColor: item.status === 'refunded' ? (isDark ? '#1E3A8A22' : '#EFF6FF') : (isDark ? '#064E3B22' : '#F0FDF4'), borderColor: item.status === 'refunded' ? (isDark ? '#3B82F655' : '#BFDBFE') : (isDark ? '#05966955' : '#BBF7D0'), marginTop: 10 }]}>
             <Ionicons name={item.status === 'refunded' ? "refresh-circle" : "checkmark-circle"} size={14} color={item.status === 'refunded' ? "#2563EB" : "#059669"} />
             <Text style={[styles.historyBannerText, { color: item.status === 'refunded' ? (isDark ? '#93C5FD' : '#1D4ED8') : (isDark ? '#34D399' : '#166534') }]}>
-              {item.status === 'refunded' ? 'Refunded Tour · In History' : 'Completed Experience · In History'}
+              {item.status === 'refunded' ? 'Refunded Tour ┬╖ In History' : 'Completed Experience ┬╖ In History'}
             </Text>
           </View>
         ) : null}
@@ -780,9 +767,9 @@ export default function TripsScreen() {
               </View>
             </View>
 
-            <View style={styles.pkgCategoryPill}>
-              <Ionicons name="cube" size={11} color="#7C3AED" />
-              <Text style={styles.pkgCategoryText}>TRAVEL PACKAGE</Text>
+            <View style={[styles.pkgCategoryPill, { backgroundColor: colors.card }]}>
+              <Ionicons name="cube" size={11} color={colors.primary} />
+              <Text style={[styles.pkgCategoryText, { color: colors.primary }]}>TRAVEL PACKAGE</Text>
             </View>
 
             <View style={[styles.metaRow, { marginTop: 4 }]}>
@@ -799,8 +786,8 @@ export default function TripsScreen() {
           {guideAvatar ? (
             <Image source={{ uri: resolveImage(guideAvatar) }} style={styles.pkgAvatar} />
           ) : (
-            <View style={[styles.pkgAvatar, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EDE9FE' }]}>
-              <Ionicons name="person" size={15} color="#7C3AED" />
+            <View style={[styles.pkgAvatar, { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card }]}>
+              <Ionicons name="person" size={15} color={colors.primary} />
             </View>
           )}
           <View style={{ flex: 1, marginLeft: 8 }}>
@@ -836,8 +823,8 @@ export default function TripsScreen() {
               <Text style={[styles.pkgPriceUnit, { color: colors.textSub }]}>Package Price</Text>
             </View>
           </View>
-          <View style={{ backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: '#6D28D9' }}>ALL-IN-ONE BUNDLE</Text>
+          <View style={{ backgroundColor: colors.card, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.primary }}>ALL-IN-ONE BUNDLE</Text>
           </View>
         </View>
 
@@ -865,7 +852,7 @@ export default function TripsScreen() {
 
           {canNavigate ? (
             <TouchableOpacity
-              style={[styles.attractionActionBtn, { borderColor: '#8B5CF6', backgroundColor: '#8B5CF6', paddingVertical: 10 }]}
+              style={[styles.attractionActionBtn, { borderColor: colors.primary, backgroundColor: colors.primary, paddingVertical: 10 }]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/trip-map', params: { booking: String(item.id) } })}
             >
@@ -878,12 +865,12 @@ export default function TripsScreen() {
             <View style={styles.pkgActionRow}>
               {item.can_review ? (
                 <TouchableOpacity
-                  style={[styles.attractionActionBtn, { flex: 1, borderColor: '#8B5CF6', paddingVertical: 9 }]}
+                  style={[styles.attractionActionBtn, { flex: 1, borderColor: colors.primary, paddingVertical: 9 }]}
                   activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
                 >
-                  <Ionicons name="star-outline" size={14} color="#8B5CF6" />
-                  <Text style={[styles.attractionActionText, { color: '#8B5CF6', fontSize: 12 }]}>Rate package</Text>
+                  <Ionicons name="star-outline" size={14} color={colors.primary} />
+                  <Text style={[styles.attractionActionText, { color: colors.primary, fontSize: 12 }]}>Rate package</Text>
                 </TouchableOpacity>
               ) : null}
               {item.can_report ? (
@@ -989,12 +976,12 @@ export default function TripsScreen() {
             style={[
               styles.catChip,
               categoryFilter === 'package'
-                ? { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }
+                ? { backgroundColor: colors.primary, borderColor: colors.primary }
                 : { backgroundColor: colors.card, borderColor: colors.border }
             ]}
             onPress={() => setCategoryFilter('package')}
           >
-            <Ionicons name="cube-outline" size={13} color={categoryFilter === 'package' ? '#FFFFFF' : '#8B5CF6'} />
+            <Ionicons name="cube-outline" size={13} color={categoryFilter === 'package' ? '#FFFFFF' : colors.primary} />
             <Text style={[styles.catChipText, { color: categoryFilter === 'package' ? '#FFFFFF' : colors.text }]}>
               Packages ({packageCount})
             </Text>
@@ -1092,7 +1079,7 @@ export default function TripsScreen() {
         />
       )}
 
-      {/* ── Booking Details & Receipt Modal ── */}
+      {/* ΓöÇΓöÇ Booking Details & Receipt Modal ΓöÇΓöÇ */}
       <Modal
         visible={Boolean(selectedBookingDetails)}
         transparent
@@ -1107,7 +1094,7 @@ export default function TripsScreen() {
                   {selectedBookingDetails?.room_name || selectedBookingDetails?.hotel_status ? 'Hotel Stay Details & Receipt' : 'Tour Details & Receipt'}
                 </Text>
                 <Text style={[styles.modalSubtitle, { color: colors.textSub }]} numberOfLines={1}>
-                  Booking #{selectedBookingDetails?.id} · {selectedBookingDetails?.listing_title}
+                  Booking #{selectedBookingDetails?.id} ┬╖ {selectedBookingDetails?.listing_title}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setSelectedBookingDetails(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
@@ -1148,7 +1135,7 @@ export default function TripsScreen() {
                       ]}
                     >
                       {isBookingCompleted(selectedBookingDetails)
-                        ? 'Completed Reservation · In History'
+                        ? 'Completed Reservation ┬╖ In History'
                         : 'Active / Upcoming Reservation'}
                     </Text>
                     <Text style={{ fontSize: 11, color: colors.textSub, marginTop: 1 }}>
@@ -1224,7 +1211,7 @@ export default function TripsScreen() {
                         <Ionicons name="time-outline" size={14} color={colors.textSub} />
                         <Text style={[styles.metaText, { color: colors.textSub }]}>
                           {formatTime(selectedBookingDetails.booking_time)}
-                          {selectedBookingDetails.booking_end_time ? ` – ${formatTime(selectedBookingDetails.booking_end_time)}` : ''}
+                          {selectedBookingDetails.booking_end_time ? ` ΓÇô ${formatTime(selectedBookingDetails.booking_end_time)}` : ''}
                         </Text>
                       </View>
                     ) : null}
@@ -1276,7 +1263,7 @@ export default function TripsScreen() {
                                 : '#92400E',
                             }}
                           >
-                            {isDetailsCancelled ? 'Refunded' : (isDetailsSettled ? '✓ SETTLED' : isDetailsPaid ? '✓ PAID' : 'PARTIAL / PENDING')}
+                            {isDetailsCancelled ? 'Refunded' : (isDetailsSettled ? 'Γ£ô SETTLED' : isDetailsPaid ? 'Γ£ô PAID' : 'PARTIAL / PENDING')}
                           </Text>
                         </View>
                       </View>
@@ -1284,14 +1271,14 @@ export default function TripsScreen() {
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                         <Text style={{ fontSize: 13, color: colors.textSub }}>Total Amount</Text>
                         <Text style={{ fontSize: 16, fontWeight: '900', color: colors.text }}>
-                          {selectedBookingDetails ? formatPrice(selectedBookingDetails.total_amount) : '₱0'}
+                          {selectedBookingDetails ? formatPrice(selectedBookingDetails.total_amount) : 'Γé▒0'}
                         </Text>
                       </View>
                       {selectedBookingDetails?.deposit_amount && selectedBookingDetails.deposit_amount > 0 ? (
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                           <Text style={{ fontSize: 12, color: colors.textSub }}>Deposit Paid</Text>
                           <Text style={{ fontSize: 13, fontWeight: '700', color: isDetailsCancelled ? colors.textMute : '#059669' }}>
-                            {isDetailsCancelled ? '-' : `✓ ${formatPrice(selectedBookingDetails.deposit_amount)}`}
+                            {isDetailsCancelled ? '-' : `Γ£ô ${formatPrice(selectedBookingDetails.deposit_amount)}`}
                           </Text>
                         </View>
                       ) : null}
@@ -1307,12 +1294,12 @@ export default function TripsScreen() {
                           {isDetailsCancelled
                             ? '-'
                             : isDetailsSettled
-                            ? '₱0.00 (Fully Settled)'
+                            ? 'Γé▒0.00 (Fully Settled)'
                             : isDetailsPaid
-                            ? '₱0.00 (Paid at Check-In)'
+                            ? 'Γé▒0.00 (Paid at Check-In)'
                             : selectedBookingDetails?.balance_amount
                             ? formatPrice(selectedBookingDetails.balance_amount)
-                            : '₱0.00'}
+                            : 'Γé▒0.00'}
                         </Text>
                       </View>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
@@ -1466,7 +1453,7 @@ export default function TripsScreen() {
                   </TouchableOpacity>
                 ) : null}
 
-                {/* Cancel Booking Action — hidden when completed, disabled when ineligible */}
+                {/* Cancel Booking Action ΓÇö hidden when completed, disabled when ineligible */}
                 {selectedBookingDetails &&
                 selectedBookingDetails.status !== 'completed' &&
                 selectedBookingDetails.hotel_status !== 'completed' &&
@@ -1525,7 +1512,7 @@ export default function TripsScreen() {
         </View>
       </Modal>
 
-      {/* ── Balance Payment Modal ── */}
+      {/* ΓöÇΓöÇ Balance Payment Modal ΓöÇΓöÇ */}
       <Modal
         visible={balanceModalVisible}
         transparent
@@ -1556,7 +1543,7 @@ export default function TripsScreen() {
                     : 'Card Payment'}
                 </Text>
                 <Text style={[styles.modalSubtitle, { color: colors.textSub }]} numberOfLines={1}>
-                  {selectedBooking?.listing_title} · {selectedBooking?.room_name || 'Room'}
+                  {selectedBooking?.listing_title} ┬╖ {selectedBooking?.room_name || 'Room'}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1764,7 +1751,7 @@ export default function TripsScreen() {
           </View>
         </View>
       </Modal>
-      {/* ── Dedicated Travel Package Details Modal ── */}
+      {/* ΓöÇΓöÇ Dedicated Travel Package Details Modal ΓöÇΓöÇ */}
       <Modal
         visible={Boolean(selectedPackageDetails)}
         transparent
@@ -1777,7 +1764,7 @@ export default function TripsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>Travel Package Details</Text>
                 <Text style={[styles.modalSubtitle, { color: colors.textSub }]} numberOfLines={1}>
-                  Booking #BK-{selectedPackageDetails?.id} · {selectedPackageDetails?.listing_title}
+                  Booking #BK-{selectedPackageDetails?.id} ┬╖ {selectedPackageDetails?.listing_title}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setSelectedPackageDetails(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
@@ -1795,15 +1782,15 @@ export default function TripsScreen() {
                       {selectedPackageDetails.guide_avatar ? (
                         <Image source={{ uri: resolveImage(selectedPackageDetails.guide_avatar) }} style={{ width: 44, height: 44, borderRadius: 22 }} />
                       ) : (
-                        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center' }}>
-                          <Ionicons name="person" size={22} color="#7C3AED" />
+                        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="person" size={22} color={colors.primary} />
                         </View>
                       )}
                       <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
                           {selectedPackageDetails.guide_name || selectedPackageDetails.package_details?.guide?.name || 'Marc Repuesto'}
                         </Text>
-                        <Text style={{ fontSize: 12, color: colors.textSub }}>Licensed Regional Tour Guide · DOT Accredited</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub }}>Licensed Regional Tour Guide ┬╖ DOT Accredited</Text>
                       </View>
                     </View>
                   </View>
@@ -1814,7 +1801,7 @@ export default function TripsScreen() {
 
                     {/* Activities & Attractions */}
                     <View style={{ marginTop: 10 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#7C3AED', textTransform: 'uppercase' }}>Tours &amp; Attractions Included</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary, textTransform: 'uppercase' }}>Tours &amp; Attractions Included</Text>
                       <View style={{ marginTop: 6, gap: 6 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <Ionicons name="checkmark-circle" size={16} color="#10B981" />
@@ -1835,15 +1822,15 @@ export default function TripsScreen() {
                     <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: '#D97706', textTransform: 'uppercase' }}>Hotel Stay Accommodation</Text>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>Sea Breeze Oceanfront Resort</Text>
-                      <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Deluxe Queen Room (Balcony with Sea &amp; Pool View) · 2 Nights</Text>
-                      <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>Check-in: Day 1 from 02:00 PM · Check-out: Day 3 at 12:00 PM</Text>
+                      <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Deluxe Queen Room (Balcony with Sea &amp; Pool View) ┬╖ 2 Nights</Text>
+                      <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>Check-in: Day 1 from 02:00 PM ┬╖ Check-out: Day 3 at 12:00 PM</Text>
                     </View>
 
                     {/* Transport */}
                     <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: '#2563EB', textTransform: 'uppercase' }}>Rental Transportation</Text>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>Yamaha NMAX 155cc Automatic Scooter</Text>
-                      <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>3 Full Days · 2 DOT Helmets &amp; Phone Mount Included</Text>
+                      <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>3 Full Days ┬╖ 2 DOT Helmets &amp; Phone Mount Included</Text>
                     </View>
                   </View>
 
@@ -1891,7 +1878,7 @@ export default function TripsScreen() {
                   {/* Action Buttons */}
                   <View style={{ marginTop: 18, gap: 10 }}>
                     <TouchableOpacity
-                      style={[styles.attractionActionBtn, { borderColor: '#8B5CF6', backgroundColor: '#8B5CF6', paddingVertical: 12 }]}
+                      style={[styles.attractionActionBtn, { borderColor: colors.primary, backgroundColor: colors.primary, paddingVertical: 12 }]}
                       onPress={() => {
                         const item = selectedPackageDetails;
                         setSelectedPackageDetails(null);
@@ -1916,7 +1903,7 @@ export default function TripsScreen() {
         </View>
       </Modal>
 
-      {/* ── Dedicated Payment Receipt Modal ── */}
+      {/* ΓöÇΓöÇ Dedicated Payment Receipt Modal ΓöÇΓöÇ */}
       <Modal
         visible={Boolean(selectedPackageReceipt)}
         transparent
@@ -1953,7 +1940,7 @@ export default function TripsScreen() {
                       <Ionicons name="checkmark-circle" size={18} color="#059669" />
                       <View style={{ flex: 1, marginLeft: 8 }}>
                         <Text style={{ fontSize: 13, fontWeight: '800', color: isDark ? '#34D399' : '#065F46' }}>
-                          ✓ PAYMENT CONFIRMED &amp; SETTLED
+                          Γ£ô PAYMENT CONFIRMED &amp; SETTLED
                         </Text>
                         <Text style={{ fontSize: 11, color: isDark ? '#A7F3D0' : '#047857', marginTop: 1 }}>
                           Total package reservation is fully paid. No balances due.
@@ -2034,8 +2021,34 @@ export default function TripsScreen() {
                       </View>
                     </View>
 
-                    {/* Close Button */}
-                    <View style={{ marginTop: 18 }}>
+                    {/* Cancel Booking Button — only shown when eligible */}
+                    <View style={{ marginTop: 18, gap: 10 }}>
+                      {selectedPackageReceipt &&
+                      selectedPackageReceipt.status !== 'completed' &&
+                      selectedPackageReceipt.status !== 'cancelled' &&
+                      selectedPackageReceipt.status !== 'refunded' &&
+                      selectedPackageReceipt.cancellation?.can_cancel ? (
+                        <TouchableOpacity
+                          style={[styles.cancelModalBtn, { borderColor: '#EF4444', backgroundColor: isDark ? '#7F1D1D22' : '#FEF2F2' }]}
+                          disabled={isSubmittingCancel}
+                          onPress={() => {
+                            const item = selectedPackageReceipt;
+                            setSelectedPackageReceipt(null);
+                            handleCancelBooking(item);
+                          }}
+                        >
+                          {isSubmittingCancel ? (
+                            <ActivityIndicator size="small" color="#EF4444" />
+                          ) : (
+                            <>
+                              <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
+                              <Text style={{ color: '#EF4444', fontWeight: '800' }}>Cancel Booking</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      ) : null}
+
+                      {/* Close Button */}
                       <TouchableOpacity
                         style={[styles.cancelModalBtn, { borderColor: colors.border }]}
                         onPress={() => setSelectedPackageReceipt(null)}
@@ -2152,12 +2165,12 @@ const styles = StyleSheet.create({
   detailSectionTitle: { fontSize: 14, fontWeight: '800' },
   detailMainValue: { fontSize: 16, fontWeight: '800', marginTop: 4 },
   cancellationNoticeBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 10, marginTop: 10 },
-  cancelModalBtn: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  cancelModalBtn: { flexDirection: 'row', gap: 6, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   pkgCard: { borderRadius: 18, overflow: 'hidden', marginBottom: 16, borderWidth: 1, padding: 14 },
   pkgHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   pkgImage: { width: 78, height: 78, borderRadius: 12, resizeMode: 'cover', backgroundColor: '#00000011' },
-  pkgCategoryPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EDE9FE', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
-  pkgCategoryText: { fontSize: 10, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.5 },
+  pkgCategoryPill: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
+  pkgCategoryText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   pkgHostRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1 },
   pkgAvatar: { width: 30, height: 30, borderRadius: 15 },
   pkgHostName: { fontSize: 12, fontWeight: '700' },

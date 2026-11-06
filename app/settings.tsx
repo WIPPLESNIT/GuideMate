@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
+    Alert,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -11,7 +12,6 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Alert } from 'react-native';
 import { getSession, logout } from '../lib/authStore';
 import { isBiometricEnabled } from '../lib/biometric';
 import { LANGUAGES, usePreferences } from '../lib/preferences';
@@ -103,7 +103,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['left', 'right']}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.card} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border, paddingTop: insets.top + 12 }]}>
@@ -115,30 +115,30 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-        <SectionLabel text={t('sec_account')} />
+        {SectionLabel({ text: t('sec_account') })}
         <View style={[styles.group, { backgroundColor: theme.card }]}>
-          <Row label={t('login_methods')} first onPress={() => router.push('/login-methods')} />
-          <Row label={t('account_security')} onPress={() => requireLogin(() => router.push('/account-security'))} />
-          <Row
-            label={t('fingerprint')}
-            value={loggedIn && fingerprintOn ? t('enabled') : t('not_enabled')}
-            valueColor={loggedIn && fingerprintOn ? theme.accent : undefined}
-            showDot={!(loggedIn && fingerprintOn)}
-            onPress={() => requireLogin(() => router.push('/fingerprint'))}
-          />
+          {Row({ label: t('login_methods'), first: true, onPress: () => router.push('/login-methods') })}
+          {Row({ label: t('account_security'), onPress: () => requireLogin(() => router.push('/account-security')) })}
+          {Row({
+            label: t('fingerprint'),
+            value: loggedIn && fingerprintOn ? t('enabled') : t('not_enabled'),
+            valueColor: loggedIn && fingerprintOn ? theme.accent : undefined,
+            showDot: !(loggedIn && fingerprintOn),
+            onPress: () => requireLogin(() => router.push('/fingerprint')),
+          })}
         </View>
 
-        <SectionLabel text={t('sec_prefs')} />
+        {SectionLabel({ text: t('sec_prefs') })}
         <View style={[styles.group, { backgroundColor: theme.card }]}>
-          <Row label={t('language')} value={currentLanguageLabel} first />
-          <Row label={t('currency')} value="PHP" />
-          <Row label={t('notifications')} onPress={() => router.push('/notification-settings')} />
+          {Row({ label: t('language'), value: currentLanguageLabel, first: true })}
+          {Row({ label: t('currency'), value: 'PHP' })}
+          {Row({ label: t('notifications'), onPress: () => router.push('/notification-settings') })}
         </View>
 
-        <SectionLabel text={t('sec_others')} />
+        {SectionLabel({ text: t('sec_others') })}
         <View style={[styles.group, { backgroundColor: theme.card }]}>
-          <Row label={t('feedback')} first onPress={() => router.push('/feedback')} />
-          <Row label={t('about')} onPress={() => router.push('/about')} />
+          {Row({ label: t('feedback'), first: true, onPress: () => router.push('/feedback') })}
+          {Row({ label: t('about'), onPress: () => router.push('/about') })}
         </View>
 
         <View style={[styles.group, styles.logoutGroup, { backgroundColor: theme.card }]}>

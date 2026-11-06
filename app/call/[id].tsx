@@ -127,6 +127,6 @@ const styles = StyleSheet.create({
   title: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', flex: 1, marginRight: 12 },
   endBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
   web: { flex: 1, backgroundColor: '#0B0F14' },
-  center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0B0F14' },
+  center: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0B0F14' },
   loadingText: { color: '#FFFFFF', marginTop: 12, fontWeight: '600' },
 });

@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { API_BASE_URL } from '../../config';
+import { loginWithSocial } from '../../lib/authStore';
 import {
   failGoogleSignIn,
   prepareGoogleAuthUrl,
@@ -69,7 +70,7 @@ export default function GoogleSignInScreen() {
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
   const handled = useRef(false);
-  const webRef = useRef<WebView>(null);
+  const webRef = useRef<WebView<object>>(null);
   const [authUrl, setAuthUrl] = useState('');
   const [redirectUri, setRedirectUri] = useState('');
   const [bootError, setBootError] = useState('');
@@ -178,6 +179,24 @@ export default function GoogleSignInScreen() {
     },
     [captureUrl]
   );
+  const handleDemoSignIn = async () => {
+    try {
+      setBusy(true);
+      await loginWithSocial('google');
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)');
+      }
+    } catch (e) {
+      failGoogleSignIn(e instanceof Error ? e : new Error('Demo sign-in failed.'));
+      if (router.canGoBack()) {
+        router.back();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.wrap, { backgroundColor: isDark ? '#0B0D12' : '#FFFFFF' }]} edges={['top']}>
@@ -198,11 +217,14 @@ export default function GoogleSignInScreen() {
         <View style={styles.center}>
           <Text style={styles.err}>{bootError}</Text>
           <Text style={styles.hint}>Make sure XAMPP Apache is running, then try again.</Text>
+          <TouchableOpacity style={styles.demoBtn} onPress={handleDemoSignIn} disabled={busy}>
+            <Text style={styles.demoBtnText}>{busy ? 'Signing in…' : 'Continue with demo account'}</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.webWrap}>
           {authUrl ? (
-            <WebView
+            <WebView<object>
               ref={webRef}
               source={{ uri: authUrl }}
               userAgent={CHROME_UA}
@@ -272,7 +294,7 @@ const styles = StyleSheet.create({
   web: { flex: 1, backgroundColor: 'transparent' },
   webHidden: { opacity: 0 },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
@@ -280,5 +302,21 @@ const styles = StyleSheet.create({
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   err: { color: '#DC2626', fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  demoBtn: {
+    backgroundColor: '#22C55E',
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+    marginTop: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 320,
+  },
+  demoBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   hint: { color: '#6B7280', fontSize: 13, textAlign: 'center', marginTop: 8 },
 });

@@ -844,6 +844,51 @@ final class GuideController extends Controller
     }
 
     /**
+     * Automatically determine the package highlight badge based on package status and listing metrics.
+     * Easily extensible for additional statuses in the future.
+     *
+     * @param array $package
+     * @param bool $isNew
+     * @return string
+     */
+    public static function determinePackageBadge(array $package = [], bool $isNew = false): string
+    {
+        // 1. Newly created package or pending review always carries "New Expedition"
+        if ($isNew || empty($package['id']) || ($package['status'] ?? '') === 'pending') {
+            return 'New Expedition';
+        }
+
+        // 2. Freshly published packages created within the last 14 days
+        $createdAt = !empty($package['created_at']) ? strtotime((string) $package['created_at']) : 0;
+        if ($createdAt > 0 && (time() - $createdAt) < (14 * 86400)) {
+            return 'New Expedition';
+        }
+
+        $rating = (float) ($package['avg_rating'] ?? 0);
+        $reviewCount = (int) ($package['reviews_count'] ?? 0);
+        $bookingsCount = (int) ($package['bookings_count'] ?? 0);
+        $isFeatured = !empty($package['is_featured']);
+
+        // 3. High booking volume / popular packages
+        if ($bookingsCount >= 10 || ($isFeatured && $rating >= 4.8)) {
+            return 'Best Seller';
+        }
+
+        // 4. Stellar traveler review ratings
+        if ($rating >= 4.8 || $reviewCount >= 10) {
+            return 'Top Rated';
+        }
+
+        // 5. Explicitly featured packages
+        if ($isFeatured) {
+            return 'Featured';
+        }
+
+        // 6. Default extensible fallback
+        return 'New Expedition';
+    }
+
+    /**
      * Display the 5-Step Travel Package Builder Wizard.
      */
     public function createPackage(): void
@@ -875,6 +920,61 @@ final class GuideController extends Controller
             ", [$userId, $userId]);
         } catch (\Throwable $e) {
             $myActivities = [];
+        }
+
+        if (count($myActivities) < 2) {
+            $myActivities[] = [
+                'id' => 301,
+                'title' => 'Full Kawasan Canyoneering & Cliff Jumps',
+                'area' => 'Badian, South Cebu',
+                'price' => 2500.00,
+                'price_unit' => 'person',
+                'duration' => '4.5 Hours',
+                'cover_image' => 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=800&q=80',
+                'summary' => 'Guided river trek with 7 cliff jumps (3m to 12m) and natural water slides.',
+                'category_name' => 'Things to Do',
+                'category_slug' => 'things-to-do',
+                'is_mine' => 1,
+            ];
+            $myActivities[] = [
+                'id' => 302,
+                'title' => 'Moalboal Sardine Run & Sea Turtle Snorkel',
+                'area' => 'Moalboal, South Cebu',
+                'price' => 1200.00,
+                'price_unit' => 'person',
+                'duration' => '2.5 Hours',
+                'cover_image' => 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80',
+                'summary' => 'Panagsama reef marine sanctuary with mask, snorkel, and life vest.',
+                'category_name' => 'Things to Do',
+                'category_slug' => 'things-to-do',
+                'is_mine' => 1,
+            ];
+            $myActivities[] = [
+                'id' => 303,
+                'title' => 'Kawasan Falls Natural Park',
+                'area' => 'Badian, South Cebu',
+                'price' => 250.00,
+                'price_unit' => 'person',
+                'duration' => 'Full Day',
+                'cover_image' => 'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=800&q=80',
+                'summary' => 'Badian Ecological Park entrance & conservation ticket to turquoise multi-tier falls.',
+                'category_name' => 'Attraction',
+                'category_slug' => 'attractions',
+                'is_mine' => 0,
+            ];
+            $myActivities[] = [
+                'id' => 304,
+                'title' => 'Osmeña Peak 360-Degree Ridge Trek',
+                'area' => 'Dalaguete, South Cebu',
+                'price' => 500.00,
+                'price_unit' => 'person',
+                'duration' => '3 Hours',
+                'cover_image' => 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80',
+                'summary' => 'Hike to Cebu highest peak with jagged green rock formations overlooking the sea.',
+                'category_name' => 'Attraction',
+                'category_slug' => 'attractions',
+                'is_mine' => 0,
+            ];
         }
 
         // 2. Approved hotel rooms from accommodation partners with actual listing cover photos & check-in times
@@ -980,14 +1080,22 @@ final class GuideController extends Controller
             ];
         }
 
+        $autoBadge = self::determinePackageBadge([], true);
+        $guideStats = \App\Models\Booking::guideRatingStats((int) (Auth::id() ?? 0));
+
         $this->view('guide/package-builder', [
             'title' => 'New Travel Package',
             'user' => Auth::user(),
+            'guideStats' => $guideStats,
             'myActivities' => $myActivities,
             'hotelRooms' => $hotelRooms,
             'vehicles' => $vehicles,
             'package' => null,
             'isEdit' => false,
+            'defaultCategory' => '',
+            'defaultBadge' => $autoBadge,
+            'autoBadge' => $autoBadge,
+            'defaultAssurance' => '',
             'existingPhotos' => [],
             'selectedActivities' => [],
             'errors' => errors(),
@@ -1032,6 +1140,61 @@ final class GuideController extends Controller
             ", [$userId, $userId]);
         } catch (\Throwable $e) {
             $myActivities = [];
+        }
+
+        if (count($myActivities) < 2) {
+            $myActivities[] = [
+                'id' => 301,
+                'title' => 'Full Kawasan Canyoneering & Cliff Jumps',
+                'area' => 'Badian, South Cebu',
+                'price' => 2500.00,
+                'price_unit' => 'person',
+                'duration' => '4.5 Hours',
+                'cover_image' => 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=800&q=80',
+                'summary' => 'Guided river trek with 7 cliff jumps (3m to 12m) and natural water slides.',
+                'category_name' => 'Things to Do',
+                'category_slug' => 'things-to-do',
+                'is_mine' => 1,
+            ];
+            $myActivities[] = [
+                'id' => 302,
+                'title' => 'Moalboal Sardine Run & Sea Turtle Snorkel',
+                'area' => 'Moalboal, South Cebu',
+                'price' => 1200.00,
+                'price_unit' => 'person',
+                'duration' => '2.5 Hours',
+                'cover_image' => 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80',
+                'summary' => 'Panagsama reef marine sanctuary with mask, snorkel, and life vest.',
+                'category_name' => 'Things to Do',
+                'category_slug' => 'things-to-do',
+                'is_mine' => 1,
+            ];
+            $myActivities[] = [
+                'id' => 303,
+                'title' => 'Kawasan Falls Natural Park',
+                'area' => 'Badian, South Cebu',
+                'price' => 250.00,
+                'price_unit' => 'person',
+                'duration' => 'Full Day',
+                'cover_image' => 'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=800&q=80',
+                'summary' => 'Badian Ecological Park entrance & conservation ticket to turquoise multi-tier falls.',
+                'category_name' => 'Attraction',
+                'category_slug' => 'attractions',
+                'is_mine' => 0,
+            ];
+            $myActivities[] = [
+                'id' => 304,
+                'title' => 'Osmeña Peak 360-Degree Ridge Trek',
+                'area' => 'Dalaguete, South Cebu',
+                'price' => 500.00,
+                'price_unit' => 'person',
+                'duration' => '3 Hours',
+                'cover_image' => 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80',
+                'summary' => 'Hike to Cebu highest peak with jagged green rock formations overlooking the sea.',
+                'category_name' => 'Attraction',
+                'category_slug' => 'attractions',
+                'is_mine' => 0,
+            ];
         }
 
         // 2. Approved hotel rooms
@@ -1082,6 +1245,18 @@ final class GuideController extends Controller
         $tags = '';
         $cleanDesc = $rawDesc;
 
+        $defaultCategory = 'Adventure & Nature';
+        $defaultBadge = !empty($package['is_featured']) ? 'Best Seller' : 'Featured';
+        $defaultAssurance = 'Guaranteed';
+
+        if (preg_match('/<!-- PACKAGE_OVERVIEW:\s*(.*?)\s*-->/s', $cleanDesc, $m)) {
+            $overviewMeta = json_decode($m[1], true) ?? [];
+            $defaultCategory = $overviewMeta['category_label'] ?? $defaultCategory;
+            $defaultBadge = $overviewMeta['badge'] ?? $defaultBadge;
+            $defaultAssurance = $overviewMeta['assurance'] ?? $defaultAssurance;
+            $cleanDesc = trim(str_replace($m[0], '', $cleanDesc));
+        }
+
         if (preg_match('/--- Policies & Requirements ---\s*(.*)$/s', $cleanDesc, $m)) {
             $policies = trim($m[1]);
             $cleanDesc = trim(str_replace($m[0], '', $cleanDesc));
@@ -1127,14 +1302,22 @@ final class GuideController extends Controller
             }
         }
 
+        $autoBadge = self::determinePackageBadge($package, false);
+        $guideStats = \App\Models\Booking::guideRatingStats((int) (Auth::id() ?? 0));
+
         $this->view('guide/package-builder', [
             'title' => 'Edit Travel Package: ' . $package['title'],
             'user' => Auth::user(),
+            'guideStats' => $guideStats,
             'myActivities' => $myActivities,
             'hotelRooms' => $hotelRooms,
             'vehicles' => $vehicles,
             'package' => $package,
             'isEdit' => true,
+            'defaultCategory' => $defaultCategory,
+            'defaultBadge' => $autoBadge,
+            'autoBadge' => $autoBadge,
+            'defaultAssurance' => $defaultAssurance,
             'parsedDesc' => $cleanDesc,
             'parsedItinerary' => $itinerary,
             'parsedPolicies' => $policies,
@@ -1228,12 +1411,24 @@ final class GuideController extends Controller
         $includedLines[] = '<!-- PACKAGE_SERVICES: ' . json_encode($servicesMeta) . ' -->';
         $includedText = implode("\n", $includedLines);
 
-        $notIncludedText = $exclusionsCustom !== '' 
-            ? $exclusionsCustom 
+        $notIncludedText = $exclusionsCustom !== ''
+            ? $exclusionsCustom
             : "Airfare to and from Cebu (Mactan)\nPersonal souvenir shopping & alcoholic drinks\nOptional upgrades & meals not specified";
 
+        $categoryLabel = trim((string) $this->input('category_label', ''));
+        // Badge is automatically determined based on package status/conditions (e.g. "New Expedition" for newly created packages)
+        $badge = self::determinePackageBadge([], true);
+        $assurance = trim((string) $this->input('assurance', ''));
+
+        $overviewMeta = [
+            'category_label' => $categoryLabel,
+            'badge' => $badge,
+            'assurance' => $assurance,
+        ];
+
         // Structured package overview
-        $fullDescription = $description !== '' ? $description : $title;
+        $fullDescription = '<!-- PACKAGE_OVERVIEW: ' . json_encode($overviewMeta) . " -->\n";
+        $fullDescription .= ($description !== '' ? $description : $title);
         if ($tagsString !== '') {
             $fullDescription .= "\n\nExperience Tags: " . $tagsString;
         }
@@ -1291,6 +1486,7 @@ final class GuideController extends Controller
             'included' => $includedText,
             'not_included' => $notIncludedText,
             'cover_image' => $cover,
+            'is_featured' => ($badge === 'Best Seller' || $badge === 'Featured') ? 1 : 0,
             'status' => 'pending',
         ]);
 
@@ -1377,8 +1573,20 @@ final class GuideController extends Controller
             ? $exclusionsCustom
             : "Airfare to and from Cebu (Mactan)\nPersonal souvenir shopping & alcoholic drinks\nOptional upgrades & meals not specified";
 
+        $categoryLabel = trim((string) $this->input('category_label', ''));
+        // Badge is automatically determined based on package status/metrics
+        $badge = self::determinePackageBadge($package, false);
+        $assurance = trim((string) $this->input('assurance', ''));
+
+        $overviewMeta = [
+            'category_label' => $categoryLabel,
+            'badge' => $badge,
+            'assurance' => $assurance,
+        ];
+
         // Structured package overview
-        $fullDescription = $description !== '' ? $description : $title;
+        $fullDescription = '<!-- PACKAGE_OVERVIEW: ' . json_encode($overviewMeta) . " -->\n";
+        $fullDescription .= ($description !== '' ? $description : $title);
         if ($tagsString !== '') {
             $fullDescription .= "\n\nExperience Tags: " . $tagsString;
         }
@@ -1436,6 +1644,7 @@ final class GuideController extends Controller
             'included' => $includedText,
             'not_included' => $notIncludedText,
             'cover_image' => $cover,
+            'is_featured' => ($badge === 'Best Seller' || $badge === 'Featured') ? 1 : 0,
         ]);
 
         Listing::syncImages((int) $id, $photos);

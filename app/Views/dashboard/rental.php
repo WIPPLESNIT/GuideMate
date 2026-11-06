@@ -15,14 +15,14 @@ $warningNote = $warningNote ?? (string) ($user['guide_warning_note'] ?? '');
 <div class="container">
     <div class="dash-layout">
         <?= \App\Core\View::partial('partials/dash-nav') ?>
-        <div>
-            <div class="section-head" style="margin-bottom:1rem;">
+        <div class="dash-main">
+            <div class="section-head section-head-vertical" style="margin-bottom:1.5rem;display:flex;flex-direction:column;align-items:flex-start;gap:0.9rem;">
                 <div>
                     <h1 class="mb-0"><?= !empty($isFirstLogin) ? 'Welcome to GuideMate' : 'Welcome back' ?>, <?= e(explode(' ', (string) $user['name'])[0]) ?></h1>
-                    <p class="hint mb-0">Rental Partner dashboard</p>
+                    <p class="hint mb-0">Rental Partner Portal — manage vehicle inventory, document verification, live availability, booking requests, and rental earnings.</p>
                 </div>
-                <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-                    <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary" data-action="new-listing" data-open-new-listing>+ List a Vehicle</a>
+                <div class="dash-header-actions" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+                    <a href="<?= e(url('/dashboard/vehicles?create=1')) ?>" class="btn btn-primary" data-action="new-listing" data-open-new-listing>+ List a Vehicle</a>
                     <?php if (!$isVerified): ?>
                         <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?>Verification</a>
                     <?php else: ?>
@@ -106,7 +106,7 @@ $warningNote = $warningNote ?? (string) ($user['guide_warning_note'] ?? '');
                     <?php if (empty($vehicles)): ?>
                         <div class="empty-state" style="padding:2.5rem 1rem;">
                             <p>You have not listed any vehicles yet.</p>
-                            <a href="<?= e(url('/dashboard/vehicles/create')) ?>" class="btn btn-primary btn-sm" style="margin-top:0.5rem;" data-action="new-listing" data-open-new-listing>List your first vehicle</a>
+                            <a href="<?= e(url('/dashboard/vehicles?create=1')) ?>" class="btn btn-primary btn-sm" style="margin-top:0.5rem;" data-action="new-listing" data-open-new-listing>List your first vehicle</a>
                         </div>
                     <?php else: ?>
                         <table class="table">
@@ -124,7 +124,7 @@ $warningNote = $warningNote ?? (string) ($user['guide_warning_note'] ?? '');
                                     <td><?= money((float) $v['price_per_day']) ?>/day</td>
                                     <td><?= e($v['location']) ?></td>
                                     <td><span class="pill <?= e(\App\Models\Vehicle::statusPillClass((string) $v['status'])) ?>"><?= e(\App\Models\Vehicle::statusLabel((string) $v['status'])) ?></span></td>
-                                    <td><a href="<?= e(url('/dashboard/vehicles/' . (int) $v['id'] . '/edit')) ?>" class="btn btn-ghost btn-xs">Edit</a></td>
+                                    <td><a href="<?= e(url('/dashboard/vehicles?edit=' . (int) $v['id'])) ?>" class="btn btn-ghost btn-xs">Edit</a></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>

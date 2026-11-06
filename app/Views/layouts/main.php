@@ -20,7 +20,7 @@ $publicBrowse = $current === '/'
     || str_starts_with($current, '/listing/')
     || str_starts_with($current, '/rentals/');
 $isMessages = str_starts_with($current, '/messages');
-$isDashboard = str_starts_with($current, '/dashboard') || str_starts_with($current, '/profile');
+$isDashboard = str_starts_with($current, '/dashboard') || str_starts_with($current, '/profile') || str_starts_with($current, '/documents');
 $hideFooter = $isMessages;
 $guideWarned = $user && \App\Models\User::isProviderRole((string) ($user['role'] ?? '')) && \App\Models\User::isGuideWarned((int) $user['id']);
 
@@ -55,7 +55,8 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
         <meta name="auth-user-status" content="<?= e((string) ($user['guide_status'] ?? 'none')) ?>">
     <?php endif; ?>
 </head>
-<body class="<?= e(trim(($isMessages ? 'page-messages ' : '') . ($isDashboard ? 'page-dashboard ' : '') . ($hideFooter ? 'page-no-footer ' : '') . ($guideWarned ? 'guide-warned' : ''))) ?>">
+<?php $roleClass = $user ? 'role-' . preg_replace('/[^a-z0-9_-]/i', '', (string) ($user['role'] ?? '')) : ''; ?>
+<body class="<?= e(trim(($isMessages ? 'page-messages ' : '') . ($isDashboard ? 'page-dashboard ' : '') . ($hideFooter ? 'page-no-footer ' : '') . ($guideWarned ? 'guide-warned ' : '') . ($roleClass ? ' ' . $roleClass : ''))) ?>">
 <header class="site-header" id="siteHeader">
     <div class="container header-inner">
 <?php if ($isGuide): ?>

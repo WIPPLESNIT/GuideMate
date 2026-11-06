@@ -134,7 +134,7 @@ export default function TrafficScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const webRef = useRef<WebView>(null);
+  const webRef = useRef<WebView<object>>(null);
 
   const [spot, setSpot] = useState<Hotspot>(HOTSPOTS[0]);
   const [token, setToken] = useState('');
@@ -143,8 +143,6 @@ export default function TrafficScreen() {
   const [locating, setLocating] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
     try {
       const data = await getMapsConfig();
       setToken(data.mapbox_token ?? '');
@@ -156,8 +154,22 @@ export default function TrafficScreen() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    const fetchMapConfig = async () => {
+      try {
+        const data = await getMapsConfig();
+        if (active) setToken(data.mapbox_token ?? '');
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'Could not load the traffic map.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchMapConfig();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     webRef.current?.injectJavaScript(`window.__goTo && window.__goTo(${spot.lng}, ${spot.lat}, ${spot.zoom}); true;`);
@@ -258,7 +270,7 @@ export default function TrafficScreen() {
         />
       ) : (
         <View style={styles.mapWrap}>
-          <WebView
+          <WebView<object>
             ref={webRef}
             originWhitelist={['https://*', 'http://*', 'about:blank']}
             source={{ html, baseUrl: 'https://api.mapbox.com' }}
@@ -338,7 +350,7 @@ const styles = StyleSheet.create({
   mapWrap: { flex: 1 },
   web: { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  loading: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   legend: {
     position: 'absolute',
     left: 12,

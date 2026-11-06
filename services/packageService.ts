@@ -52,6 +52,7 @@ export type TravelPackage = {
   price: number;
   originalPrice?: number;
   badge?: string; // e.g. "Best Seller", "Featured", "Popular"
+  assurance?: string; // e.g. "Guaranteed", "Instant Confirmation"
   featured?: boolean;
   coverImage: string;
   localImageKey?: 'kawasan' | 'sardine' | 'whaleshark' | 'templeofleah' | 'bantayan' | 'osmena' | 'magellan';
@@ -63,24 +64,34 @@ export type TravelPackage = {
   minPax?: number;
   maxPax?: number;
   meetingPoint: string;
+  tags?: string[];
   host: PackageHost;
   inclusions: PackageInclusionItem[];
   exclusions: string[];
   itinerary: ItineraryDay[];
+  hotelIncluded?: boolean;
   accommodationDetail?: {
     hotelName: string;
     roomType: string;
     nights: number;
     amenities: string[];
     partnerName?: string;
-  };
+    checkIn?: string;
+    checkOut?: string;
+    coverImage?: string;
+  } | null;
+  rentalIncluded?: boolean;
   rentalDetail?: {
     vehicleType: string;
     model: string;
     duration: string;
     features: string[];
     partnerName?: string;
-  };
+    location?: string;
+    image?: string;
+    handover?: string;
+    dropoff?: string;
+  } | null;
   policy?: {
     cancellation: string;
     confirmation: string;

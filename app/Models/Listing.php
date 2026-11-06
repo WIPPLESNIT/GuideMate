@@ -249,14 +249,15 @@ final class Listing
             'cover_image' => $data['cover_image'] ?? null,
             'status' => $data['status'] ?? 'pending',
             'submitted_at' => $data['submitted_at'] ?? date('Y-m-d H:i:s'),
+            'is_featured' => isset($data['is_featured']) ? (int) $data['is_featured'] : 0,
         ];
 
         $id = Database::insert(
             'INSERT INTO listings
                 (user_id, category_id, title, slug, summary, description, area, address, latitude, longitude,
-                 price, price_unit, duration, capacity, included, not_included, cover_image, status, submitted_at)
+                 price, price_unit, duration, capacity, included, not_included, cover_image, status, submitted_at, is_featured)
              VALUES (:user_id, :category_id, :title, :slug, :summary, :description, :area, :address, :latitude, :longitude,
-                     :price, :price_unit, :duration, :capacity, :included, :not_included, :cover_image, :status, :submitted_at)',
+                     :price, :price_unit, :duration, :capacity, :included, :not_included, :cover_image, :status, :submitted_at, :is_featured)',
             $params
         );
 
@@ -277,18 +278,40 @@ final class Listing
             isset($data['address']) ? (string) $data['address'] : null,
             isset($data['title']) ? (string) $data['title'] : null
         );
-        $data['latitude'] = $coords['latitude'] ?? null;
-        $data['longitude'] = $coords['longitude'] ?? null;
-        $data['capacity'] = isset($data['capacity']) && (int) $data['capacity'] > 0 ? (int) $data['capacity'] : 10;
-        $data['id'] = $id;
+
+        $params = [
+            'id' => $id,
+            'category_id' => $data['category_id'] ?? null,
+            'title' => $data['title'] ?? '',
+            'summary' => $data['summary'] ?? null,
+            'description' => $data['description'] ?? '',
+            'area' => $data['area'] ?? '',
+            'address' => $data['address'] ?? null,
+            'latitude' => $coords['latitude'] ?? null,
+            'longitude' => $coords['longitude'] ?? null,
+            'price' => $data['price'] ?? 0,
+            'price_unit' => !empty($data['price_unit']) ? (string) $data['price_unit'] : 'per person',
+            'duration' => $data['duration'] ?? null,
+            'capacity' => isset($data['capacity']) && (int) $data['capacity'] > 0 ? (int) $data['capacity'] : 10,
+            'included' => $data['included'] ?? null,
+            'not_included' => $data['not_included'] ?? null,
+            'cover_image' => $data['cover_image'] ?? null,
+        ];
+
+        $extraSql = '';
+        if (isset($data['is_featured'])) {
+            $extraSql .= ', is_featured = :is_featured';
+            $params['is_featured'] = (int) $data['is_featured'];
+        }
+
         Database::run(
             'UPDATE listings SET category_id = :category_id, title = :title, summary = :summary,
                 description = :description, area = :area, address = :address,
                 latitude = :latitude, longitude = :longitude,
                 price = :price, price_unit = :price_unit, duration = :duration, capacity = :capacity, included = :included,
-                not_included = :not_included, cover_image = :cover_image
+                not_included = :not_included, cover_image = :cover_image' . $extraSql . '
              WHERE id = :id',
-            $data
+            $params
         );
     }
 

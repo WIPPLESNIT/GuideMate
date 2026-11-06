@@ -216,8 +216,11 @@ $commonSpecs = [
 
                             <div class="field-row">
                                 <label for="v_description">Vehicle Description &amp; Rental Terms <span class="req" style="color:var(--red-600);">*</span></label>
-                                <textarea class="input" id="v_description" name="description" rows="5" placeholder="Describe the vehicle condition, driving requirements (e.g. valid driver's license, security deposit if applicable), delivery options, and operating guidelines..." required><?= e(old('description', $vehicle['description'] ?? '')) ?></textarea>
-                                <small class="hint">At least 20 characters describing the unit, requirements, and pickup details.</small>
+                                <textarea class="input" id="v_description" name="description" rows="5" minlength="20" maxlength="5000" placeholder="Describe the vehicle condition, driving requirements (e.g. valid driver's license, security deposit if applicable), delivery options, and operating guidelines..." required><?= e(old('description', $vehicle['description'] ?? '')) ?></textarea>
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.25rem;">
+        <small class="hint">At least 20 characters describing the unit, requirements, and pickup details.</small>
+        <small id="v_desc_counter" class="hint" style="font-size:0.75rem;font-weight:500;">0 / 20 chars min</small>
+    </div>
                                 <?php if (isset($errors['description'])): ?><div class="field-error"><?= e($errors['description']) ?></div><?php endif; ?>
                             </div>
                         </div>
@@ -226,10 +229,6 @@ $commonSpecs = [
                         <div style="display:flex;gap:1rem;align-items:center;border-top:1px solid var(--border);padding-top:1.5rem;flex-wrap:wrap;">
                             <button type="submit" name="action" value="submit" class="btn btn-primary" onclick="return confirm('<?= $isRejected ? 'Resubmit this vehicle listing for administrator review?' : 'Submit this vehicle listing for administrator approval?' ?>');">
                                 <?= $isRejected ? 'Resubmit for Approval' : ($isEdit ? 'Save &amp; Submit Changes' : 'Submit for Approval') ?>
-                            </button>
-
-                            <button type="submit" name="action" value="draft" class="btn btn-ghost" onclick="return confirm('Save this listing as draft? Drafts will not be sent for review until explicitly submitted.');">
-                                Save as Draft
                             </button>
 
                             <a href="<?= e(url('/dashboard/vehicles')) ?>" class="btn btn-ghost" style="color:var(--text-muted);margin-left:auto;">Cancel</a>

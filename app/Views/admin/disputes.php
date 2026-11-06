@@ -1,10 +1,10 @@
 <?php
 /** @var array<int,array<string,mixed>> $disputes */
 ?>
-<h1>Disputes</h1>
+<h1>Complaints</h1>
 
 <?php if ($disputes === []): ?>
-    <div class="panel"><div class="panel-body"><div class="empty-state" style="padding:2rem;"><p>No open disputes.</p></div></div></div>
+    <div class="panel"><div class="panel-body"><div class="empty-state" style="padding:2rem;"><p>No open complaints.</p></div></div></div>
 <?php else: ?>
     <?php foreach ($disputes as $d): ?>
         <div class="panel" style="margin-bottom:1rem;">

@@ -100,7 +100,7 @@ export default function SearchScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
-          ) : null
+          ) : undefined
         }
         renderItem={({ item }) => (
           <TouchableOpacity

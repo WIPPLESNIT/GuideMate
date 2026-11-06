@@ -39,8 +39,6 @@ export default function ListingsScreen() {
             : 'Explore Cebu';
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
     try {
       const query: Record<string, string> = {};
       if (categoryParam) query.category = categoryParam;
@@ -56,8 +54,26 @@ export default function ListingsScreen() {
   }, [categoryParam, params.q, params.featured]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    const fetchListings = async () => {
+      try {
+        const query: Record<string, string> = {};
+        if (categoryParam) query.category = categoryParam;
+        if (params.q) query.q = String(params.q);
+        if (params.featured) query.featured = String(params.featured);
+        const data = await getListings(query);
+        if (active) setListings(data.listings.filter((item) => !isHiddenListing(item)));
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load listings.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchListings();
+    return () => {
+      active = false;
+    };
+  }, [categoryParam, params.q, params.featured]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

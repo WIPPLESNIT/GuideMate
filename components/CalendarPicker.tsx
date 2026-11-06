@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // Lightweight month calendar with no native dependencies (works in Expo Go).
@@ -57,24 +57,20 @@ export default function CalendarPicker({
 
   const initialDateStr = multiSelect ? (values[0] || value) : value;
   const initial = initialDateStr ? new Date(initialDateStr) : today;
+  const [previousDate, setPreviousDate] = useState(initialDateStr);
   const [viewYear, setViewYear] = useState(initial.getFullYear());
   const [viewMonth, setViewMonth] = useState(initial.getMonth());
 
-  // Automatically navigate visible month to match selected date whenever it updates
-  useEffect(() => {
-    const targetDateStr = multiSelect ? (values[0] || value) : value;
-    if (targetDateStr) {
-      const parts = targetDateStr.split('-');
-      if (parts.length === 3) {
-        const y = parseInt(parts[0], 10);
-        const m = parseInt(parts[1], 10) - 1;
-        if (!isNaN(y) && !isNaN(m)) {
-          setViewYear(y);
-          setViewMonth(m);
-        }
+  if (initialDateStr !== previousDate) {
+    setPreviousDate(initialDateStr);
+    if (initialDateStr) {
+      const target = new Date(initialDateStr);
+      if (!Number.isNaN(target.getTime())) {
+        setViewYear(target.getFullYear());
+        setViewMonth(target.getMonth());
       }
     }
-  }, [value, values, multiSelect]);
+  }
 
   const todayKey = toKey(today.getFullYear(), today.getMonth(), today.getDate());
 

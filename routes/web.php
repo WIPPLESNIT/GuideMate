@@ -40,6 +40,7 @@ $router->get('/attractions', [ListingController::class, 'attractions']);
 $router->get('/attraction-and-tours', function() { redirect('/attractions', 301); });
 $router->get('/tour-guides', [ListingController::class, 'tourGuides']);
 $router->get('/hotels', [ListingController::class, 'hotels']);
+$router->get('/packages', [ListingController::class, 'packages']);
 $router->get('/restaurants', [ListingController::class, 'restaurants']);
 $router->get('/rentals', [RentalController::class, 'index']);
 $router->get('/rentals/{slug}', [RentalController::class, 'show']);
@@ -187,6 +188,7 @@ $router->get('/admin/messages/{partner}', [AdminController::class, 'messageThrea
 $router->get('/admin/export/bookings', [AdminController::class, 'exportBookings'], ['admin']);
 $router->get('/admin/export/users', [AdminController::class, 'exportUsers'], ['admin']);
 $router->get('/admin/export/disputes', [AdminController::class, 'exportDisputes'], ['admin']);
+$router->get('/admin/export/complaints', [AdminController::class, 'exportDisputes'], ['admin']);
 $router->get('/admin/security', [AdminAuthController::class, 'showSecurity'], ['admin']);
 $router->post('/admin/security/setup', [AdminAuthController::class, 'setupTwoFa'], ['admin']);
 $router->post('/admin/security/enable', [AdminAuthController::class, 'enableTwoFa'], ['admin']);
@@ -227,8 +229,12 @@ $router->post('/admin/users/{id}/unsuspend', [AdminController::class, 'unsuspend
 $router->post('/admin/users/{id}/warn', [AdminController::class, 'warnProvider'], ['admin']);
 $router->post('/admin/users/{id}/clear-warning', [AdminController::class, 'clearGuideWarning'], ['admin']);
 $router->get('/admin/guides', [AdminController::class, 'guides'], ['admin']);
+$router->get('/admin/partner-applications', [AdminController::class, 'guides'], ['admin']);
+$router->get('/admin/partners', [AdminController::class, 'guides'], ['admin']);
 $router->post('/admin/guides/{id}/approve', [AdminController::class, 'approveGuide'], ['admin']);
 $router->post('/admin/guides/{id}/reject', [AdminController::class, 'rejectGuide'], ['admin']);
 $router->post('/admin/guides/{id}/revoke', [AdminController::class, 'revokeGuide'], ['admin']);
 $router->get('/admin/disputes', [AdminController::class, 'disputes'], ['admin']);
 $router->post('/admin/disputes/{id}/resolve', [AdminController::class, 'resolveDispute'], ['admin']);
+$router->get('/admin/complaints', [AdminController::class, 'disputes'], ['admin']);
+$router->post('/admin/complaints/{id}/resolve', [AdminController::class, 'resolveDispute'], ['admin']);

@@ -58,7 +58,10 @@ export const SOCIAL_AUTH = {
     expo: '', // Web-type client id (Expo Go / web)
     ios: '', // paste your iOS OAuth client id here for iOS dev/store builds
     android: '', // paste your Android OAuth client id here for Android dev/store builds
-    web: '594984195783-95p4qciig7ghg2jtok9a709ov8k0embh.apps.googleusercontent.com',
+    // Instant demo sign-in works out-of-the-box. To enable real Google Cloud OAuth,
+    // paste your Web Client ID here and set GOOGLE_OAUTH_CLIENT_SECRET in the backend .env
+    // (Previous: '594984195783-95p4qciig7ghg2jtok9a709ov8k0embh.apps.googleusercontent.com')
+    web: '',
   },
   // Paste your Facebook App ID here to switch Facebook from demo to the real
   // backend-mediated login (the actual OAuth uses the backend .env secret).

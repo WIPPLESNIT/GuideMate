@@ -68,8 +68,26 @@ export default function WeatherScreen() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    load(place);
+    let active = true;
+    const fetchWeather = async () => {
+      try {
+        const snapshot = await fetchCebuWeather(place);
+        if (active) setData(snapshot);
+      } catch {
+        if (!active) return;
+        setData(null);
+        setError('Could not load the forecast. Check your connection and try again.');
+      } finally {
+        if (active) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    };
+    void fetchWeather();
+    return () => {
+      active = false;
+    };
   }, [place, load]);
 
   const look = data ? weatherLook(data.current.code, data.current.isDay) : null;

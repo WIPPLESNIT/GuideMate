@@ -72,6 +72,11 @@ final class ListingController extends Controller
         $this->renderBrowse('hotels', 'Hotels & Stays in Cebu', 'Resorts, hotels and places to stay.');
     }
 
+    public function packages(): void
+    {
+        $this->renderBrowse('packages', 'Travel Packages', 'Curated all-inclusive expeditions and complete travel packages across Cebu.');
+    }
+
     public function restaurants(): void
     {
         redirect('/things-to-do');

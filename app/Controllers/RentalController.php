@@ -108,6 +108,8 @@ final class RentalController extends Controller
             'stats' => Vehicle::countForOwner($userId),
             'isVerified' => (string) ($user['guide_status'] ?? 'none') === 'approved',
             'user' => $user,
+            'types' => Vehicle::TYPES,
+            'errors' => errors(),
         ]);
     }
 
@@ -120,12 +122,7 @@ final class RentalController extends Controller
             return;
         }
 
-        $this->view('rental/vehicle-form', [
-            'title' => 'List a Vehicle',
-            'vehicle' => null,
-            'types' => Vehicle::TYPES,
-            'errors' => errors(),
-        ]);
+        redirect('/dashboard/vehicles?create=1');
     }
 
     /**
@@ -140,10 +137,10 @@ final class RentalController extends Controller
         $userId = (int) Auth::id();
         $this->verifyCsrf();
 
+        // Complete server-side validation for all mandatory fields and primary photo
         $data = $this->validateVehicleData();
-        $action = (string) $this->input('action', 'submit');
 
-        // Cover photo is required for new listings
+        // Store uploaded cover photo
         $coverPath = null;
         if (Upload::present($_FILES['image'] ?? null)) {
             try {
@@ -151,15 +148,15 @@ final class RentalController extends Controller
             } catch (RuntimeException $e) {
                 $errors = errors();
                 $errors['image'] = $e->getMessage();
-                flash_keep_old($errors, $_POST, '/dashboard/vehicles/create');
+                if ($this->isJson()) {
+                    $this->json(['error' => $e->getMessage(), 'errors' => $errors], 422);
+                    exit;
+                }
+                flash_keep_old($errors, $_POST, '/dashboard/vehicles?create=1');
             }
-        } else {
-            $errors = errors();
-            $errors['image'] = 'A primary photo of the vehicle is required.';
-            flash_keep_old($errors, $_POST, '/dashboard/vehicles/create');
         }
 
-        $status = $action === 'draft' ? 'draft' : 'pending';
+        $status = 'pending';
 
         $vehicleId = Vehicle::create([
             'user_id' => $userId,
@@ -180,12 +177,7 @@ final class RentalController extends Controller
         // Upload additional gallery photos if provided
         $this->processGalleryUploads($vehicleId, $userId);
 
-        if ($status === 'draft') {
-            flash('success', 'Vehicle saved as draft.');
-        } else {
-            flash('success', 'Vehicle listing submitted! It will appear publicly once an administrator approves it.');
-        }
-
+        flash('success', 'Vehicle listing submitted! It will appear publicly once an administrator approves it.');
         redirect('/dashboard/vehicles');
     }
 
@@ -196,13 +188,7 @@ final class RentalController extends Controller
     {
         $vehicle = $this->ownedVehicle((int) $id);
 
-        $this->view('rental/vehicle-form', [
-            'title' => 'Edit Vehicle: ' . $vehicle['name'],
-            'vehicle' => $vehicle,
-            'gallery' => Vehicle::gallery((int) $vehicle['id']),
-            'types' => Vehicle::TYPES,
-            'errors' => errors(),
-        ]);
+        redirect('/dashboard/vehicles?edit=' . (int) $vehicle['id']);
     }
 
     /**
@@ -229,7 +215,7 @@ final class RentalController extends Controller
             } catch (RuntimeException $e) {
                 $errors = errors();
                 $errors['image'] = $e->getMessage();
-                flash_keep_old($errors, $_POST, '/dashboard/vehicles/' . (int) $id . '/edit');
+                flash_keep_old($errors, $_POST, '/dashboard/vehicles?edit=' . (int) $id);
             }
         }
 
@@ -552,54 +538,154 @@ final class RentalController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function validateVehicleData(?int $vehicleId = null): array
+    /**
+     * Pure validation logic for vehicle listing inputs and files.
+     * Can be invoked from controller actions, APIs, and unit tests.
+     *
+     * @param array<string, mixed> $input
+     * @param array<string, mixed>|null $file
+     * @param int|null $vehicleId
+     * @return array{data: array<string, mixed>, errors: array<string, string>}
+     */
+    public static function validateVehicleInputs(array $input, ?array $file = null, ?int $vehicleId = null): array
     {
-        $make = trim((string) $this->input('make', ''));
-        $model = trim((string) $this->input('model', ''));
-        $year = (int) $this->input('year', 0);
-        $type = trim((string) $this->input('type', ''));
-        $name = trim((string) $this->input('name', ''));
-        $price = (float) $this->input('price_per_day', 0);
-        $location = trim((string) $this->input('location', ''));
-        $address = trim((string) $this->input('address', ''));
-        $description = trim((string) $this->input('description', ''));
-        $specsRaw = $this->input('specs', []);
+        $make = trim((string) ($input['make'] ?? ''));
+        $model = trim((string) ($input['model'] ?? ''));
+        $rawYear = $input['year'] ?? '';
+        $type = trim((string) ($input['type'] ?? ''));
+        $name = trim((string) ($input['name'] ?? ''));
+        $rawPrice = $input['price_per_day'] ?? '';
+        $location = trim((string) ($input['location'] ?? ''));
+        $address = trim((string) ($input['address'] ?? ''));
+        $description = trim((string) ($input['description'] ?? ''));
+        $specsRaw = $input['specs'] ?? [];
+        $customSpec = trim((string) ($input['custom_spec'] ?? ''));
 
         $errors = [];
 
+        // 1. Make / Brand validation (required, 2-80 chars, non-whitespace)
         if ($make === '') {
-            $errors['make'] = 'Vehicle make is required (e.g. Honda, Toyota).';
+            $errors['make'] = 'Vehicle make/brand is required (e.g. Honda, Toyota, Yamaha).';
+        } elseif (mb_strlen($make) < 2) {
+            $errors['make'] = 'Vehicle make/brand must be at least 2 characters.';
+        } elseif (mb_strlen($make) > 80) {
+            $errors['make'] = 'Vehicle make/brand must not exceed 80 characters.';
         }
+
+        // 2. Model validation (required, 1-80 chars, non-whitespace)
         if ($model === '') {
-            $errors['model'] = 'Vehicle model is required (e.g. Click 125i, Vios).';
+            $errors['model'] = 'Vehicle model is required (e.g. Click 125i, Vios, Aerox 155).';
+        } elseif (mb_strlen($model) > 80) {
+            $errors['model'] = 'Vehicle model must not exceed 80 characters.';
         }
-        $currentYear = (int) date('Y') + 1;
-        if ($year < 1980 || $year > $currentYear) {
-            $errors['year'] = "Please enter a valid model year (between 1980 and {$currentYear}).";
+
+        // 3. Model Year validation (required, integer between 1980 and current year + 1)
+        $maxYear = (int) date('Y') + 1;
+        if ($rawYear === '' || $rawYear === null || !is_numeric($rawYear)) {
+            $errors['year'] = 'Model year is required.';
+        } else {
+            $year = (int) $rawYear;
+            if ($year < 1980 || $year > $maxYear) {
+                $errors['year'] = "Please enter a valid model year between 1980 and {$maxYear}.";
+            }
         }
-        if ($type === '' || !in_array($type, Vehicle::TYPES, true)) {
-            $errors['type'] = 'Please select a valid vehicle type.';
+
+        // 4. Vehicle Type validation (required, in Vehicle::TYPES)
+        if ($type === '') {
+            $errors['type'] = 'Vehicle type category is required.';
+        } elseif (!in_array($type, Vehicle::TYPES, true)) {
+            $errors['type'] = 'Please select a valid vehicle type category (' . implode(', ', Vehicle::TYPES) . ').';
         }
-        if ($price <= 0) {
-            $errors['price_per_day'] = 'Please enter a valid daily rental rate greater than 0.';
+
+        // 5. Daily Rental Rate validation (required, numeric, >= 50, <= 500,000)
+        if ($rawPrice === '' || $rawPrice === null || !is_numeric($rawPrice)) {
+            $errors['price_per_day'] = 'Daily rental rate is required and must be a valid number.';
+            $price = 0.0;
+        } else {
+            $price = (float) $rawPrice;
+            if ($price <= 0) {
+                $errors['price_per_day'] = 'Daily rental rate must be greater than 0.';
+            } elseif ($price < 50) {
+                $errors['price_per_day'] = 'Daily rental rate must be at least ₱50.';
+            } elseif ($price > 500000) {
+                $errors['price_per_day'] = 'Daily rental rate cannot exceed ₱500,000.';
+            }
         }
+
+        // 6. Pickup Location validation (required, 3-160 chars, non-whitespace)
         if ($location === '') {
-            $errors['location'] = 'Vehicle location / pickup area is required.';
+            $errors['location'] = 'Pickup area or island hub is required (e.g. Cebu City, Mactan Island, Oslob).';
+        } elseif (mb_strlen($location) < 3) {
+            $errors['location'] = 'Pickup location must be at least 3 characters.';
+        } elseif (mb_strlen($location) > 160) {
+            $errors['location'] = 'Pickup location must not exceed 160 characters.';
         }
+
+        // 7. Description validation (required, 20-5000 chars, non-whitespace)
         if ($description === '') {
-            $errors['description'] = 'Vehicle description is required.';
-        } elseif (strlen($description) < 20) {
-            $errors['description'] = 'Description should be at least 20 characters.';
+            $errors['description'] = 'Vehicle description and rental terms are required.';
+        } elseif (mb_strlen($description) < 20) {
+            $errors['description'] = 'Description must be at least 20 characters (currently ' . mb_strlen($description) . ' characters).';
+        } elseif (mb_strlen($description) > 5000) {
+            $errors['description'] = 'Description cannot exceed 5,000 characters.';
         }
 
-        $backUrl = $vehicleId === null ? '/dashboard/vehicles/create' : '/dashboard/vehicles/' . $vehicleId . '/edit';
-
-        if ($errors !== []) {
-            flash_keep_old($errors, $_POST, $backUrl);
+        // 8. Primary Cover Photo validation
+        if ($vehicleId === null) {
+            // Creation: Photo is strictly required
+            if ($file === null || !Upload::present($file)) {
+                $errors['image'] = 'A primary cover photo of the vehicle is required (JPG, PNG, or WebP up to 5 MB).';
+            } else {
+                $fileError = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($fileError !== UPLOAD_ERR_OK) {
+                    $errors['image'] = match ($fileError) {
+                        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The uploaded photo is larger than the server allows (max 5 MB).',
+                        UPLOAD_ERR_PARTIAL => 'The photo was only partially uploaded. Please try again.',
+                        default => 'Photo upload failed. Please choose a valid image file.',
+                    };
+                } elseif ((int) ($file['size'] ?? 0) > Upload::MAX_BYTES) {
+                    $errors['image'] = 'Cover photo must be 5 MB or smaller.';
+                } else {
+                    $orig = (string) ($file['name'] ?? '');
+                    $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                        $errors['image'] = 'Invalid image type (.' . $ext . '). Allowed formats: JPG, PNG, WebP.';
+                    }
+                }
+            }
+        } elseif ($file !== null && Upload::present($file)) {
+            // Update: If a new photo is provided, validate it
+            $fileError = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($fileError !== UPLOAD_ERR_OK) {
+                $errors['image'] = 'Photo upload failed. Please choose a valid image file.';
+            } elseif ((int) ($file['size'] ?? 0) > Upload::MAX_BYTES) {
+                $errors['image'] = 'Cover photo must be 5 MB or smaller.';
+            } else {
+                $orig = (string) ($file['name'] ?? '');
+                $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                    $errors['image'] = 'Invalid image type (.' . $ext . '). Allowed formats: JPG, PNG, WebP.';
+                }
+            }
         }
 
+        // Optional field validations
+        if ($name !== '' && mb_strlen($name) > 160) {
+            $errors['name'] = 'Listing display title must not exceed 160 characters.';
+        }
+
+        if ($address !== '' && mb_strlen($address) > 255) {
+            $errors['address'] = 'Pickup landmark/address must not exceed 255 characters.';
+        }
+
+        if ($customSpec !== '' && mb_strlen($customSpec) > 100) {
+            $errors['custom_spec'] = 'Custom inclusion tag must not exceed 100 characters.';
+        }
+
+        // Fallback display name
+        $finalYear = isset($year) ? $year : (int) $rawYear;
         if ($name === '') {
-            $name = "{$year} {$make} {$model}";
+            $name = trim("{$finalYear} {$make} {$model}");
         }
 
         $specs = [];
@@ -609,24 +695,63 @@ final class RentalController extends Controller
             $specs = array_values(array_filter(array_map('trim', explode(',', $specsRaw))));
         }
 
-        // Additional custom spec tag if entered
-        $customSpec = trim((string) $this->input('custom_spec', ''));
-        if ($customSpec !== '' && !in_array($customSpec, $specs, true)) {
+        if ($customSpec !== '' && !in_array($customSpec, $specs, true) && !isset($errors['custom_spec'])) {
             $specs[] = $customSpec;
         }
 
         return [
-            'make' => $make,
-            'model' => $model,
-            'year' => $year,
-            'type' => $type,
-            'name' => $name,
-            'price_per_day' => $price,
-            'location' => $location,
-            'address' => $address !== '' ? $address : null,
-            'description' => $description,
-            'specs' => $specs,
+            'data' => [
+                'make' => $make,
+                'model' => $model,
+                'year' => $finalYear,
+                'type' => $type,
+                'name' => $name,
+                'price_per_day' => $price,
+                'location' => $location,
+                'address' => $address !== '' ? $address : null,
+                'description' => $description,
+                'specs' => $specs,
+            ],
+            'errors' => $errors,
         ];
+    }
+
+    /**
+     * Common vehicle listing input validation helper for HTTP requests.
+     *
+     * @return array<string, mixed>
+     */
+    private function validateVehicleData(?int $vehicleId = null): array
+    {
+        $input = [
+            'make' => $this->input('make', ''),
+            'model' => $this->input('model', ''),
+            'year' => $this->input('year', ''),
+            'type' => $this->input('type', ''),
+            'name' => $this->input('name', ''),
+            'price_per_day' => $this->input('price_per_day', ''),
+            'location' => $this->input('location', ''),
+            'address' => $this->input('address', ''),
+            'description' => $this->input('description', ''),
+            'specs' => $this->input('specs', []),
+            'custom_spec' => $this->input('custom_spec', ''),
+        ];
+
+        $file = $_FILES['image'] ?? null;
+        $validation = self::validateVehicleInputs($input, $file, $vehicleId);
+        $errors = $validation['errors'];
+
+        $backUrl = $vehicleId === null ? '/dashboard/vehicles?create=1' : '/dashboard/vehicles?edit=' . $vehicleId;
+
+        if ($errors !== []) {
+            if ($this->isJson()) {
+                $this->json(['error' => 'Please resolve all required field errors before submitting.', 'errors' => $errors], 422);
+                exit;
+            }
+            flash_keep_old($errors, $_POST, $backUrl);
+        }
+
+        return $validation['data'];
     }
 
     /**

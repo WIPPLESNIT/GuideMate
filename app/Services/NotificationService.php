@@ -242,6 +242,152 @@ HTML;
         self::send($email, 'Hotel listing update — ' . $hotelTitle, $body);
     }
 
+    public static function packageBookingConfirmedToGuide(
+        string $guideEmail,
+        string $guideName,
+        string $packageTitle,
+        string $bookingRef,
+        string $touristName,
+        string $touristPhone,
+        string $touristEmail,
+        string $travelDate,
+        int $guests,
+        float $totalAmount,
+        string $hotelSummary = '',
+        string $vehicleSummary = '',
+        array $activities = []
+    ): void {
+        $subject = 'New Package Booking Confirmed — ' . $packageTitle . ' (Ref: ' . $bookingRef . ')';
+        $body = "Hi {$guideName},\n\n"
+            . "Great news! A new traveler has booked and confirmed your travel package \"{$packageTitle}\".\n\n"
+            . "Booking Reference: {$bookingRef}\n"
+            . "Travel Start Date: {$travelDate}\n"
+            . "Number of Guests: {$guests} persons\n"
+            . "Total Package Price: PHP " . number_format($totalAmount, 2) . " (Paid & Confirmed)\n\n"
+            . "Traveler Contact Details:\n"
+            . "- Lead Guest: {$touristName}\n"
+            . "- Mobile: {$touristPhone}\n"
+            . ($touristEmail !== '' ? "- Email: {$touristEmail}\n\n" : "\n")
+            . ($hotelSummary !== '' ? "Bundled Hotel Accommodation:\n{$hotelSummary}\n\n" : "")
+            . ($vehicleSummary !== '' ? "Bundled Transportation / Vehicle Rental:\n{$vehicleSummary}\n\n" : "")
+            . (!empty($activities) ? "Bundled Activities & Attractions:\n- " . implode("\n- ", $activities) . "\n\n" : "")
+            . "Please reach out to the tourist to coordinate the meeting point, scooter handover, and day-by-day itinerary.\n"
+            . self::appUrl('/dashboard/listings');
+
+        self::send($guideEmail, $subject, $body);
+    }
+
+    public static function packageHotelReservationToProvider(
+        string $providerEmail,
+        string $providerName,
+        string $hotelName,
+        string $roomName,
+        string $bookingRef,
+        string $packageTitle,
+        string $guideName,
+        string $touristName,
+        string $touristPhone,
+        string $checkInDate,
+        string $checkOutDate,
+        int $nights,
+        int $guests
+    ): void {
+        $subject = 'New Hotel Reservation from Package — ' . $hotelName . ' (Ref: ' . $bookingRef . ')';
+        $body = "Hi {$providerName},\n\n"
+            . "You have a new hotel room reservation included as part of the confirmed travel package \"{$packageTitle}\".\n\n"
+            . "Hotel Property: {$hotelName}\n"
+            . "Room Type: {$roomName}\n"
+            . "Reservation Reference: {$bookingRef}\n"
+            . "Check-in Date: {$checkInDate} (from 02:00 PM)\n"
+            . "Check-out Date: {$checkOutDate} (until 12:00 PM)\n"
+            . "Duration: {$nights} " . ($nights === 1 ? 'Night' : 'Nights') . "\n"
+            . "Guests: {$guests} persons\n\n"
+            . "Guest Details:\n"
+            . "- Lead Guest: {$touristName}\n"
+            . "- Mobile: {$touristPhone}\n"
+            . "- Coordinating Guide Host: {$guideName}\n\n"
+            . "Payment Status: Paid & Confirmed via Travel Package Bundle.\n\n"
+            . "View and manage your hotel reservations:\n"
+            . self::appUrl('/dashboard/hotel');
+
+        self::send($providerEmail, $subject, $body);
+    }
+
+    public static function packageVehicleReservationToProvider(
+        string $providerEmail,
+        string $providerName,
+        string $vehicleName,
+        string $rentalRef,
+        string $packageTitle,
+        string $guideName,
+        string $touristName,
+        string $touristPhone,
+        string $pickupDate,
+        int $rentalDays,
+        string $location
+    ): void {
+        $subject = 'New Vehicle Reservation from Package — ' . $vehicleName . ' (Ref: #' . $rentalRef . ')';
+        $body = "Hi {$providerName},\n\n"
+            . "You have a new vehicle rental reservation included as part of the confirmed travel package \"{$packageTitle}\".\n\n"
+            . "Vehicle: {$vehicleName}\n"
+            . "Rental Reference: #{$rentalRef}\n"
+            . "Pickup Date: {$pickupDate}\n"
+            . "Rental Duration: {$rentalDays} " . ($rentalDays === 1 ? 'Day' : 'Days') . "\n"
+            . "Handover Location: {$location}\n\n"
+            . "Customer Details:\n"
+            . "- Customer Name: {$touristName}\n"
+            . "- Mobile: {$touristPhone}\n"
+            . "- Coordinating Guide Host: {$guideName}\n\n"
+            . "Payment Status: Paid & Confirmed via Travel Package Bundle.\n\n"
+            . "View and manage your vehicle rentals:\n"
+            . self::appUrl('/dashboard/rentals');
+
+        self::send($providerEmail, $subject, $body);
+    }
+
+    public static function packageActivityReservationToHost(
+        string $hostEmail,
+        string $hostName,
+        string $activityTitle,
+        string $packageTitle,
+        string $guideName,
+        string $touristName,
+        string $activityDate,
+        int $guests
+    ): void {
+        $subject = 'New Activity Booking from Package — ' . $activityTitle;
+        $body = "Hi {$hostName},\n\n"
+            . "A traveler has booked your activity/attraction \"{$activityTitle}\" as part of the bundled travel package \"{$packageTitle}\".\n\n"
+            . "Scheduled Date: {$activityDate}\n"
+            . "Participants: {$guests} persons\n"
+            . "Traveler: {$touristName}\n"
+            . "Lead Guide Host: {$guideName}\n\n"
+            . "Payment is verified and settled via the travel package reservation.\n"
+            . self::appUrl('/dashboard/bookings');
+
+        self::send($hostEmail, $subject, $body);
+    }
+
+    public static function packageCancellationNotification(
+        string $email,
+        string $recipientName,
+        string $role,
+        string $packageTitle,
+        string $bookingRef,
+        string $touristName,
+        string $serviceSpecificNote = ''
+    ): void {
+        $subject = 'Package Booking Cancelled — ' . $packageTitle . ' (Ref: ' . $bookingRef . ')';
+        $body = "Hello {$recipientName},\n\n"
+            . "The travel package reservation \"{$packageTitle}\" (Ref: {$bookingRef}) booked by traveler {$touristName} has been cancelled.\n\n"
+            . ($serviceSpecificNote !== '' ? "{$serviceSpecificNote}\n\n" : "")
+            . "The system has updated all associated reservation records and returned availability to your inventory.\n\n"
+            . "— The GuideMate Team\n"
+            . self::appUrl('/dashboard');
+
+        self::send($email, $subject, $body);
+    }
+
     private static function send(string $to, string $subject, string $body, ?string $htmlBody = null): bool
     {
         $mailOk = Mailer::send($to, $subject, $body, $htmlBody);

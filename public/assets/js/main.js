@@ -19,11 +19,20 @@
     if (userBtn && userMenu) {
         userBtn.addEventListener('click', function (e) {
             e.stopPropagation();
-            userMenu.classList.toggle('open');
+            var isOpen = userMenu.classList.toggle('open');
+            userBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         });
         document.addEventListener('click', function (e) {
-            if (!userMenu.contains(e.target) && e.target !== userBtn) {
+            if (!userMenu.contains(e.target) && !userBtn.contains(e.target)) {
                 userMenu.classList.remove('open');
+                userBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && userMenu.classList.contains('open')) {
+                userMenu.classList.remove('open');
+                userBtn.setAttribute('aria-expanded', 'false');
+                userBtn.focus();
             }
         });
     }

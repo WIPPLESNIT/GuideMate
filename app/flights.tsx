@@ -24,7 +24,7 @@ export default function FlightsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.bg} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <View style={styles.header}>
         <Text style={[styles.title, { color: theme.textMain }]}>Flights</Text>
         <Text style={[styles.subtitle, { color: theme.textSub }]}>Find cheap routes to and from Cebu.</Text>

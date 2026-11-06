@@ -3,13 +3,12 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { EmptyState } from '../components/ui';
 import { useTheme } from '../lib/theme';
 import { getTripMap, isUnauthorized, TripPin } from '../services/api';
 
-type ActivePin = { id: number; lat: number; lng: number; title: string } | null;
 
 // Self-contained map document loaded inside the WebView. Mirrors the proven web
 // implementation (public/assets/js/trip-map.js): Mapbox satellite/streets, a
@@ -308,25 +307,21 @@ function buildHtml(pins: TripPin[], mapboxToken: string, mapillaryToken: string,
 
 export default function TripMapScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const params = useLocalSearchParams<{ booking?: string }>();
   const focusId = params.booking ? Number(params.booking) : 0;
 
-  const webRef = useRef<WebView>(null);
+  const webRef = useRef<WebView<object>>(null);
   const [pins, setPins] = useState<TripPin[]>([]);
   const [mapboxToken, setMapboxToken] = useState('');
   const [mapillaryToken, setMapillaryToken] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activePin, setActivePin] = useState<ActivePin>(null);
   const [etaText, setEtaText] = useState('');
   const [navMode, setNavMode] = useState(false);
   const watcher = useRef<Location.LocationSubscription | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
     try {
       const data = await getTripMap();
       setPins(data.bookings);
@@ -347,8 +342,33 @@ export default function TripMapScreen() {
   }, [router]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    const fetchTripMap = async () => {
+      try {
+        const data = await getTripMap();
+        if (!active) return;
+        setPins(data.bookings);
+        setMapboxToken(data.mapbox_token);
+        setMapillaryToken(data.mapillary_token);
+      } catch (e) {
+        if (!active) return;
+        if (isUnauthorized(e)) {
+          Alert.alert('Sign in required', 'Please log in to view your trip map.', [
+            { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
+            { text: 'Log in', onPress: () => router.replace('/(auth)/login') },
+          ]);
+        } else {
+          setError(e instanceof Error ? e.message : 'Could not load your trip map.');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchTripMap();
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   const pushUser = useCallback((lat: number, lng: number, heading?: number | null) => {
     const h = typeof heading === 'number' && heading >= 0 ? heading : 'null';
@@ -398,7 +418,6 @@ export default function TripMapScreen() {
     try {
       const msg = JSON.parse(raw);
       if (msg.type === 'ready') startLocation();
-      else if (msg.type === 'select') setActivePin({ id: msg.id, lat: msg.lat, lng: msg.lng, title: msg.title });
       else if (msg.type === 'eta') setEtaText(msg.text);
       else if (msg.type === 'requestLocation') startLocation();
     } catch {
@@ -463,7 +482,7 @@ export default function TripMapScreen() {
           onAction={load}
         />
       ) : (
-        <WebView
+        <WebView<object>
           ref={webRef}
           originWhitelist={['https://*', 'http://*', 'about:blank']}
           source={{ html, baseUrl: 'https://api.mapbox.com' }}

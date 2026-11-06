@@ -41,25 +41,13 @@ export default function LoginScreen() {
   const [bioAvailable, setBioAvailable] = useState(false);
   const [savedName, setSavedName] = useState('');
   const [socialBusy, setSocialBusy] = useState<SocialProvider | null>(null);
-  const [logoutToast, setLogoutToast] = useState(false);
-  const [logoutToastKey, setLogoutToastKey] = useState(0);
+  const [logoutToastDismissed, setLogoutToastDismissed] = useState(false);
 
   const { t } = usePreferences();
 
-  // If the OAuth redirect route bounced back with an error, show it here.
   const { social_error, loggedOut } = useLocalSearchParams<{ social_error?: string | string[]; loggedOut?: string | string[] }>();
-  useEffect(() => {
-    const msg = Array.isArray(social_error) ? social_error[0] : social_error;
-    if (msg) setError(msg);
-  }, [social_error]);
-
-  useEffect(() => {
-    const flag = Array.isArray(loggedOut) ? loggedOut[0] : loggedOut;
-    if (flag === '1') {
-      setLogoutToast(true);
-      setLogoutToastKey((n) => n + 1);
-    }
-  }, [loggedOut]);
+  const socialError = Array.isArray(social_error) ? social_error[0] : social_error;
+  const logoutFlag = Array.isArray(loggedOut) ? loggedOut[0] : loggedOut;
 
   // Dynamic colors mapping based on system device theme
   const theme = {
@@ -138,7 +126,17 @@ export default function LoginScreen() {
       // Configured (Google or Facebook): real login via the Expo Go-friendly
       // backend flow. Unconfigured: anonymous demo fallback.
       if (isProviderConfigured(provider)) {
-        await loginWithBackendOAuth(provider);
+        try {
+          await loginWithBackendOAuth(provider);
+        } catch (oauthErr) {
+          const msg = oauthErr instanceof Error ? oauthErr.message : String(oauthErr);
+          if (/not configured|could not reach|503/i.test(msg)) {
+            console.warn('[SocialAuth] Backend OAuth unconfigured, falling back to instant demo login:', msg);
+            await loginWithSocial(provider);
+          } else {
+            throw oauthErr;
+          }
+        }
       } else {
         await loginWithSocial(provider);
       }
@@ -263,10 +261,10 @@ export default function LoginScreen() {
           <HumanVerification isDark={isDark} onVerifiedChange={setVerified} label={t('verify_human')} />
 
           {/* Inline error message */}
-          {error ? (
+          {error || socialError ? (
             <View style={styles.errorRow}>
               <Ionicons name="alert-circle-outline" size={16} color="#EF4444" style={{ marginRight: 6 }} />
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={styles.errorText}>{error || socialError}</Text>
             </View>
           ) : null}
 
@@ -325,12 +323,12 @@ export default function LoginScreen() {
       </KeyboardAvoidingView>
 
       <AppToast
-        key={logoutToastKey}
-        visible={logoutToast}
+        key={logoutFlag}
+        visible={logoutFlag === '1' && !logoutToastDismissed}
         title="Logged Out"
         subtitle="You have been logged out successfully."
         top={insets.top + 8}
-        onHide={() => setLogoutToast(false)}
+        onHide={() => setLogoutToastDismissed(true)}
       />
     </View>
   );
@@ -346,7 +344,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.52)',
   },
   brandContainer: {

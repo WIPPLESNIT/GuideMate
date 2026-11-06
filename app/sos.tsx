@@ -87,10 +87,40 @@ export default function SosScreen() {
   }, []);
 
   useEffect(() => {
-    fetchLocation();
+    let active = true;
+    const loadLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (!active) return;
+        if (status !== 'granted') {
+          setLocError('Location permission denied. Enable it to share your location in an emergency.');
+          setLocating(false);
+          return;
+        }
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        if (!active) return;
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        setCoords({ lat, lng });
+        try {
+          const geo = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+          if (active && geo[0]) {
+            const addressParts = geo[0];
+            setAddress([addressParts.name, addressParts.street, addressParts.district, addressParts.city, addressParts.region].filter(Boolean).join(', '));
+          }
+        } catch {
+          // reverse geocode is optional
+        }
+      } catch {
+        if (active) setLocError('Could not get your location. Make sure GPS is on.');
+      } finally {
+        if (active) setLocating(false);
+      }
+    };
+    void loadLocation();
     (async () => {
       const raw = await AsyncStorage.getItem(CONTACT_KEY);
-      if (raw) {
+      if (active && raw) {
         try {
           setContact(JSON.parse(raw));
         } catch {
@@ -98,7 +128,10 @@ export default function SosScreen() {
         }
       }
     })();
-  }, [fetchLocation]);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const mapsLink = coords ? `https://maps.google.com/?q=${coords.lat},${coords.lng}` : '';
 

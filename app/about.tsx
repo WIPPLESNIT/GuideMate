@@ -83,7 +83,7 @@ export default function AboutScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['left', 'right']}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.card} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBack} activeOpacity={0.7}>
@@ -109,14 +109,14 @@ export default function AboutScreen() {
         </Text>
 
         <View style={[styles.group, { backgroundColor: theme.card }]}>
-          <Row icon="chatbubble-ellipses-outline" label="Leave feedback" first onPress={() => router.push('/feedback')} />
-          <Row icon="mail-outline" label="Contact support" onPress={() => open(`mailto:${SUPPORT_EMAIL}`)} />
-          <Row icon="globe-outline" label="Visit website" onPress={() => open(`${WEBSITE}/`)} />
+          {Row({ icon: 'chatbubble-ellipses-outline', label: 'Leave feedback', first: true, onPress: () => router.push('/feedback') })}
+          {Row({ icon: 'mail-outline', label: 'Contact support', onPress: () => open(`mailto:${SUPPORT_EMAIL}`) })}
+          {Row({ icon: 'globe-outline', label: 'Visit website', onPress: () => open(`${WEBSITE}/`) })}
         </View>
 
         <View style={[styles.group, { backgroundColor: theme.card, marginTop: 16 }]}>
-          <Row icon="document-text-outline" label="Terms of Service" first onPress={() => open(`${WEBSITE}/terms`)} />
-          <Row icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => open(`${WEBSITE}/privacy`)} />
+          {Row({ icon: 'document-text-outline', label: 'Terms of Service', first: true, onPress: () => open(`${WEBSITE}/terms`) })}
+          {Row({ icon: 'shield-checkmark-outline', label: 'Privacy Policy', onPress: () => open(`${WEBSITE}/privacy`) })}
         </View>
 
         <Text style={[styles.copyright, { color: theme.textSub }]}>

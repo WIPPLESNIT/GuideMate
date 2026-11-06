@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -44,12 +44,6 @@ const START_TIME_SLOTS = [
   '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
   '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
   '18:00', '19:00', '20:00',
-];
-
-const END_TIME_SLOTS = [
-  '07:00', '08:00', '09:00', '10:00', '11:00', '12:00',
-  '13:00', '14:00', '15:00', '16:00', '17:00', '18:00',
-  '19:00', '20:00', '21:00', '22:00',
 ];
 
 function formatReviewDate(value: string): string {
@@ -248,55 +242,57 @@ export default function ListingDetailScreen() {
     inputBg: colors.chipBg,
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await getListing(String(slug));
-      setListing(data.listing);
-      const r = Array.isArray(data.rooms) ? data.rooms : [];
-      setHotelRooms(r);
-      if (r.length > 0) {
-        setSelectedRoom(r.find((x) => x.status === 'available') || r[0]);
-      }
-      setSchedules(Array.isArray(data.schedules) ? data.schedules : []);
-      setFavorited(!!data.favorited);
-      setAlreadyBooked(!!data.already_booked);
-      setActiveBooking(data.active_booking || null);
-      setCanReview(!!data.can_review);
-      setBookedSlots(Array.isArray(data.booked_slots) ? data.booked_slots : []);
-      setReviews(Array.isArray(data.reviews) ? data.reviews : []);
-      setGallery(Array.isArray(data.gallery) ? data.gallery : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load this listing.');
-    } finally {
-      setLoading(false);
-    }
-  }, [slug]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    const fetchListing = async () => {
+      try {
+        const data = await getListing(String(slug));
+        if (!active) return;
+        const rooms = Array.isArray(data.rooms) ? data.rooms : [];
+        setListing(data.listing);
+        setHotelRooms(rooms);
+        if (rooms.length > 0) setSelectedRoom(rooms.find((room) => room.status === 'available') || rooms[0]);
+        setSchedules(Array.isArray(data.schedules) ? data.schedules : []);
+        setFavorited(!!data.favorited);
+        setAlreadyBooked(!!data.already_booked);
+        setActiveBooking(data.active_booking || null);
+        setCanReview(!!data.can_review);
+        setBookedSlots(Array.isArray(data.booked_slots) ? data.booked_slots : []);
+        setReviews(Array.isArray(data.reviews) ? data.reviews : []);
+        setGallery(Array.isArray(data.gallery) ? data.gallery : []);
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load this listing.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchListing();
+    return () => {
+      active = false;
+    };
+  }, [slug]);
 
   const heroSliderWidth = Math.min(windowWidth, 1024);
 
+  const heroImage = listing?.image;
+  const listingPhotos = listing?.photos;
   const heroPhotos = React.useMemo(() => {
     const list: string[] = [];
-    if (Array.isArray(listing?.photos)) {
-      for (const p of listing.photos) {
+    if (Array.isArray(listingPhotos)) {
+      for (const p of listingPhotos) {
         if (p && !list.includes(p)) list.push(p);
       }
     }
-    if (listing?.image && !list.includes(listing.image)) {
-      list.unshift(listing.image);
+    if (heroImage && !list.includes(heroImage)) {
+      list.unshift(heroImage);
     }
     if (Array.isArray(gallery)) {
       for (const g of gallery) {
         if (g?.url && !list.includes(g.url)) list.push(g.url);
       }
     }
-    return list.length > 0 ? list : (listing?.image ? [listing.image] : []);
-  }, [listing?.photos, listing?.image, gallery]);
+    return list.length > 0 ? list : (heroImage ? [heroImage] : []);
+  }, [listingPhotos, heroImage, gallery]);
 
   const scrollToHeroSlide = (index: number) => {
     if (index < 0 || index >= heroPhotos.length) return;
@@ -409,7 +405,7 @@ export default function ListingDetailScreen() {
         }
       }
 
-      setBookingDates(initialDate ? [initialDate] : [tomorrowStr]);
+      updateBookingDates(initialDate ? [initialDate] : [tomorrowStr]);
       setBookingTime(initialStartTime || '09:00');
       setBookingEndTime(initialEndTime || '17:00');
     } else {
@@ -481,7 +477,6 @@ export default function ListingDetailScreen() {
 
   // Set of "YYYY-MM-DD|HH:MM" slots already taken, and dates where every slot
   // is taken (so the calendar can fully disable them).
-  const bookedSet = React.useMemo(() => new Set(bookedSlots.map((s) => `${s.date}|${s.time}`)), [bookedSlots]);
   const fullyBookedDates = React.useMemo(() => {
     const counts: Record<string, number> = {};
     bookedSlots.forEach((s) => {
@@ -489,38 +484,14 @@ export default function ListingDetailScreen() {
     });
     return Object.keys(counts).filter((d) => counts[d] >= START_TIME_SLOTS.length);
   }, [bookedSlots]);
-  const isSlotBooked = (slot: string) => {
-    if (bookingDates.length === 0) return false;
-    return bookingDates.some((d) => bookedSet.has(`${d}|${slot}`));
-  };
-
-  const availableEndSlots = React.useMemo(
-    () => END_TIME_SLOTS.filter((s) => !bookingTime || s > bookingTime),
-    [bookingTime]
-  );
-
-  const isEndTimeInvalid = (endSlot: string) => {
-    if (!bookingTime || endSlot <= bookingTime) return true;
-    return START_TIME_SLOTS.some((s) => s >= bookingTime && s < endSlot && isSlotBooked(s));
-  };
-
-  const handleSelectStartTime = (slot: string) => {
-    setBookingTime(slot);
-    if (bookingEndTime && bookingEndTime <= slot) {
-      setBookingEndTime('');
+  const updateBookingDates = (dates: string[]) => {
+    setBookingDates(dates);
+    if (!isHotel && dates.length > 0) {
+      const match = schedules.find((s) => s.schedule_date === dates[0]);
+      if (match?.start_time) setBookingTime(match.start_time.slice(0, 5));
+      if (match?.end_time) setBookingEndTime(match.end_time.slice(0, 5));
     }
   };
-
-  // Automatically sync guide tour schedule times when booking date changes
-  useEffect(() => {
-    if (!isHotel && bookingDates.length > 0) {
-      const match = schedules.find((s) => s.schedule_date === bookingDates[0]);
-      if (match) {
-        if (match.start_time) setBookingTime(match.start_time.slice(0, 5));
-        if (match.end_time) setBookingEndTime(match.end_time.slice(0, 5));
-      }
-    }
-  }, [bookingDates, schedules, isHotel]);
 
   const goToPayment = () => {
     if (isHotel) {
@@ -2466,7 +2437,7 @@ export default function ListingDetailScreen() {
                                       activeOpacity={0.85}
                                       onPress={() => {
                                         setSelectedSessionId(s.id);
-                                        setBookingDates([s.schedule_date]);
+                                        updateBookingDates([s.schedule_date]);
                                         if (s.start_time) setBookingTime(s.start_time.slice(0, 5));
                                         if (s.end_time) setBookingEndTime(s.end_time.slice(0, 5));
                                         setGuests(1);
@@ -2564,7 +2535,7 @@ export default function ListingDetailScreen() {
                           value={bookingDates[0] || ''}
                           onChange={(pickedDate) => {
                             if (!canChangeDate && hasSchedule) return;
-                            setBookingDates([pickedDate]);
+                            updateBookingDates([pickedDate]);
                             if (hasSchedule) {
                               const matching = schedules.filter((s) => s.schedule_date === pickedDate);
                               const availMatch = matching.find((s) => s.is_available !== false && (s.available_slots === undefined || s.available_slots > 0)) || matching[0];
@@ -2849,7 +2820,7 @@ export default function ListingDetailScreen() {
                         <Text style={styles.confirmBtnText}>Verifying payment...</Text>
                       </View>
                     ) : (
-                      <Text style={styles.confirmBtnText}>I've paid</Text>
+                      <Text style={styles.confirmBtnText}>I&apos;ve paid</Text>
                     )}
                   </TouchableOpacity>
                 </>

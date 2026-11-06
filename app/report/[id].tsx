@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -39,20 +39,23 @@ export default function ReportScreen() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await getMyDispute(bookingId);
-      setExisting(data.dispute);
-    } catch {
-      // no existing report / not reachable — show the form
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingId]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    const fetchDispute = async () => {
+      try {
+        const data = await getMyDispute(bookingId);
+        if (active) setExisting(data.dispute);
+      } catch {
+        // no existing report / not reachable — show the form
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchDispute();
+    return () => {
+      active = false;
+    };
+  }, [bookingId]);
 
   // ── Image Attachment Handling (Camera + Library) ──
 

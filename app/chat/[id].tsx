@@ -71,21 +71,6 @@ export default function ChatScreen() {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, []);
 
-  const loadInitial = useCallback(async () => {
-    try {
-      const data = await getThread(partnerId, translateLang);
-      setPartner(data.partner);
-      setOnline(data.partner.online);
-      setMessages(data.messages);
-      lastIdRef.current = data.messages.length ? data.messages[data.messages.length - 1].id : 0;
-      scrollToEnd();
-    } catch {
-      // keep screen; user can go back
-    } finally {
-      setLoading(false);
-    }
-  }, [partnerId, translateLang, scrollToEnd]);
-
   const poll = useCallback(async () => {
     try {
       const data = await pollThread(partnerId, lastIdRef.current, translateLang);
@@ -105,14 +90,39 @@ export default function ChatScreen() {
   }, [partnerId, translateLang, scrollToEnd]);
 
   useEffect(() => {
-    getSession().then((session) => {
-      setIsTourist((session?.role ?? 'tourist') === 'tourist');
-    });
+    let active = true;
+    const loadRole = async () => {
+      const session = await getSession();
+      if (active) setIsTourist((session?.role ?? 'tourist') === 'tourist');
+    };
+    void loadRole();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    loadInitial();
-  }, [loadInitial]);
+    let active = true;
+    const fetchThread = async () => {
+      try {
+        const data = await getThread(partnerId, translateLang);
+        if (!active) return;
+        setPartner(data.partner);
+        setOnline(data.partner.online);
+        setMessages(data.messages);
+        lastIdRef.current = data.messages.length ? data.messages[data.messages.length - 1].id : 0;
+        scrollToEnd();
+      } catch {
+        // keep screen; user can go back
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchThread();
+    return () => {
+      active = false;
+    };
+  }, [partnerId, translateLang, scrollToEnd]);
 
   useEffect(() => {
     const timer = setInterval(poll, 4000);
@@ -141,7 +151,11 @@ export default function ChatScreen() {
   const toggleOriginal = (id: number) => {
     setShowOriginal((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };

@@ -61,6 +61,21 @@ final class Database
      */
     public static function run(string $sql, array $params = []): PDOStatement
     {
+        if ($params !== [] && !array_is_list($params)) {
+            preg_match_all('/(?<!:):([a-zA-Z0-9_]+)/', $sql, $matches);
+            if (!empty($matches[1])) {
+                $placeholders = array_flip($matches[1]);
+                $clean = [];
+                foreach ($params as $key => $val) {
+                    $k = ltrim((string) $key, ':');
+                    if (isset($placeholders[$k])) {
+                        $clean[$k] = $val;
+                    }
+                }
+                $params = $clean;
+            }
+        }
+
         $statement = self::connection()->prepare($sql);
         $statement->execute($params);
         return $statement;

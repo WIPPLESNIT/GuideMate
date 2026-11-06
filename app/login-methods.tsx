@@ -53,10 +53,22 @@ export default function LoginMethodsScreen() {
     if (socialBusy) return;
     setSocialBusy(provider);
     try {
-      const session =
-        isProviderConfigured(provider)
-          ? await loginWithBackendOAuth(provider)
-          : await loginWithSocial(provider);
+      let session;
+      if (isProviderConfigured(provider)) {
+        try {
+          session = await loginWithBackendOAuth(provider);
+        } catch (oauthErr) {
+          const msg = oauthErr instanceof Error ? oauthErr.message : String(oauthErr);
+          if (/not configured|could not reach|503/i.test(msg)) {
+            console.warn('[SocialAuth] Backend OAuth unconfigured, falling back to instant demo login:', msg);
+            session = await loginWithSocial(provider);
+          } else {
+            throw oauthErr;
+          }
+        }
+      } else {
+        session = await loginWithSocial(provider);
+      }
       setLoggedIn(true);
       setEmail(session.email);
       Alert.alert(
@@ -122,7 +134,7 @@ export default function LoginMethodsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['left', 'right']}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.card} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
       <View style={[styles.header, { backgroundColor: theme.card, borderBottomColor: theme.border, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBack} activeOpacity={0.7}>
@@ -139,42 +151,42 @@ export default function LoginMethodsScreen() {
             : 'Log in or register to manage your sign-in methods.'}
         </Text>
 
-        <Method
-          icon="mail-outline"
-          title="Email & password"
-          subtitle={loggedIn && email ? email : 'Sign in with your email address'}
-          status={loggedIn ? 'Active' : 'Not signed in'}
-          statusColor={loggedIn ? theme.accent : theme.textSub}
-          onPress={loggedIn ? undefined : () => requireLogin(() => {})}
-        />
+        {Method({
+          icon: 'mail-outline',
+          title: 'Email & password',
+          subtitle: loggedIn && email ? email : 'Sign in with your email address',
+          status: loggedIn ? 'Active' : 'Not signed in',
+          statusColor: loggedIn ? theme.accent : theme.textSub,
+          onPress: loggedIn ? undefined : () => requireLogin(() => {}),
+        })}
 
-        <Method
-          icon="key-outline"
-          title="Change password"
-          subtitle="Update the password for your account"
-          onPress={() => requireLogin(() => router.push('/change-password'))}
-        />
+        {Method({
+          icon: 'key-outline',
+          title: 'Change password',
+          subtitle: 'Update the password for your account',
+          onPress: () => requireLogin(() => router.push('/change-password')),
+        })}
 
-        <Method
-          icon="finger-print"
-          title="Fingerprint / biometrics"
-          subtitle={bioSupported ? 'Sign in quickly with your fingerprint' : 'Not available on this device'}
-          status={!bioSupported ? undefined : loggedIn && bioEnabled ? 'Enabled' : 'Set up'}
-          statusColor={loggedIn && bioEnabled ? theme.accent : undefined}
-          disabled={!bioSupported}
-          onPress={() => requireLogin(() => router.push('/fingerprint'))}
-        />
+        {Method({
+          icon: 'finger-print',
+          title: 'Fingerprint / biometrics',
+          subtitle: bioSupported ? 'Sign in quickly with your fingerprint' : 'Not available on this device',
+          status: !bioSupported ? undefined : loggedIn && bioEnabled ? 'Enabled' : 'Set up',
+          statusColor: loggedIn && bioEnabled ? theme.accent : undefined,
+          disabled: !bioSupported,
+          onPress: () => requireLogin(() => router.push('/fingerprint')),
+        })}
 
         <Text style={[styles.sectionLabel, { color: theme.textSub }]}>Sign in with</Text>
 
-        <Method
-          icon="logo-google"
-          title="Continue with Google"
-          subtitle="Private — your email is never shared"
-          status={socialBusy === 'google' ? '…' : undefined}
-          onPress={() => handleSocial('google')}
-          disabled={!!socialBusy}
-        />
+        {Method({
+          icon: 'logo-google',
+          title: 'Continue with Google',
+          subtitle: 'Private — your email is never shared',
+          status: socialBusy === 'google' ? '…' : undefined,
+          onPress: () => handleSocial('google'),
+          disabled: !!socialBusy,
+        })}
 
         {!loggedIn ? (
           <TouchableOpacity

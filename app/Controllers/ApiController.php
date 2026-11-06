@@ -3632,9 +3632,33 @@ final class ApiController extends Controller
      */
     public function packageDetail(string $id): void
     {
+        // 1. Direct database lookup for dynamic package by ID or slug
+        try {
+            $row = \App\Core\Database::first("
+                SELECT l.*, c.name AS category_name, c.slug AS category_slug,
+                       u.id AS guide_id, u.name AS guide_name, u.avatar AS guide_avatar, u.bio AS guide_bio,
+                       COALESCE(AVG(r.rating), 0) AS avg_rating, COUNT(DISTINCT r.id) AS review_count
+                FROM listings l
+                LEFT JOIN categories c ON c.id = l.category_id
+                LEFT JOIN users u ON u.id = l.user_id
+                LEFT JOIN reviews r ON r.listing_id = l.id
+                WHERE (l.id = ? OR l.slug = ?)
+                  AND l.status IN ('approved', 'pending')
+                GROUP BY l.id
+                LIMIT 1
+            ", [$id, $id]);
+
+            if ($row) {
+                $pkg = $this->formatListingAsPackage($row);
+                $this->json(['package' => $pkg]);
+                return;
+            }
+        } catch (\Throwable $e) {}
+
+        // 2. Fallback to full catalog (including static packages)
         $packages = $this->getPackagesCatalog();
         foreach ($packages as $pkg) {
-            if ($pkg['id'] === $id || ($pkg['slug'] ?? '') === $id) {
+            if ((string)$pkg['id'] === (string)$id || ($pkg['slug'] ?? '') === $id) {
                 $this->json(['package' => $pkg]);
                 return;
             }
@@ -3884,29 +3908,31 @@ final class ApiController extends Controller
 
     /**
      * Format a database listing into a full travel package object for the app.
+     * Parses real dynamic data from the database using AdminController::buildPackageInspectionData.
      *
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
     private function formatListingAsPackage(array $row): array
     {
+        $guide = [
+            'id' => (int) ($row['guide_id'] ?? $row['user_id'] ?? 1),
+            'name' => (string) (!empty($row['guide_name']) ? $row['guide_name'] : 'Marc Repuesto'),
+            'avatar' => (string) ($row['guide_avatar'] ?? ''),
+            'bio' => (string) ($row['guide_bio'] ?? ''),
+        ];
+
+        $inspected = \App\Controllers\AdminController::buildPackageInspectionData($row, $guide);
+
         $id = (string) $row['id'];
-        $title = (string) $row['title'];
+        $title = (string) $inspected['title'];
         $slug = (string) ($row['slug'] ?? 'pkg-' . $id);
         $summary = (string) ($row['summary'] ?? '');
-        $description = (string) ($row['description'] ?? $title);
-        $area = (string) ($row['area'] ?? 'Cebu, Philippines');
-        $durationRaw = (string) ($row['duration'] ?? '3 Days / 2 Nights');
-
-        $days = 3;
-        $nights = 2;
-        if (preg_match('/(\d+)\s*(?:d|day)/i', $durationRaw, $m)) {
-            $days = max(1, (int) $m[1]);
-        }
-        if (preg_match('/(\d+)\s*(?:n|night)/i', $durationRaw, $m)) {
-            $nights = max(0, (int) $m[1]);
-        }
-        $durationLabel = $nights > 0 ? "{$days}D{$nights}N" : "{$days} Day" . ($days > 1 ? 's' : '');
+        $description = (string) $inspected['description'];
+        $destination = (string) $inspected['destination'];
+        $durationLabel = (string) $inspected['duration_code'];
+        $days = (int) $inspected['duration_days'];
+        $nights = (int) $inspected['duration_nights'];
 
         $cover = !empty($row['cover_image'])
             ? (string) $row['cover_image']
@@ -3914,7 +3940,15 @@ final class ApiController extends Controller
 
         $gallery = [];
         try {
-            $gallery = \App\Models\Listing::gallery((int) $row['id']);
+            $rawGallery = \App\Models\Listing::gallery((int) $row['id']);
+            if (is_array($rawGallery)) {
+                foreach ($rawGallery as $g) {
+                    $imgPath = is_array($g) ? ($g['image_path'] ?? '') : (string) $g;
+                    if ($imgPath !== '') {
+                        $gallery[] = $imgPath;
+                    }
+                }
+            }
         } catch (\Throwable $e) {
             $gallery = [];
         }
@@ -3922,41 +3956,71 @@ final class ApiController extends Controller
             $gallery = [$cover];
         }
 
+        // Build flat inclusions array matching the customer app reference screen
         $inclusions = [];
-        $includedText = (string) ($row['included'] ?? '');
-        if ($includedText !== '') {
-            $lines = array_filter(array_map('trim', explode("\n", $includedText)));
-            foreach ($lines as $line) {
-                if ($line === '') continue;
-                $lineLower = strtolower($line);
-                $type = 'activity';
-                $icon = 'compass-outline';
-                $badge = 'Activity';
 
-                if (str_contains($lineLower, 'hotel') || str_contains($lineLower, 'resort') || str_contains($lineLower, 'room') || str_contains($lineLower, 'stay') || str_contains($lineLower, 'accommodation')) {
-                    $type = 'accommodation';
-                    $icon = 'bed-outline';
-                    $badge = 'Hotel & Stays';
-                } elseif (str_contains($lineLower, 'scooter') || str_contains($lineLower, 'vehicle') || str_contains($lineLower, 'van') || str_contains($lineLower, 'car') || str_contains($lineLower, 'transport') || str_contains($lineLower, 'rental')) {
-                    $type = 'rental';
-                    $icon = 'car-sport-outline';
-                    $badge = 'Vehicle Rental';
-                } elseif (str_contains($lineLower, 'attraction') || str_contains($lineLower, 'park') || str_contains($lineLower, 'falls') || str_contains($lineLower, 'island') || str_contains($lineLower, 'reef')) {
-                    $type = 'attraction';
-                    $icon = 'water-outline';
-                    $badge = 'Attraction';
-                } elseif (str_contains($lineLower, 'fee') || str_contains($lineLower, 'permit') || str_contains($lineLower, 'guide') || str_contains($lineLower, 'tax') || str_contains($lineLower, 'gear')) {
-                    $type = 'perk';
-                    $icon = 'shield-checkmark-outline';
-                    $badge = 'Included Perk';
-                }
-
+        // 1. Attractions
+        if (!empty($inspected['inclusions']['attractions'])) {
+            foreach ($inspected['inclusions']['attractions'] as $attr) {
                 $inclusions[] = [
-                    'type' => $type,
-                    'title' => $line,
-                    'subtitle' => 'Included in this package',
-                    'icon' => $icon,
-                    'badge' => $badge,
+                    'type' => 'attraction',
+                    'title' => (string) $attr['title'],
+                    'subtitle' => !empty($attr['summary']) ? (string) $attr['summary'] : (!empty($attr['area']) ? (string) $attr['area'] : 'Attraction access'),
+                    'icon' => 'water-outline',
+                    'badge' => 'ATTRACTION',
+                ];
+            }
+        }
+
+        // 2. Things to Do
+        if (!empty($inspected['inclusions']['things_to_do'])) {
+            foreach ($inspected['inclusions']['things_to_do'] as $todo) {
+                $inclusions[] = [
+                    'type' => 'activity',
+                    'title' => (string) $todo['title'],
+                    'subtitle' => !empty($todo['summary']) ? (string) $todo['summary'] : (!empty($todo['area']) ? (string) $todo['area'] : 'Guided experience'),
+                    'icon' => 'compass-outline',
+                    'badge' => 'THINGS TO DO',
+                ];
+            }
+        }
+
+        // 3. Hotel Stay (if bundled)
+        if ($inspected['hotel_included'] && !empty($inspected['hotel'])) {
+            $h = $inspected['hotel'];
+            $nightsText = $nights > 0 ? "{$nights} Night" . ($nights > 1 ? 's' : '') : '';
+            $inclusions[] = [
+                'type' => 'accommodation',
+                'title' => (string) ($h['hotel_name'] ?? 'Resort Accommodation'),
+                'subtitle' => ($nightsText !== '' ? "{$nightsText} • " : '') . ($h['room_name'] ?? 'Deluxe Room'),
+                'icon' => 'bed-outline',
+                'badge' => 'HOTEL & STAYS',
+            ];
+        }
+
+        // 4. Vehicle Rental (if bundled)
+        if ($inspected['rental_included'] && !empty($inspected['rental'])) {
+            $v = $inspected['rental'];
+            $vTitle = (string) (!empty($v['vehicle_name']) ? $v['vehicle_name'] : ($v['make'] . ' ' . $v['model']));
+            $specsSummary = !empty($inspected['rental_specs']) ? ' with ' . implode(', ', array_slice($inspected['rental_specs'], 0, 2)) : '';
+            $inclusions[] = [
+                'type' => 'rental',
+                'title' => $vTitle,
+                'subtitle' => "{$days}-Day rental" . $specsSummary,
+                'icon' => 'car-sport-outline',
+                'badge' => 'VEHICLE RENTAL',
+            ];
+        }
+
+        // 5. Custom Perks
+        if (!empty($inspected['custom_perks'])) {
+            foreach ($inspected['custom_perks'] as $perk) {
+                $inclusions[] = [
+                    'type' => 'perk',
+                    'title' => (string) $perk,
+                    'subtitle' => 'Included in single bundle',
+                    'icon' => 'shield-checkmark-outline',
+                    'badge' => 'INCLUDED PERK',
                 ];
             }
         }
@@ -3968,113 +4032,128 @@ final class ApiController extends Controller
                     'title' => 'Curated Experience Activities',
                     'subtitle' => 'Included guided tour sessions',
                     'icon' => 'compass-outline',
-                    'badge' => 'Things to Do',
+                    'badge' => 'THINGS TO DO',
                 ],
                 [
                     'type' => 'perk',
                     'title' => 'Licensed Local Guide & Trip Host',
                     'subtitle' => 'Professional on-site coordination',
                     'icon' => 'shield-checkmark-outline',
-                    'badge' => 'Included Perk',
+                    'badge' => 'INCLUDED PERK',
                 ],
             ];
         }
 
-        $notIncluded = (string) ($row['not_included'] ?? '');
-        $exclusions = $notIncluded !== ''
-            ? array_filter(array_map('trim', explode("\n", $notIncluded)))
-            : ['Personal expenses & shopping', 'Flights/airfare to Cebu', 'Meals and drinks not specified'];
-
-        $badge = 'New';
-        if (!empty($row['is_featured'])) {
-            $badge = 'Featured';
-        } elseif (($row['status'] ?? '') === 'approved') {
-            $badge = 'Verified Guide';
+        // Accommodation Detail
+        $accommodationDetail = null;
+        if ($inspected['hotel_included'] && !empty($inspected['hotel'])) {
+            $h = $inspected['hotel'];
+            $accommodationDetail = [
+                'hotelName' => (string) ($h['hotel_name'] ?? 'Resort & Hotel'),
+                'roomType' => (string) ($h['room_name'] ?? 'Deluxe Room'),
+                'nights' => $nights,
+                'amenities' => !empty($inspected['hotel_amenities']) ? $inspected['hotel_amenities'] : ['Free High-Speed Wi-Fi', 'Swimming Pool Access', 'Air Conditioning'],
+                'partnerName' => (string) ($h['partner_name'] ?? 'Hotel Partner'),
+                'checkIn' => (string) ($h['check_in_time'] ?? '02:00 PM'),
+                'checkOut' => (string) ($h['check_out_time'] ?? '12:00 PM'),
+                'coverImage' => (string) ($h['hotel_cover'] ?? ($h['room_image'] ?? '')),
+            ];
         }
 
-        $rating = round((float) ($row['avg_rating'] ?? 5.0), 1);
-        if ($rating <= 0) {
-            $rating = 5.0;
+        // Rental Detail
+        $rentalDetail = null;
+        if ($inspected['rental_included'] && !empty($inspected['rental'])) {
+            $v = $inspected['rental'];
+            $rentalDetail = [
+                'vehicleType' => (string) ($v['vehicle_type'] ?? 'Scooter'),
+                'model' => (string) (!empty($v['vehicle_name']) ? $v['vehicle_name'] : ($v['make'] . ' ' . $v['model'])),
+                'duration' => "{$days} Days Rental",
+                'features' => !empty($inspected['rental_specs']) ? $inspected['rental_specs'] : ['Automatic Transmission'],
+                'partnerName' => (string) ($v['partner_name'] ?? 'Rental Partner'),
+                'location' => (string) ($v['location'] ?? $destination),
+                'image' => (string) ($v['vehicle_image'] ?? ''),
+                'handover' => 'Day 1 - 01:00 PM',
+                'dropoff' => "Day {$days} - 12:00 PM",
+            ];
         }
+
+        $hostInfo = $inspected['host'];
 
         return [
-            'id' => (string) $row['id'],
+            'id' => $id,
             'slug' => $slug,
             'title' => $title,
             'tagline' => $summary !== '' ? $summary : substr($description, 0, 140),
             'description' => $description,
-            'destination' => $area,
+            'destination' => $destination,
             'duration' => $durationLabel,
             'durationDays' => $days,
             'durationNights' => $nights,
             'category' => 'adventure',
-            'categoryLabel' => 'Adventure & Tour',
-            'price' => (float) ($row['price'] ?? 4500),
-            'originalPrice' => round(((float) ($row['price'] ?? 4500)) * 1.15),
-            'badge' => $badge,
+            'categoryLabel' => (string) $inspected['category_label'],
+            'assurance' => (string) $inspected['assurance'],
+            'price' => (float) $inspected['price'],
+            'originalPrice' => round(((float) $inspected['price']) * 1.15),
+            'badge' => (string) $inspected['badge'],
             'featured' => !empty($row['is_featured']),
             'coverImage' => $cover,
             'gallery' => $gallery,
-            'rating' => $rating,
-            'reviewCount' => max(1, (int) ($row['review_count'] ?? 5)),
+            'rating' => (float) $inspected['rating'],
+            'reviewCount' => (int) $inspected['review_count'],
             'maxGroupSize' => max(2, (int) ($row['capacity'] ?? 6)),
-            'meetingPoint' => !empty($row['address']) ? (string) $row['address'] : 'Host designated meeting location in ' . $area,
+            'meetingPoint' => (string) $inspected['meeting_point'],
+            'tags' => !empty($inspected['tags']) ? $inspected['tags'] : ['guide 1', 'guide 2', 'guide 3'],
             'host' => [
-                'id' => (int) ($row['guide_id'] ?? 1),
-                'name' => (string) ($row['guide_name'] ?? 'Local Tour Guide'),
-                'avatar' => !empty($row['guide_avatar'])
-                    ? (string) $row['guide_avatar']
-                    : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
-                'role' => 'Certified Tour Guide & Package Host',
-                'badge' => 'DOT Accredited',
-                'rating' => $rating,
-                'reviewCount' => max(1, (int) ($row['review_count'] ?? 18)),
-                'toursCount' => 35,
-                'bio' => !empty($row['guide_bio'])
-                    ? (string) $row['guide_bio']
-                    : 'Accredited Cebu local tour guide dedicated to personalized, safe, and authentic travel adventures.',
+                'id' => (int) $hostInfo['id'],
+                'name' => (string) $hostInfo['name'],
+                'avatar' => (string) $hostInfo['avatar'],
+                'role' => (string) $hostInfo['role'],
+                'badge' => (string) $hostInfo['badge'],
+                'rating' => (float) $hostInfo['rating'],
+                'reviewCount' => (int) $hostInfo['reviews_count'],
+                'toursCount' => (int) $hostInfo['tours_count'],
+                'bio' => (string) $hostInfo['bio'],
                 'responseRate' => '100% (within 10 mins)',
                 'verified' => true,
             ],
             'inclusions' => $inclusions,
-            'exclusions' => array_values($exclusions),
-            'itinerary' => [
-                [
-                    'day' => 1,
-                    'title' => 'Day 1: Arrival, Briefing & First Experience',
-                    'description' => 'Meet with your licensed guide host, check in to accommodations, and begin the scheduled activities.',
-                    'highlights' => ['Meet with guide host', 'Orientation & safety gear fitting', 'Commence day activities'],
-                    'schedule' => [
-                        ['time' => '09:00 AM', 'activity' => 'Host welcome and orientation'],
-                        ['time' => '01:00 PM', 'activity' => 'Afternoon activity session'],
-                    ],
-                ],
-                [
-                    'day' => 2,
-                    'title' => 'Day 2: Full Day Exploration & Adventure',
-                    'description' => 'Experience the primary highlights and destinations featured in this package.',
-                    'highlights' => ['Full-day curated tour', 'Scenic photo stops', 'Local Cebuano lunch break'],
-                    'schedule' => [
-                        ['time' => '08:00 AM', 'activity' => 'Morning expedition departure'],
-                        ['time' => '12:00 PM', 'activity' => 'Midday rest and authentic local lunch'],
-                        ['time' => '03:30 PM', 'activity' => 'Afternoon sightseeing and leisure'],
-                    ],
-                ],
-                [
-                    'day' => 3,
-                    'title' => 'Day 3: Scenic Leisure & Departure',
-                    'description' => 'Wrap up final excursions, photo sessions, and coordinated departure transfers.',
-                    'highlights' => ['Morning coastal sightseeing', 'Souvenir shopping assistance', 'Farewell handover'],
-                    'schedule' => [
-                        ['time' => '08:00 AM', 'activity' => 'Morning leisure and checkout'],
-                        ['time' => '11:00 AM', 'activity' => 'Trip conclusion and transfers'],
-                    ],
-                ],
+            'exclusions' => !empty($inspected['exclusions']) ? $inspected['exclusions'] : [
+                'Airfare to and from Cebu (Mactan)',
+                'Personal souvenir shopping & alcoholic drinks',
+                'Optional zip-line upgrade at Kawasan starting point (₱600)',
             ],
+            'itinerary' => $inspected['itinerary'],
+            'hotelIncluded' => (bool) $inspected['hotel_included'],
+            'accommodationDetail' => $accommodationDetail,
+            'rentalIncluded' => (bool) $inspected['rental_included'],
+            'rentalDetail' => $rentalDetail,
+            'reviews' => (function() use ($id) {
+                if ((int)$id <= 0) return [];
+                try {
+                    $rawRev = \App\Models\Review::forListing((int)$id);
+                    $out = [];
+                    foreach ($rawRev as $rv) {
+                        $out[] = [
+                            'id' => (int) $rv['id'],
+                            'userName' => (string) ($rv['user_name'] ?? 'Traveler'),
+                            'userAvatar' => (string) ($rv['user_avatar'] ?? ''),
+                            'rating' => (float) ($rv['rating'] ?? 5),
+                            'comment' => (string) ($rv['comment'] ?? ''),
+                            'createdAt' => (string) ($rv['created_at'] ?? ''),
+                        ];
+                    }
+                    return $out;
+                } catch (\Throwable $e) {
+                    return [];
+                }
+            })(),
             'policy' => [
-                'cancellation' => 'Free cancellation up to 48 hours before the trip start date.',
-                'confirmation' => 'Instant confirmation. Your guide host will message you through GuideMate chat.',
-                'requirements' => ['Valid government-issued ID', 'Comfortable footwear and attire'],
+                'cancellation' => (string) $inspected['cancellation_policy'],
+                'confirmation' => "Instant confirmation. Guide {$hostInfo['name']} will coordinate your itinerary.",
+                'requirements' => !empty($inspected['requirements']) ? $inspected['requirements'] : [
+                    'Valid Government ID or Passport for all travelers',
+                    'Valid Motorcycle / Driver’s license for scooter rider',
+                ],
             ],
         ];
     }

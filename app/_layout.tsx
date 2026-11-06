@@ -33,7 +33,7 @@ export default function RootLayout() {
 
         {/* Global status bar: keeps the phone's clock/battery icons visible on
             every screen (auto-picks dark icons in light mode, light in dark). */}
-        <StatusBar style="auto" translucent />
+        <StatusBar style="auto" />
         <Stack screenOptions={{ headerShown: false }}>
         {/* 1. Point to the individual landing screen entry point */}
         <Stack.Screen name="(auth)/login" />
@@ -78,6 +78,7 @@ export default function RootLayout() {
 
         {/* 9. Travel services: vehicle rentals, weather, live traffic */}
         <Stack.Screen name="packages" />
+        <Stack.Screen name="package/create" />
         <Stack.Screen name="package/[id]" />
         <Stack.Screen name="car-rentals" />
         <Stack.Screen name="rental/[id]" />
