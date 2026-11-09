@@ -60,6 +60,7 @@ foreach ($reservations as $res) {
                     <p class="hint mb-0">Hotel Partner Portal — manage room inventory, live availability, guest deposits, and front desk check-ins.</p>
                 </div>
                 <div class="dash-header-actions" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+                    <a href="<?= e(url('/dashboard/package-requests')) ?>" class="btn btn-ghost"><?= admin_icon('cube', 16) ?>Package Requests</a>
                     <a href="<?= e(url('/dashboard/hotels?create=1')) ?>" class="btn btn-primary" data-action="new-hotel" data-open-new-hotel data-open-new-listing>+ New Hotel</a>
                     <?php if (!$isVerified): ?>
                         <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?>Verification</a>

@@ -22,6 +22,7 @@ $warningNote = $warningNote ?? (string) ($user['guide_warning_note'] ?? '');
                     <p class="hint mb-0">Rental Partner Portal — manage vehicle inventory, document verification, live availability, booking requests, and rental earnings.</p>
                 </div>
                 <div class="dash-header-actions" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+                    <a href="<?= e(url('/dashboard/package-requests')) ?>" class="btn btn-ghost"><?= admin_icon('cube', 16) ?>Package Requests</a>
                     <a href="<?= e(url('/dashboard/vehicles?create=1')) ?>" class="btn btn-primary" data-action="new-listing" data-open-new-listing>+ List a Vehicle</a>
                     <?php if (!$isVerified): ?>
                         <a href="<?= e(url('/dashboard/verification')) ?>" class="btn btn-ghost"><?= admin_icon('guides', 16) ?>Verification</a>

@@ -21,7 +21,7 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                 <div><h1><?= $isHotel ? 'My hotels' : e(__('d_my_listings', 'My listings')) ?></h1></div>
                 <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
                     <?php if (!$isHotel): ?>
-                        <a href="<?= e(url('/dashboard/packages/create')) ?>" class="btn" style="background:#8b5cf6;color:#ffffff;border:1px solid #7c3aed;display:inline-flex;align-items:center;gap:0.4rem;font-weight:700;box-shadow:0 2px 4px rgba(139,92,246,0.25);">
+                        <a href="<?= e(url('/dashboard/packages/create')) ?>" class="btn btn-primary btn-new-travel-package">
                             + New Travel Package
                         </a>
                     <?php endif; ?>
@@ -105,7 +105,10 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                                                      id="listingActionMenu_<?= (int) $l['id'] ?>"
                                                      role="menu"
                                                      aria-labelledby="listingActionBtn_<?= (int) $l['id'] ?>">
-                                                    <?php if (($l['category_slug'] ?? '') === 'packages'): ?>
+                                                    <?php
+                                                    $isPkgListing = (($l['category_slug'] ?? '') === 'packages') || (($l['price_unit'] ?? '') === 'package');
+                                                    ?>
+                                                    <?php if ($isPkgListing): ?>
                                                         <a href="<?= e(url('/dashboard/packages/' . (int) $l['id'] . '/edit')) ?>"
                                                            class="res-action-item"
                                                            role="menuitem">
@@ -118,18 +121,18 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                                                                 role="menuitem">
                                                             <?= admin_icon('edit', 14) ?> <?= e(__('g_edit', 'Edit')) ?>
                                                         </button>
+                                                        <?php if (!$isHotel): ?>
+                                                        <button type="button"
+                                                                class="res-action-item"
+                                                                onclick='openScheduleModal(<?= (int) $l['id'] ?>, <?= htmlspecialchars(json_encode((string) $l['title'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, "UTF-8") ?>)'
+                                                                role="menuitem">
+                                                            <?= admin_icon('calendar', 14) ?> <?= e(__('g_schedule', 'Schedule')) ?>
+                                                        </button>
+                                                        <?php endif; ?>
+                                                        <a href="<?= e(url('/listing/' . ($l['slug'] ?? $l['id']))) ?>" target="_blank" class="res-action-item" role="menuitem">
+                                                            <?= admin_icon('eye', 14) ?> <?= e(__('d_view_live', 'View Live Listing')) ?>
+                                                        </a>
                                                     <?php endif; ?>
-                                                    <?php if (!$isHotel): ?>
-                                                    <button type="button"
-                                                            class="res-action-item"
-                                                            onclick='openScheduleModal(<?= (int) $l['id'] ?>, <?= htmlspecialchars(json_encode((string) $l['title'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, "UTF-8") ?>)'
-                                                            role="menuitem">
-                                                        <?= admin_icon('calendar', 14) ?> <?= e(__('g_schedule', 'Schedule')) ?>
-                                                    </button>
-                                                    <?php endif; ?>
-                                                    <a href="<?= e(url('/listing/' . ($l['slug'] ?? $l['id']))) ?>" target="_blank" class="res-action-item" role="menuitem">
-                                                        <?= admin_icon('eye', 14) ?> <?= e(__('d_view_live', 'View Live Listing')) ?>
-                                                    </a>
                                                     <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
                                                     <form method="post" action="<?= e(url('/dashboard/listings/' . $l['id'] . '/delete')) ?>" class="res-action-form" onsubmit="return confirm('<?= e(__('g_delete_confirm', 'Delete this listing? This cannot be undone.')) ?>');">
                                                         <?= csrf_field() ?>

@@ -294,8 +294,81 @@ final class DocumentController extends Controller
             abort(404, 'Invalid document path requested.');
         }
 
-        if (!$this->ensureAuthorizedForUser($userId)) {
-            return;
+        $me = Auth::user();
+        $isAdmin = Auth::isAdmin() || AdminAuth::check();
+        $isOwner = $me !== null && (int) $me['id'] === $userId;
+        $isAuthorizedPartner = false;
+
+        if (!$isAdmin && !$isOwner && $me !== null) {
+            $myId = (int) $me['id'];
+            $relPath = "uploads/guide-docs/{$userId}/{$cleanFilename}";
+            $filenamePattern = '%' . $cleanFilename;
+
+            // 1. Rental Provider checking verification document on a rental request for their vehicle
+            $rentalMatch = Database::first("
+                SELECT rr.id
+                FROM rental_requests rr
+                JOIN vehicles v ON (v.id = rr.vehicle_id OR v.id = CAST(rr.vehicle_id AS UNSIGNED))
+                WHERE v.user_id = ?
+                  AND (
+                      rr.guide_id_doc = ? OR rr.guide_id_doc LIKE ?
+                      OR rr.id_document = ? OR rr.id_document LIKE ?
+                  )
+                LIMIT 1
+            ", [$myId, $relPath, $filenamePattern, $relPath, $filenamePattern]);
+
+            if ($rentalMatch) {
+                $isAuthorizedPartner = true;
+            }
+
+            // 2. Rental or Hotel Provider checking a package inclusion request
+            if (!$isAuthorizedPartner) {
+                $serviceMatch = Database::first("
+                    SELECT ps.id
+                    FROM package_services ps
+                    LEFT JOIN vehicles v ON (ps.service_type = 'vehicle' AND v.id = ps.vehicle_id)
+                    LEFT JOIN listings l ON (ps.service_type = 'hotel' AND l.id = (SELECT hr.listing_id FROM hotel_rooms hr WHERE hr.id = ps.hotel_room_id))
+                    WHERE (v.user_id = ? OR l.user_id = ?)
+                      AND (ps.guide_id_doc = ? OR ps.guide_id_doc LIKE ?)
+                    LIMIT 1
+                ", [$myId, $myId, $relPath, $filenamePattern]);
+
+                if ($serviceMatch) {
+                    $isAuthorizedPartner = true;
+                }
+            }
+
+            // 3. Partner linked via package booking item
+            if (!$isAuthorizedPartner) {
+                $pkgItemMatch = Database::first("
+                    SELECT pbi.id
+                    FROM package_booking_items pbi
+                    WHERE pbi.provider_id = ?
+                      AND pbi.package_id IN (SELECT id FROM listings WHERE user_id = ?)
+                    LIMIT 1
+                ", [$myId, $userId]);
+
+                if ($pkgItemMatch) {
+                    $isAuthorizedPartner = true;
+                }
+            }
+        }
+
+        if (!$isAdmin && !$isOwner && !$isAuthorizedPartner) {
+            if (!Auth::check() && !AdminAuth::check()) {
+                if ($this->isJson()) {
+                    $this->json(['error' => 'Please sign in to access this document.'], 401);
+                    return;
+                }
+                flash('error', 'Please sign in to access this document.');
+                redirect('/login');
+                return;
+            }
+            if ($this->isJson()) {
+                $this->json(['error' => 'You do not have permission to access this document.'], 403);
+                return;
+            }
+            abort(403, 'You do not have permission to access this document.');
         }
 
         $publicDir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'public';

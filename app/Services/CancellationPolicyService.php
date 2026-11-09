@@ -277,6 +277,25 @@ final class CancellationPolicyService
             throw new InvalidArgumentException('Reservation not found.');
         }
 
+        $isPackage = !empty($booking['package_booking_ref']) || str_contains((string) ($booking['notes'] ?? ''), 'package_booking');
+        if ($isPackage) {
+            PackageBookingService::cancelByTourist($bookingId, $userId, $reason);
+            $updated = Booking::find($bookingId);
+            $refundAmount = (float) ($updated['total_amount'] ?? 0);
+            return [
+                'success' => true,
+                'booking_id' => $bookingId,
+                'status' => 'cancelled',
+                'refund_amount' => $refundAmount,
+                'refund_status' => 'initiated',
+                'refund_description' => '100% full package refund to original payment method',
+                'deposit_rule' => 'Full package refund',
+                'processing_time' => '1–3 business days via original payment method',
+                'message' => 'Travel package booking cancelled successfully. A full refund has been initiated.',
+                'booking' => $updated,
+            ];
+        }
+
         $isHotel = !empty($booking['room_id']) || !empty($booking['hotel_status']) || (!empty($booking['deposit_amount']) && (float) $booking['deposit_amount'] > 0);
         $kind = $isHotel ? 'hotel' : 'attraction';
 

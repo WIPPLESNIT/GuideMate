@@ -20,12 +20,15 @@
  */
 $errors = $errors ?? [];
 $myActivities = $myActivities ?? [];
+$hotels = $hotels ?? [];
 $hotelRooms = $hotelRooms ?? [];
+$selectedHotelId = (int) ($selectedHotelId ?? 0);
 $vehicles = $vehicles ?? [];
 $package = $package ?? null;
 $isEdit = (bool) ($isEdit ?? false);
 $existingPhotos = $existingPhotos ?? [];
 $selectedActivities = $selectedActivities ?? [];
+$existingGuideVehicleIdDoc = $existingGuideVehicleIdDoc ?? ($package['guide_vehicle_id_doc'] ?? '');
 
 // In edit mode, prefill defaults
 $defaultTitle = $isEdit ? ($package['title'] ?? '') : '';
@@ -253,7 +256,7 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                     $existingPhoto = $existingPhotos[$i] ?? ($i === 0 && !empty($package['cover_image']) ? $package['cover_image'] : '');
                                     $hasExisting = !empty($existingPhoto);
                                 ?>
-                                    <div class="pkg-showcase-card" style="border:1px solid #e2e8f0;border-radius:10px;background:#ffffff;padding:0.75rem;display:flex;flex-direction:column;gap:0.4rem;min-width:0;box-sizing:border-box;overflow:hidden;">
+                                    <div class="pkg-showcase-card" id="pkg_card_<?= $i ?>" style="border:1px solid #e2e8f0;border-radius:10px;background:#ffffff;padding:0.75rem;display:flex;flex-direction:column;gap:0.4rem;min-width:0;box-sizing:border-box;overflow:hidden;">
                                         <div style="display:flex;align-items:center;justify-content:space-between;">
                                             <strong style="font-size:0.75rem;color:#0f172a;">Photo <?= $i + 1 ?><?= $i === 0 ? ' (Cover) *' : '' ?></strong>
                                             <?php if ($i === 0): ?>
@@ -263,12 +266,21 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                                 </div>
                                             <?php endif; ?>
                                         </div>
-                                        <div id="pkg_preview_wrap_<?= $i ?>" style="position:relative;height:100px;background:#f1f5f9;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;width:100%;box-sizing:border-box;">
+                                        <div id="pkg_preview_wrap_<?= $i ?>" onclick="triggerPkgFileInput(<?= $i ?>)" style="position:relative;height:115px;background:#f8fafc;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;width:100%;box-sizing:border-box;cursor:pointer;transition:border-color 0.2s, box-shadow 0.2s;" title="Click to choose an image file">
                                             <img id="pkg_preview_img_<?= $i ?>" src="<?= $hasExisting ? e(img_src($existingPhoto, 'pkg-' . $i)) : '' ?>" alt="Photo <?= $i + 1 ?>" style="width:100%;height:100%;object-fit:cover;display:<?= $hasExisting ? 'block' : 'none' ?>;">
-                                            <span id="pkg_placeholder_<?= $i ?>" style="font-size:0.7rem;color:#94a3b8;text-align:center;padding:4px;display:<?= $hasExisting ? 'none' : 'block' ?>;">📷 No photo</span>
-                                            <button type="button" id="pkg_remove_btn_<?= $i ?>" onclick="removePkgPhoto(<?= $i ?>)" style="display:<?= $hasExisting ? 'flex' : 'none' ?>;position:absolute;top:5px;right:5px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:50%;width:22px;height:22px;align-items:center;justify-content:center;font-size:13px;line-height:1;cursor:pointer;">&times;</button>
+                                            <div id="pkg_placeholder_<?= $i ?>" style="font-size:0.75rem;color:#64748b;text-align:center;padding:6px;display:<?= $hasExisting ? 'none' : 'flex' ?>;flex-direction:column;align-items:center;gap:4px;">
+                                                <span style="font-size:1.3rem;">📷</span>
+                                                <span style="font-weight:600;font-size:0.75rem;color:#475569;">Click to upload</span>
+                                                <span style="font-size:0.65rem;color:#94a3b8;">JPG, PNG, WEBP (max 10MB)</span>
+                                            </div>
+                                            <div id="pkg_spinner_<?= $i ?>" style="display:none;position:absolute;inset:0;background:rgba(255,255,255,0.85);align-items:center;justify-content:center;flex-direction:column;gap:4px;">
+                                                <div class="pkg-mini-spinner"></div>
+                                                <span style="font-size:0.65rem;color:#059669;font-weight:700;">Loading...</span>
+                                            </div>
+                                            <button type="button" id="pkg_remove_btn_<?= $i ?>" onclick="event.stopPropagation(); removePkgPhoto(<?= $i ?>)" style="display:<?= $hasExisting ? 'flex' : 'none' ?>;position:absolute;top:5px;right:5px;background:rgba(15,23,42,0.75);color:#fff;border:none;border-radius:50%;width:24px;height:24px;align-items:center;justify-content:center;font-size:14px;line-height:1;cursor:pointer;" title="Remove photo">&times;</button>
                                         </div>
-                                        <input type="file" name="photo_file_<?= $i ?>" id="pkg_file_<?= $i ?>" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.7rem;width:100%;max-width:100%;box-sizing:border-box;color:#475569;" onchange="handlePkgFileChange(<?= $i ?>, this)">
+                                        <div id="pkg_error_<?= $i ?>" style="display:none;color:#dc2626;font-size:0.72rem;font-weight:600;padding:4px 6px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;align-items:center;gap:4px;"></div>
+                                        <input type="file" name="photo_file_<?= $i ?>" id="pkg_file_<?= $i ?>" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" style="font-size:0.7rem;width:100%;max-width:100%;box-sizing:border-box;color:#475569;" onchange="handlePkgFileChange(<?= $i ?>, this)">
                                         <input class="input pkg-input" type="text" name="photo_url_<?= $i ?>" id="pkg_url_<?= $i ?>" placeholder="Or photo URL..." style="font-size:0.7rem;padding:3px 6px;height:28px;width:100%;box-sizing:border-box;" oninput="handlePkgUrlChange(<?= $i ?>, this.value)">
                                         <input type="hidden" name="photo_existing_<?= $i ?>" id="pkg_existing_<?= $i ?>" value="<?= e($existingPhoto) ?>">
                                         <input type="hidden" name="photo_removed_<?= $i ?>" id="pkg_removed_<?= $i ?>" value="0">
@@ -414,82 +426,152 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                             </label>
                             <span class="hint" style="font-size:0.8rem;color:#d97706;font-weight:600;">Nightly rate automatically split for 2 pax</span>
                         </div>
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:1rem;">
-                            <?php foreach ($hotelRooms as $idx => $r):
-                                $roomId = (int) $r['id'];
-                                $hName = (string) ($r['hotel_name'] ?? 'Sea Breeze Oceanfront Resort');
-                                $rName = (string) ($r['room_name'] ?? $r['name'] ?? 'Deluxe Queen Room');
-                                $hRate = (float) $r['price_per_night'];
-                                $hMax = (int) ($r['max_guests'] ?? 2);
-                                $hBed = (string) ($r['bed_type'] ?? '1 Bed');
-                                $hArea = (string) ($r['hotel_area'] ?? 'Moalboal, Cebu');
-                                $hCover = (string) ($r['hotel_cover'] ?? 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&q=80');
-                                $hCheckIn = (string) ($r['check_in_time'] ?? '14:00:00');
-                                $hCheckOut = (string) ($r['check_out_time'] ?? '12:00:00');
-                                $hAmenities = $r['amenities'] ?? [];
-                                $hAmenitiesJson = is_string($hAmenities) ? $hAmenities : json_encode($hAmenities);
-                                $isSelectedHotel = false;
+                        <p class="hint" style="font-size:0.85rem;color:#64748b;margin:0 0 1rem 0;">
+                            Select an approved hotel property below to review and choose its available rooms.
+                        </p>
+
+                        <!-- Tier 1: Hotel Properties Grid -->
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:1rem;margin-bottom:1.25rem;">
+                            <?php foreach ($hotels as $h):
+                                $hId = (int) $h['id'];
+                                $hTitle = (string) $h['title'];
+                                $hArea = (string) ($h['area'] ?? 'Cebu');
+                                $hCover = (string) ($h['cover_image'] ?? 'uploads/places/kawasan.jpg');
+                                $hPartner = (string) ($h['partner_name'] ?? 'Hotel Partner');
+                                $hRoomCount = (int) ($h['available_room_count'] ?? 0);
+                                $hMinPrice = (float) ($h['min_price'] ?? 0);
+                                $isHSelected = ($selectedHotelId ?? 0) === $hId;
                             ?>
-                                <label class="pkg-card-radio <?= $isSelectedHotel ? 'selected' : '' ?>" id="hotelCard_<?= $roomId ?>">
-                                    <input type="radio" name="selected_hotel_room" value="<?= $roomId ?>"
-                                           data-hotel-name="<?= e($hName) ?>"
-                                           data-room-name="<?= e($rName) ?>"
-                                           data-rate="<?= $hRate ?>"
-                                           data-max-guests="<?= $hMax ?>"
-                                           data-checkin="<?= e($hCheckIn) ?>"
-                                           data-checkout="<?= e($hCheckOut) ?>"
-                                           data-amenities="<?= e($hAmenitiesJson) ?>"
-                                           data-hotel-area="<?= e($hArea) ?>"
-                                           data-bed-type="<?= e($hBed) ?>"
-                                           <?= $isSelectedHotel ? 'checked' : '' ?>
-                                           onchange="selectHotelRoom(this)"
-                                           style="position:absolute;top:0.75rem;right:0.75rem;z-index:2;width:18px;height:18px;accent-color:#10b981;">
-                                    <div class="pkg-card-img-wrap">
-                                        <img src="<?= e(img_src($hCover, 'hotel-' . $roomId)) ?>" alt="<?= e($hName) ?>" class="pkg-card-img" onerror="this.src='https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&q=80'">
-                                        <span class="pkg-category-badge badge-amber">Hotel & Stays</span>
-                                    </div>
-                                    <div class="pkg-card-body">
-                                        <div class="pkg-card-location"><span>📍</span> <?= e($hArea) ?></div>
-                                        <h4 class="pkg-card-title"><?= e($hName) ?></h4>
-                                        <div style="background:#f8fafc;padding:0.6rem 0.75rem;border-radius:8px;margin:0.5rem 0;border:1px solid #e2e8f0;">
-                                            <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#0f172a;">
-                                                <span><strong>Room:</strong> <?= e($rName) ?></span>
-                                                <span style="color:#059669;font-weight:700;"><?= money($hRate) ?> / night</span>
-                                            </div>
-                                            <div style="font-size:0.75rem;color:#64748b;margin-top:3px;">
-                                                Max: <?= $hMax ?> Guests • <?= e($hBed) ?> • Daily Breakfast
-                                            </div>
-                                        </div>
-                                        <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:0.35rem;">
-                                            <span class="pkg-perk-pill">✓ Wi-Fi</span>
-                                            <span class="pkg-perk-pill">✓ Pool Access</span>
-                                            <span class="pkg-perk-pill">✓ Air Conditioning</span>
+                                <div class="pkg-destination-card pkg-hotel-property-card <?= $isHSelected ? 'is-selected' : '' ?>"
+                                     id="hotelPropertyCard_<?= $hId ?>"
+                                     onclick="selectHotelProperty(<?= $hId ?>, '<?= e(addslashes($hTitle)) ?>')"
+                                     style="cursor:pointer;border-radius:12px;overflow:hidden;border:2px solid <?= $isHSelected ? '#10b981' : '#e2e8f0' ?>;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05);transition:all .15s ease;">
+                                    <div class="pkg-card-img-wrap" style="position:relative;height:160px;overflow:hidden;background:#f1f5f9;">
+                                        <img src="<?= e(img_src($hCover, 'hotel-prop-' . $hId)) ?>" alt="<?= e($hTitle) ?>" class="pkg-card-img" style="width:100%;height:100%;object-fit:cover;" onerror="this.src='https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&q=80'">
+                                        <span class="pkg-category-badge badge-amber" style="position:absolute;top:0.75rem;left:0.75rem;">Hotel & Stays</span>
+                                        <div class="pkg-card-select-pill hotel-prop-pill" style="position:absolute;top:0.75rem;right:0.75rem;background:<?= $isHSelected ? '#10b981' : 'rgba(15,23,42,0.6)' ?>;color:#ffffff;padding:4px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;display:flex;align-items:center;gap:4px;">
+                                            <span><?= $isHSelected ? '✓ Selected' : 'Select Hotel' ?></span>
                                         </div>
                                     </div>
-                                </label>
+                                    <div class="pkg-card-body" style="padding:1rem;">
+                                        <div class="pkg-card-location" style="font-size:0.8rem;color:#64748b;margin-bottom:4px;">📍 <?= e($hArea) ?></div>
+                                        <h4 class="pkg-card-title" style="margin:0 0 4px 0;font-size:1.05rem;font-weight:700;color:#0f172a;line-height:1.3;"><?= e($hTitle) ?></h4>
+                                        <div style="font-size:0.75rem;color:#047857;font-weight:600;margin-bottom:8px;">🏨 Partner: <?= e($hPartner) ?></div>
+                                        <div style="display:flex;align-items:center;justify-content:space-between;padding-top:0.5rem;border-top:1px solid #f1f5f9;font-size:0.8rem;">
+                                            <span style="color:#64748b;"><?= $hRoomCount ?> room<?= $hRoomCount !== 1 ? 's' : '' ?> available</span>
+                                            <span style="font-weight:700;color:#059669;"><?= $hMinPrice > 0 ? ('From ' . money($hMinPrice) . ' / nt') : 'Rates on rooms' ?></span>
+                                        </div>
+                                    </div>
+                                </div>
                             <?php endforeach; ?>
 
                             <!-- Option for no hotel -->
-                            <label class="pkg-card-radio" id="hotelCard_none">
-                                <input type="radio" name="selected_hotel_room" value="none"
-                                       data-hotel-name="none"
-                                       data-room-name=""
-                                       data-rate="0"
-                                       data-max-guests="20"
-                                       data-checkin="N/A"
-                                       data-checkout="N/A"
-                                       data-amenities="[]"
-                                       onchange="selectHotelRoom(this)"
-                                       style="position:absolute;top:0.75rem;right:0.75rem;z-index:2;width:18px;height:18px;">
-                                <div style="height:160px;background:#f8fafc;border-radius:12px 12px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;border-bottom:1px solid #e2e8f0;">
+                            <?php $isNoHotelSelected = empty($selectedHotelId) || $selectedHotelId === 0; ?>
+                            <div class="pkg-destination-card pkg-hotel-property-card <?= $isNoHotelSelected ? 'is-selected' : '' ?>"
+                                 id="hotelPropertyCard_none"
+                                 onclick="selectHotelProperty('none', 'No Hotel Accommodation')"
+                                 style="cursor:pointer;border-radius:12px;overflow:hidden;border:2px solid <?= $isNoHotelSelected ? '#10b981' : '#e2e8f0' ?>;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.05);transition:all .15s ease;">
+                                <div style="height:160px;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;border-bottom:1px solid #e2e8f0;position:relative;">
                                     <span style="font-size:2.5rem;margin-bottom:0.25rem;">🚶</span>
-                                    <strong style="font-size:0.85rem;color:#0f172a;">No Hotel Stay (Day Tour)</strong>
+                                    <strong style="font-size:0.88rem;color:#0f172a;">Day Tour / No Hotel Stay</strong>
+                                    <div class="pkg-card-select-pill hotel-prop-pill" style="position:absolute;top:0.75rem;right:0.75rem;background:<?= $isNoHotelSelected ? '#10b981' : 'rgba(15,23,42,0.6)' ?>;color:#ffffff;padding:4px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;display:flex;align-items:center;gap:4px;">
+                                        <span><?= $isNoHotelSelected ? '✓ Selected' : 'Select' ?></span>
+                                    </div>
                                 </div>
-                                <div class="pkg-card-body">
-                                    <h4 class="pkg-card-title">Day-Tour Only / Guest Arranges Lodging</h4>
-                                    <p style="font-size:0.8rem;color:#64748b;margin:0.25rem 0;">Excludes accommodation cost from the bundle (₱0.00 stay charge).</p>
+                                <div class="pkg-card-body" style="padding:1rem;">
+                                    <h4 class="pkg-card-title" style="margin:0 0 4px 0;font-size:1.05rem;font-weight:700;color:#0f172a;">Guest Arranges Own Lodging</h4>
+                                    <p style="font-size:0.8rem;color:#64748b;margin:0.25rem 0 0 0;line-height:1.4;">Excludes accommodation cost from package bundle (₱0.00 stay charge).</p>
                                 </div>
-                            </label>
+                            </div>
+                        </div>
+
+                        <!-- Tier 2: Available Rooms for Selected Hotel -->
+                        <div id="hotelRoomsWrapper" style="background:#f8fafc;padding:1.25rem;border-radius:12px;border:1px solid #e2e8f0;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.85rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.6rem;">
+                                <div style="font-weight:800;font-size:0.95rem;color:#0f172a;display:flex;align-items:center;gap:0.4rem;">
+                                    <span>🛏️</span> Available Rooms at <span id="selectedHotelTitleName" style="color:#059669;"><?= e(!empty($selectedHotelName) && $selectedHotelName !== 'None' ? $selectedHotelName : 'No Hotel Selected') ?></span>
+                                </div>
+                                <span class="hint" style="font-size:0.78rem;color:#64748b;">Select 1 room option</span>
+                            </div>
+
+                            <div id="noHotelSelectedMsg" style="text-align:center;padding:1.5rem 1rem;color:#64748b;<?= $isNoHotelSelected ? '' : 'display:none;' ?>">
+                                <span style="font-size:2rem;display:block;margin-bottom:4px;">🚶</span>
+                                <strong style="font-size:0.9rem;color:#0f172a;">No Hotel Stay Bundled</strong>
+                                <p style="font-size:0.82rem;margin:4px 0 0 0;">Day tour or guest arranges lodging. Accommodation charge is ₱0.00.</p>
+                            </div>
+
+                            <div id="hotelRoomsGrid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:1rem;<?= $isNoHotelSelected ? 'display:none;' : '' ?>">
+                                <?php foreach ($hotelRooms as $r):
+                                    $roomId = (int) $r['id'];
+                                    $rListingId = (int) ($r['listing_id'] ?? 0);
+                                    $hName = (string) ($r['hotel_name'] ?? 'Partner Hotel');
+                                    $rName = (string) ($r['room_name'] ?? $r['name'] ?? 'Standard Room');
+                                    $hRate = (float) $r['price_per_night'];
+                                    $hMax = (int) ($r['max_guests'] ?? 2);
+                                    $hBed = (string) ($r['bed_type'] ?? '1 Bed');
+                                    $hArea = (string) ($r['hotel_area'] ?? 'Cebu');
+                                    $hCover = (string) ($r['room_image'] ?? $r['hotel_cover'] ?? 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&q=80');
+                                    $hCheckIn = (string) ($r['check_in_time'] ?? '14:00:00');
+                                    $hCheckOut = (string) ($r['check_out_time'] ?? '12:00:00');
+                                    $hAmenities = $r['amenities'] ?? [];
+                                    $hAmenitiesJson = is_string($hAmenities) ? $hAmenities : json_encode($hAmenities);
+                                    $isSelectedRoom = ($selectedHotelRoomId ?? 0) === $roomId;
+                                    $matchesCurrentHotel = ($selectedHotelId ?? 0) === $rListingId;
+                                ?>
+                                    <label class="pkg-card-radio hotel-room-item <?= $isSelectedRoom ? 'selected' : '' ?>"
+                                           id="hotelCard_<?= $roomId ?>"
+                                           data-hotel-id="<?= $rListingId ?>"
+                                           style="<?= $matchesCurrentHotel ? '' : 'display:none;' ?>">
+                                        <input type="radio" name="selected_hotel_room" value="<?= $roomId ?>"
+                                               data-hotel-name="<?= e($hName) ?>"
+                                               data-room-name="<?= e($rName) ?>"
+                                               data-rate="<?= $hRate ?>"
+                                               data-max-guests="<?= $hMax ?>"
+                                               data-checkin="<?= e($hCheckIn) ?>"
+                                               data-checkout="<?= e($hCheckOut) ?>"
+                                               data-amenities="<?= e($hAmenitiesJson) ?>"
+                                               data-hotel-area="<?= e($hArea) ?>"
+                                               data-bed-type="<?= e($hBed) ?>"
+                                               <?= $isSelectedRoom ? 'checked' : '' ?>
+                                               onchange="selectHotelRoom(this)"
+                                               style="position:absolute;top:0.75rem;right:0.75rem;z-index:2;width:18px;height:18px;accent-color:#10b981;">
+                                        <div class="pkg-card-img-wrap" style="height:140px;">
+                                            <img src="<?= e(img_src($hCover, 'room-' . $roomId)) ?>" alt="<?= e($rName) ?>" class="pkg-card-img" onerror="this.src='https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&q=80'">
+                                            <span class="pkg-category-badge badge-amber"><?= e($hName) ?></span>
+                                        </div>
+                                        <div class="pkg-card-body" style="padding:0.85rem;">
+                                            <h4 class="pkg-card-title" style="font-size:0.95rem;margin-bottom:4px;"><?= e($rName) ?></h4>
+                                            <div style="background:#ffffff;padding:0.5rem 0.65rem;border-radius:6px;margin:0.4rem 0;border:1px solid #e2e8f0;">
+                                                <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#0f172a;">
+                                                    <span style="font-weight:600;color:#059669;"><?= money($hRate) ?> / night</span>
+                                                    <span style="font-size:0.75rem;color:#64748b;">Max <?= $hMax ?> guests</span>
+                                                </div>
+                                                <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">
+                                                    <?= e($hBed) ?> • Daily Breakfast Included
+                                                </div>
+                                            </div>
+                                            <div style="display:flex;flex-wrap:wrap;gap:0.25rem;">
+                                                <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Wi-Fi</span>
+                                                <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Pool</span>
+                                                <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Aircon</span>
+                                            </div>
+                                        </div>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <!-- Hidden fallback radio for none -->
+                            <input type="radio" name="selected_hotel_room" id="hotelCard_none_radio" value="none"
+                                   data-hotel-name="none"
+                                   data-room-name=""
+                                   data-rate="0"
+                                   data-max-guests="20"
+                                   data-checkin="N/A"
+                                   data-checkout="N/A"
+                                   data-amenities="[]"
+                                   <?= $isNoHotelSelected ? 'checked' : '' ?>
+                                   onchange="selectHotelRoom(this)"
+                                   style="display:none;">
                         </div>
                     </div>
 
@@ -573,6 +655,44 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                     <p style="font-size:0.8rem;color:#64748b;margin:0.25rem 0;">Omits rental transportation from the package price (₱0.00 vehicle cost).</p>
                                 </div>
                             </label>
+                        </div>
+
+                        <!-- Guide Valid ID Upload for Vehicle Rental Partners -->
+                        <div id="guide_vehicle_id_upload_container" style="margin-top:1.5rem;padding:1.25rem;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;<?= ($isEdit && !empty($selectedVehicleId) && ($selectedVehicleModel ?? '') !== 'None') ? '' : 'display:none;' ?>">
+                            <div style="display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:0.75rem;">
+                                <span style="font-size:1.5rem;line-height:1;">🪪</span>
+                                <div>
+                                    <h4 style="margin:0 0 0.25rem 0;font-size:0.95rem;font-weight:700;color:#065F46;">Driver's License / Valid Government ID (Required for Vehicle Rental)</h4>
+                                    <p style="margin:0;font-size:0.8rem;color:#047857;line-height:1.4;">
+                                        Vehicle rental partners require a valid government-issued ID or driver's license from the tour guide host for verification, insurance documentation, and vehicle handover security.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <?php if (!empty($existingGuideVehicleIdDoc)): ?>
+                                <div style="display:flex;align-items:center;justify-content:space-between;background:#FFFFFF;border:1px solid #A7F3D0;border-radius:8px;padding:0.6rem 0.85rem;margin-bottom:0.75rem;">
+                                    <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:#047857;font-weight:600;">
+                                        <span>📎</span>
+                                        <span>Current Document:</span>
+                                        <a href="<?= e(url($existingGuideVehicleIdDoc)) ?>" target="_blank" rel="noopener" style="color:#2563EB;text-decoration:underline;">View Uploaded ID ↗</a>
+                                    </div>
+                                    <span style="font-size:0.75rem;color:#64748B;">Upload below to replace</span>
+                                </div>
+                                <input type="hidden" name="existing_guide_vehicle_id_doc" value="<?= e($existingGuideVehicleIdDoc) ?>">
+                            <?php endif; ?>
+
+                            <div>
+                                <label style="display:block;font-size:0.8rem;font-weight:600;color:#065F46;margin-bottom:0.35rem;">Upload Valid ID or Driver's License (JPG, PNG, or PDF, max 10MB):</label>
+                                <input type="file"
+                                       id="guide_vehicle_id_doc"
+                                       name="guide_vehicle_id_doc"
+                                       accept=".jpg,.jpeg,.png,.pdf"
+                                       class="input pkg-input"
+                                       style="background:#FFFFFF;border:1px solid #A7F3D0;padding:0.45rem;font-size:0.85rem;width:100%;box-sizing:border-box;">
+                                <small style="display:block;color:#047857;font-size:0.75rem;margin-top:0.35rem;">
+                                    This document will only be accessible to your assigned vehicle rental partner upon review and rental reservation dispatch.
+                                </small>
+                            </div>
                         </div>
                     </div>
 
@@ -731,7 +851,7 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                         <div class="form-grid-2">
                             <div class="field-row">
                                 <label style="font-weight:700;color:#0f172a;">Included Perks & Permits</label>
-                                <textarea class="input pkg-input" name="inclusions" rows="4" style="resize:vertical;font-size:0.85rem;" placeholder="All Environmental & Local Tourism Fees (Includes river rescue gear, wet shoes, and recovery hot lunch)&#10;Licensed Local Tour Guide Host & Trip Coordination"><?= e($package['included'] ?? '') ?></textarea>
+                                <textarea class="input pkg-input" name="inclusions" rows="4" style="resize:vertical;font-size:0.85rem;" placeholder="All Environmental & Local Tourism Fees (Includes river rescue gear, wet shoes, and recovery hot lunch)&#10;Licensed Local Tour Guide Host & Trip Coordination"><?= e($defaultInclusions ?? ($package['included'] ?? '')) ?></textarea>
                             </div>
                             <div class="field-row">
                                 <label style="font-weight:700;color:#0f172a;">What's Not Included (One per line)</label>
@@ -863,8 +983,8 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                     <!-- LIVE FINANCIAL SIMULATOR CARD -->
                     <div style="background:#f8fafc;color:#0f172a;padding:1.5rem;border-radius:16px;margin-bottom:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,0.04);border:1px solid #e2e8f0;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:0.75rem;">
-                            <span style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.08em;font-weight:800;color:#059669;">All-Inclusive Package Split Simulation</span>
-                            <span style="background:#ecfdf5;color:#047857;padding:3px 12px;border-radius:999px;font-size:0.75rem;font-weight:700;">Based on 2 Pax Standard Occupancy</span>
+                            <span style="font-size:0.85rem;text-transform:uppercase;letter-spacing:0.08em;font-weight:800;color:#059669;">All-Inclusive Package Cost Breakdown</span>
+                            <span style="background:#ecfdf5;color:#047857;padding:3px 12px;border-radius:999px;font-size:0.75rem;font-weight:700;">Live All-Inclusive Calculation</span>
                         </div>
 
                         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:0.85rem;margin-bottom:1.25rem;">
@@ -880,26 +1000,26 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
 
                             <div style="background:#ffffff;padding:0.85rem;border-radius:12px;border:1px solid #e2e8f0;">
                                 <span style="font-size:0.75rem;color:#64748b;display:block;">🏨 Hotel Stay</span>
-                                <strong id="sim_hotel_fee" style="font-size:1.25rem;display:block;margin-top:2px;color:#0f172a;">₱2,200.00</strong>
+                                <strong id="sim_hotel_fee" style="font-size:1.25rem;display:block;margin-top:2px;color:#0f172a;">₱0.00</strong>
                             </div>
 
                             <div style="background:#ffffff;padding:0.85rem;border-radius:12px;border:1px solid #e2e8f0;">
                                 <span style="font-size:0.75rem;color:#64748b;display:block;">🛵 Transport</span>
-                                <strong id="sim_rental_fee" style="font-size:1.25rem;display:block;margin-top:2px;color:#0f172a;">₱975.00</strong>
+                                <strong id="sim_rental_fee" style="font-size:1.25rem;display:block;margin-top:2px;color:#0f172a;">₱0.00</strong>
                             </div>
 
                             <div style="background:#f0fdf4;padding:0.85rem;border-radius:12px;border:1px solid #a7f3d0;">
                                 <span style="font-size:0.75rem;color:#047857;display:block;font-weight:600;">🧑‍💼 Guide Fee / Margin</span>
-                                <strong id="sim_guide_margin" style="font-size:1.25rem;display:block;margin-top:2px;color:#047857;">₱<?= $isEdit ? '2,200.00' : '0.00' ?></strong>
+                                <strong id="sim_guide_margin" style="font-size:1.25rem;display:block;margin-top:2px;color:#047857;">₱0.00</strong>
                             </div>
 
                             <div style="background:#ffffff;padding:0.85rem;border-radius:12px;border:1px solid #e2e8f0;">
                                 <span style="font-size:0.75rem;color:#64748b;display:block;">🛡️ GuideMate Fee (8%)</span>
-                                <strong id="sim_platform_fee" style="font-size:1.25rem;display:block;margin-top:2px;color:#0f172a;">₱430.00</strong>
+                                <strong id="sim_platform_fee" style="font-size:1.25rem;display:block;margin-top:2px;color:#0f172a;">₱0.00</strong>
                             </div>
                         </div>
 
-                        <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px dashed #cbd5e1;padding-top:1.15rem;padding-bottom:0.35rem;flex-wrap:wrap;gap:1rem;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px dashed #cbd5e1;padding-top:1.15rem;padding-bottom:0.35rem;flex-wrap:gap:1rem;">
                             <div>
                                 <span style="font-size:1.05rem;color:#0f172a;text-transform:uppercase;font-weight:800;letter-spacing:0.04em;">
                                     💰 Calculated Total Package Price
@@ -915,9 +1035,9 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                     <!-- Hidden Inputs for Form Submission -->
                     <input type="hidden" id="calc_activity_fee" name="calc_activity_fee" value="0">
                     <input type="hidden" id="calc_attraction_fee" name="calc_attraction_fee" value="0">
-                    <input type="hidden" id="calc_hotel_fee" name="calc_hotel_fee" value="2200">
-                    <input type="hidden" id="calc_rental_fee" name="calc_rental_fee" value="975">
-                    <input type="hidden" id="calc_platform_fee" name="calc_platform_fee" value="430">
+                    <input type="hidden" id="calc_hotel_fee" name="calc_hotel_fee" value="0">
+                    <input type="hidden" id="calc_rental_fee" name="calc_rental_fee" value="0">
+                    <input type="hidden" id="calc_platform_fee" name="calc_platform_fee" value="0">
                     <input type="hidden" id="final_price_per_pax" name="final_price_per_pax" value="<?= $defaultPrice ?>">
                     <input type="hidden" id="total_package_price" name="total_package_price" value="<?= $defaultPrice ?>">
 
@@ -967,6 +1087,22 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
     border-color: #10b981 !important;
     box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15) !important;
     outline: none !important;
+}
+
+@keyframes pkgSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.pkg-mini-spinner {
+    width: 22px;
+    height: 22px;
+    border: 3px solid #e2e8f0;
+    border-top: 3px solid #059669;
+    border-radius: 50%;
+    animation: pkgSpin 0.7s linear infinite;
+}
+.pkg-showcase-card [id^="pkg_preview_wrap_"]:hover {
+    border-color: #94a3b8 !important;
 }
 
 /* Choice Pills for Badges in Step 1 */
@@ -1384,58 +1520,36 @@ let selectedVehicleReturn = "<?= $isEdit && !empty($selectedVehicleReturn) ? e($
 
 // Multi-day itinerary data store & cache
 let itineraryDaysCache = {};
-let itineraryDaysData = [
-    {
-        day: 1,
-        title: "Day 1: Coastal Arrival & Moalboal Sunset Marine Sanctuary",
-        desc: "Meet your guide host Marc, pick up your scooter, check in to your resort, and snorkel with turtles.",
-        schedule: [
-            { time: "01:00 PM", activity: "Resort check-in & scooter handover briefing" },
-            { time: "03:00 PM", activity: "Guided snorkeling session at Panagsama marine sanctuary" },
-            { time: "05:30 PM", activity: "Golden hour sunset viewing and leisure dinner" }
-        ],
-        highlights: [
-            "Pick up your Yamaha NMAX scooter in Moalboal (or complimentary town greeting)",
-            "Check-in at Sea Breeze Oceanfront Resort and freshen up",
-            "Afternoon guided snorkeling: Swim alongside millions of sardines and resident sea turtles",
-            "Sunset seafood dinner recommendation along Panagsama beachfront strip"
-        ]
-    },
-    {
-        day: 2,
-        title: "Day 2: Full Kawasan Canyoneering Expedition",
-        desc: "Guided canyon trek, cliff jumps, natural slides, and waterfall boodle fight lunch.",
-        schedule: [
-            { time: "07:30 AM", activity: "Complimentary resort breakfast" },
-            { time: "08:30 AM", activity: "Scenic convoy ride to Badian Canyoneering outpost" },
-            { time: "09:15 AM", activity: "Canyon descent begins with certified master guide" },
-            { time: "01:30 PM", activity: "Finish at Main Kawasan cascade & hot boodle lunch" },
-            { time: "03:30 PM", activity: "Return to resort for swimming and evening rest" }
-        ],
-        highlights: [
-            "Full canyoneering route with certified canyon master",
-            "Cliff jumps (3m to 12m) with certified helmets & vests",
-            "Hot Filipino waterfall boodle fight lunch included"
-        ]
-    },
-    {
-        day: 3,
-        title: "Day 3: Coastal Cruise & Departure",
-        desc: "Morning coastal ride, souvenir shopping, scooter return, and farewell.",
-        schedule: [
-            { time: "08:00 AM", activity: "Morning leisure and checkout" },
-            { time: "11:00 AM", activity: "Trip conclusion, scooter return, and transfers" }
-        ],
-        highlights: [
-            "Morning coastal ride along South Cebu highway",
-            "Souvenir shopping assistance in Moalboal town center",
-            "Scooter handover inspection and travel farewell"
-        ]
+let initialSavedDays = <?= !empty($parsedItineraryDays) ? json_encode($parsedItineraryDays) : '[]' ?>;
+let initialDurationDays = parseInt(document.getElementById('pkg_days')?.value, 10) || 1;
+let itineraryDaysData = [];
+
+if (Array.isArray(initialSavedDays) && initialSavedDays.length > 0) {
+    itineraryDaysData = initialSavedDays.map(d => ({
+        day: d.day,
+        title: d.title || `Day ${d.day}`,
+        desc: (d.desc !== undefined && d.desc !== null) ? d.desc : (d.description || ''),
+        description: (d.desc !== undefined && d.desc !== null) ? d.desc : (d.description || ''),
+        schedule: Array.isArray(d.schedule) ? d.schedule : [],
+        highlights: Array.isArray(d.highlights) ? d.highlights : []
+    }));
+} else {
+    // Blank start: timeline and highlights start completely empty
+    for (let d = 1; d <= Math.max(1, initialDurationDays); d++) {
+        itineraryDaysData.push({
+            day: d,
+            title: `Day ${d}`,
+            desc: "",
+            description: "",
+            schedule: [],
+            highlights: []
+        });
     }
-];
+}
 // Populate initial cache
 itineraryDaysData.forEach(d => { itineraryDaysCache[d.day] = JSON.parse(JSON.stringify(d)); });
 let currentActiveDayIndex = 0;
+let currentRenderedDayIndex = -1;
 
 // =============================================================
 // Validation System for All Steps (Trim whitespace & friendly errors)
@@ -1459,12 +1573,19 @@ function showFieldError(fieldEl, message) {
     fieldEl.style.borderColor = '#ef4444';
     fieldEl.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.15)';
 
-    const parent = fieldEl.closest('.field-row') || fieldEl.parentElement;
-    const existing = parent ? parent.querySelector('.pkg-field-error') : null;
+    const parent = fieldEl.parentElement;
+    const existing = parent ? parent.querySelector(':scope > .pkg-field-error') : null;
     if (existing) existing.remove();
 
     const err = document.createElement('div');
     err.className = 'pkg-field-error';
+    err.style.color = '#dc2626';
+    err.style.fontSize = '0.78rem';
+    err.style.fontWeight = '600';
+    err.style.marginTop = '4px';
+    err.style.display = 'flex';
+    err.style.alignItems = 'center';
+    err.style.gap = '4px';
     err.innerHTML = '<span>⚠️</span> <span>' + escapeHtml(message) + '</span>';
 
     if (fieldEl.nextSibling) {
@@ -1477,12 +1598,19 @@ function showFieldError(fieldEl, message) {
         fieldEl.classList.remove('is-invalid');
         fieldEl.style.borderColor = '';
         fieldEl.style.boxShadow = '';
-        err.remove();
+        if (err.parentNode) err.remove();
         fieldEl.removeEventListener('input', clearHandler);
         fieldEl.removeEventListener('change', clearHandler);
     };
     fieldEl.addEventListener('input', clearHandler);
     fieldEl.addEventListener('change', clearHandler);
+
+    if (fieldEl.id === 'pkg_preview_wrap_0') {
+        const f0 = document.getElementById('pkg_file_0');
+        const u0 = document.getElementById('pkg_url_0');
+        if (f0) f0.addEventListener('change', clearHandler, { once: true });
+        if (u0) u0.addEventListener('input', clearHandler, { once: true });
+    }
 }
 
 function showSectionError(containerEl, message) {
@@ -1595,6 +1723,16 @@ function validateStep(step) {
             const vehicleBlock = document.querySelector('.pkg-cat-block[data-category="vehicles"]');
             showSectionError(vehicleBlock, 'Please select a vehicle rental option or choose "No Rental Vehicle".');
             isValid = false;
+        } else if (vehicleChecked.value !== 'none' && vehicleChecked.value !== '0') {
+            // Vehicle selected: Guide must upload a valid ID / driver's license
+            const docInput = document.getElementById('guide_vehicle_id_doc');
+            const hasNewDoc = docInput && docInput.files && docInput.files.length > 0;
+            const existingDoc = (document.querySelector('input[name="existing_guide_vehicle_id_doc"]')?.value || '').trim();
+            if (!hasNewDoc && existingDoc === '') {
+                const uploadContainer = document.getElementById('guide_vehicle_id_upload_container');
+                showSectionError(uploadContainer, 'Vehicle rental partners require a valid ID or driver\'s license. Please upload your supporting document.');
+                isValid = false;
+            }
         }
     } else if (step === 3) {
         // Step 3: Selected Package Details
@@ -1864,6 +2002,88 @@ function formatTime12h(timeStr, defaultTime) {
     return `${strHours}:${minutes.substring(0, 2)} ${ampm}`;
 }
 
+
+function selectHotelProperty(hotelId, hotelTitle) {
+    document.querySelectorAll(".pkg-hotel-property-card").forEach(c => {
+        c.classList.remove("is-selected");
+        c.style.borderColor = "#e2e8f0";
+        const pill = c.querySelector(".hotel-prop-pill span");
+        if (pill) pill.innerText = (c.id === "hotelPropertyCard_none") ? "Select" : "Select Hotel";
+        const pillBox = c.querySelector(".hotel-prop-pill");
+        if (pillBox) pillBox.style.background = "rgba(15,23,42,0.6)";
+    });
+
+    const selectedCard = document.getElementById("hotelPropertyCard_" + hotelId);
+    if (selectedCard) {
+        selectedCard.classList.add("is-selected");
+        selectedCard.style.borderColor = "#10b981";
+        const pill = selectedCard.querySelector(".hotel-prop-pill span");
+        if (pill) pill.innerText = "✓ Selected";
+        const pillBox = selectedCard.querySelector(".hotel-prop-pill");
+        if (pillBox) pillBox.style.background = "#10b981";
+    }
+
+    const titleEl = document.getElementById("selectedHotelTitleName");
+    const noHotelMsg = document.getElementById("noHotelSelectedMsg");
+    const roomsGrid = document.getElementById("hotelRoomsGrid");
+    const noneRadio = document.getElementById("hotelCard_none_radio");
+
+    if (hotelId === "none" || !hotelId) {
+        if (titleEl) titleEl.innerText = "No Hotel Accommodation";
+        if (noHotelMsg) {
+            noHotelMsg.style.display = "block";
+            noHotelMsg.innerHTML = '<span style="font-size:2rem;display:block;margin-bottom:4px;">🚶</span><strong style="font-size:0.9rem;color:#0f172a;">No Hotel Stay Bundled</strong><p style="font-size:0.82rem;margin:4px 0 0 0;">Day tour or guest arranges lodging. Accommodation charge is ₱0.00.</p>';
+        }
+        if (roomsGrid) roomsGrid.style.display = "none";
+        if (noneRadio) {
+            noneRadio.checked = true;
+            selectHotelRoom(noneRadio);
+        }
+        return;
+    }
+
+    if (titleEl) titleEl.innerText = hotelTitle || "Selected Hotel";
+    if (noHotelMsg) noHotelMsg.style.display = "none";
+    if (roomsGrid) roomsGrid.style.display = "grid";
+
+    // Filter room cards by data-hotel-id
+    const roomCards = document.querySelectorAll(".hotel-room-item");
+    let matchingRoomsCount = 0;
+    let firstMatchingRadio = null;
+    let alreadyCheckedForHotel = false;
+
+    roomCards.forEach(card => {
+        const cardHotelId = parseInt(card.dataset.hotelId, 10);
+        const radio = card.querySelector('input[type="radio"]');
+        if (cardHotelId === parseInt(hotelId, 10)) {
+            card.style.display = "block";
+            matchingRoomsCount++;
+            if (!firstMatchingRadio) firstMatchingRadio = radio;
+            if (radio && radio.checked) alreadyCheckedForHotel = true;
+        } else {
+            card.style.display = "none";
+            card.classList.remove("selected");
+        }
+    });
+
+    if (matchingRoomsCount === 0) {
+        if (noHotelMsg) {
+            noHotelMsg.style.display = "block";
+            noHotelMsg.innerHTML = '<span style="font-size:2rem;display:block;margin-bottom:4px;">🏨</span><strong style="font-size:0.9rem;color:#0f172a;">No Available Rooms</strong><p style="font-size:0.82rem;margin:4px 0 0 0;">This hotel property currently has no rooms with open inventory. Please select another property or choose No Hotel Stay.</p>';
+        }
+        if (roomsGrid) roomsGrid.style.display = "none";
+        if (noneRadio) {
+            noneRadio.checked = true;
+            selectHotelRoom(noneRadio);
+        }
+    } else {
+        if (!alreadyCheckedForHotel && firstMatchingRadio) {
+            firstMatchingRadio.checked = true;
+            selectHotelRoom(firstMatchingRadio);
+        }
+    }
+}
+
 function selectHotelRoom(radio) {
     document.querySelectorAll('[id^="hotelCard_"]').forEach(el => el.classList.remove('selected'));
     const parentCard = radio.closest('.pkg-card-radio');
@@ -1927,6 +2147,17 @@ function selectVehicle(radio) {
     const hiddenNameInput = document.getElementById('selected_vehicle_name');
     if (hiddenNameInput) {
         hiddenNameInput.value = (vModel === 'none' || !vModel) ? 'None' : vModel;
+    }
+
+    const uploadBox = document.getElementById('guide_vehicle_id_upload_container');
+    if (uploadBox) {
+        if (vModel !== 'none' && vModel !== '') {
+            uploadBox.style.display = 'block';
+        } else {
+            uploadBox.style.display = 'none';
+            const idErr = uploadBox.querySelector('.pkg-field-error');
+            if (idErr) idErr.remove();
+        }
     }
 
     updateStep2Counters();
@@ -2050,7 +2281,9 @@ function renderStep3Details() {
 
 // Itinerary Day-by-Day Generation (Step 4)
 function updateItineraryDays() {
-    saveCurrentDayData();
+    if (currentRenderedDayIndex >= 0) {
+        saveCurrentDayData();
+    }
     const rawVal = document.getElementById('pkg_days')?.value;
     const parsedDays = parseInt(rawVal, 10);
     const days = (!isNaN(parsedDays) && parsedDays > 0) ? Math.min(Math.max(1, parsedDays), 14) : (itineraryDaysData.length || 1);
@@ -2067,17 +2300,11 @@ function updateItineraryDays() {
         } else {
             const newDay = {
                 day: nextDayNum,
-                title: `Day ${nextDayNum}: Exploring South Cebu Destinations`,
-                desc: `Curated excursions and guided activities for Day ${nextDayNum}.`,
-                schedule: [
-                    { time: "09:00 AM", activity: `Morning excursion departure` },
-                    { time: "01:30 PM", activity: `Afternoon activity session and lunch` }
-                ],
-                highlights: [
-                    `Guided activity experience`,
-                    `Scenic photo opportunities`,
-                    `Local Cebuano culinary stops`
-                ]
+                title: `Day ${nextDayNum}`,
+                desc: "",
+                description: "",
+                schedule: [],
+                highlights: []
             };
             itineraryDaysCache[nextDayNum] = JSON.parse(JSON.stringify(newDay));
             itineraryDaysData.push(newDay);
@@ -2130,47 +2357,63 @@ function renderActiveDayContent() {
     const timelineEl = document.getElementById('activeDayTimeline');
     const highlightsEl = document.getElementById('activeDayHighlights');
 
-    if (titleIn) titleIn.value = dayData.title;
-    if (descIn) descIn.value = dayData.desc;
+    if (titleIn) titleIn.value = dayData.title || '';
+    if (descIn) descIn.value = (dayData.desc !== undefined && dayData.desc !== null) ? dayData.desc : (dayData.description || '');
+
+    currentRenderedDayIndex = currentActiveDayIndex;
 
     // Render Timeline Items (clean white card on light background)
     if (timelineEl) {
-        timelineEl.innerHTML = dayData.schedule.map((item, idx) => `
-            <div style="display:flex;align-items:center;gap:0.75rem;background:#ffffff;padding:0.6rem 0.85rem;border-radius:8px;border:1px solid #e2e8f0;">
-                <span style="width:10px;height:10px;border-radius:50%;background:#10b981;flex-shrink:0;"></span>
-                <input class="input pkg-input" type="text" value="${escapeHtml(item.time)}" oninput="updateTimelineItem(${idx}, 'time', this.value)" style="width:95px;height:34px;font-size:0.8rem;padding:3px 8px;background:#ffffff !important;color:#047857 !important;border:1px solid #cbd5e1 !important;font-weight:700;border-radius:6px;">
-                <input class="input pkg-input" type="text" value="${escapeHtml(item.activity)}" oninput="updateTimelineItem(${idx}, 'activity', this.value)" style="flex:1;height:34px;font-size:0.85rem;padding:3px 10px;background:#ffffff !important;color:#0f172a !important;border:1px solid #cbd5e1 !important;border-radius:6px;">
-                <button type="button" onclick="removeTimelineSlot(${idx})" style="background:transparent;border:none;color:#ef4444;font-size:16px;cursor:pointer;padding:2px 6px;" title="Remove time slot">✕</button>
-            </div>
-        `).join('');
+        if (!dayData.schedule || dayData.schedule.length === 0) {
+            timelineEl.innerHTML = '<div style="padding:0.85rem;text-align:center;color:#64748b;font-size:0.875rem;background:#ffffff;border:1px dashed #cbd5e1;border-radius:8px;">No timeline schedule added yet. Click "+ Add Time Slot" to add activities.</div>';
+        } else {
+            timelineEl.innerHTML = dayData.schedule.map((item, idx) => `
+                <div style="display:flex;align-items:center;gap:0.75rem;background:#ffffff;padding:0.6rem 0.85rem;border-radius:8px;border:1px solid #e2e8f0;">
+                    <span style="width:10px;height:10px;border-radius:50%;background:#10b981;flex-shrink:0;"></span>
+                    <input class="input pkg-input" type="text" value="${escapeHtml(item.time || '')}" placeholder="e.g. 09:00 AM" oninput="updateTimelineItem(${idx}, 'time', this.value)" style="width:110px;height:34px;font-size:0.8rem;padding:3px 8px;background:#ffffff !important;color:#047857 !important;border:1px solid #cbd5e1 !important;font-weight:700;border-radius:6px;">
+                    <input class="input pkg-input" type="text" value="${escapeHtml(item.activity || '')}" placeholder="Enter activity description" oninput="updateTimelineItem(${idx}, 'activity', this.value)" style="flex:1;height:34px;font-size:0.85rem;padding:3px 10px;background:#ffffff !important;color:#0f172a !important;border:1px solid #cbd5e1 !important;border-radius:6px;">
+                    <button type="button" onclick="removeTimelineSlot(${idx})" style="background:transparent;border:none;color:#ef4444;font-size:16px;cursor:pointer;padding:2px 6px;" title="Remove time slot">✕</button>
+                </div>
+            `).join('');
+        }
     }
 
     // Render Highlights (clean white card on light background)
     if (highlightsEl) {
-        highlightsEl.innerHTML = dayData.highlights.map((hl, idx) => `
-            <div style="display:flex;align-items:center;gap:0.5rem;background:#ffffff;padding:0.5rem 0.75rem;border-radius:8px;border:1px solid #e2e8f0;">
-                <span style="color:#059669;font-weight:bold;font-size:0.95rem;">✓</span>
-                <input class="input pkg-input" type="text" value="${escapeHtml(hl)}" oninput="updateDayHighlightItem(${idx}, this.value)" style="flex:1;height:34px;font-size:0.85rem;padding:3px 10px;background:#ffffff !important;color:#0f172a !important;border:1px solid #cbd5e1 !important;border-radius:6px;">
-                <button type="button" onclick="removeDayHighlight(${idx})" style="background:transparent;border:none;color:#ef4444;font-size:16px;cursor:pointer;padding:2px 6px;" title="Remove highlight">✕</button>
-            </div>
-        `).join('');
+        if (!dayData.highlights || dayData.highlights.length === 0) {
+            highlightsEl.innerHTML = '<div style="padding:0.85rem;text-align:center;color:#64748b;font-size:0.875rem;background:#ffffff;border:1px dashed #cbd5e1;border-radius:8px;">No highlights added yet. Click "+ Add Highlight" to add key experience milestones.</div>';
+        } else {
+            highlightsEl.innerHTML = dayData.highlights.map((hl, idx) => `
+                <div style="display:flex;align-items:center;gap:0.5rem;background:#ffffff;padding:0.5rem 0.75rem;border-radius:8px;border:1px solid #e2e8f0;">
+                    <span style="color:#059669;font-weight:bold;font-size:0.95rem;">✓</span>
+                    <input class="input pkg-input" type="text" value="${escapeHtml(hl || '')}" placeholder="Enter key experience highlight milestone" oninput="updateDayHighlightItem(${idx}, this.value)" style="flex:1;height:34px;font-size:0.85rem;padding:3px 10px;background:#ffffff !important;color:#0f172a !important;border:1px solid #cbd5e1 !important;border-radius:6px;">
+                    <button type="button" onclick="removeDayHighlight(${idx})" style="background:transparent;border:none;color:#ef4444;font-size:16px;cursor:pointer;padding:2px 6px;" title="Remove highlight">✕</button>
+                </div>
+            `).join('');
+        }
     }
 }
 
 function saveCurrentDayData() {
+    if (currentRenderedDayIndex < 0 || currentRenderedDayIndex !== currentActiveDayIndex) {
+        return;
+    }
     const dayData = itineraryDaysData[currentActiveDayIndex];
     if (!dayData) return;
     const titleIn = document.getElementById('activeDayTitle');
     const descIn = document.getElementById('activeDayDesc');
     if (titleIn) dayData.title = titleIn.value;
-    if (descIn) dayData.desc = descIn.value;
+    if (descIn) {
+        dayData.desc = descIn.value;
+        dayData.description = descIn.value;
+    }
     itineraryDaysCache[dayData.day] = JSON.parse(JSON.stringify(dayData));
     syncItineraryToHidden();
 }
 
 function updateTimelineItem(idx, key, val) {
     const dayData = itineraryDaysData[currentActiveDayIndex];
-    if (dayData && dayData.schedule[idx]) {
+    if (dayData && dayData.schedule && dayData.schedule[idx]) {
         dayData.schedule[idx][key] = val;
         itineraryDaysCache[dayData.day] = JSON.parse(JSON.stringify(dayData));
         syncItineraryToHidden();
@@ -2180,7 +2423,8 @@ function updateTimelineItem(idx, key, val) {
 function addTimelineSlot() {
     const dayData = itineraryDaysData[currentActiveDayIndex];
     if (dayData) {
-        dayData.schedule.push({ time: "02:00 PM", activity: "New activity slot" });
+        if (!Array.isArray(dayData.schedule)) dayData.schedule = [];
+        dayData.schedule.push({ time: "", activity: "" });
         itineraryDaysCache[dayData.day] = JSON.parse(JSON.stringify(dayData));
         const tlErr = document.querySelector('#activeDayTimeline .pkg-field-error');
         if (tlErr) tlErr.remove();
@@ -2191,7 +2435,7 @@ function addTimelineSlot() {
 
 function removeTimelineSlot(idx) {
     const dayData = itineraryDaysData[currentActiveDayIndex];
-    if (dayData) {
+    if (dayData && dayData.schedule) {
         dayData.schedule.splice(idx, 1);
         itineraryDaysCache[dayData.day] = JSON.parse(JSON.stringify(dayData));
         renderActiveDayContent();
@@ -2211,7 +2455,8 @@ function updateDayHighlightItem(idx, val) {
 function addDayHighlight() {
     const dayData = itineraryDaysData[currentActiveDayIndex];
     if (dayData) {
-        dayData.highlights.push("Key experience highlight milestone");
+        if (!Array.isArray(dayData.highlights)) dayData.highlights = [];
+        dayData.highlights.push("");
         itineraryDaysCache[dayData.day] = JSON.parse(JSON.stringify(dayData));
         renderActiveDayContent();
         syncItineraryToHidden();
@@ -2220,7 +2465,7 @@ function addDayHighlight() {
 
 function removeDayHighlight(idx) {
     const dayData = itineraryDaysData[currentActiveDayIndex];
-    if (dayData) {
+    if (dayData && dayData.highlights) {
         dayData.highlights.splice(idx, 1);
         itineraryDaysCache[dayData.day] = JSON.parse(JSON.stringify(dayData));
         renderActiveDayContent();
@@ -2252,39 +2497,123 @@ function escapeHtml(str) {
 }
 
 // -------------------------------------------------------------
-// Package Photo Upload Handlers
+// Package Photo Upload & Preview Handlers
 // -------------------------------------------------------------
-function handlePkgFileChange(index, input) {
-    if (input.files && input.files[0]) {
-        const file = input.files[0];
-        if (file.size > 5 * 1024 * 1024) {
-            alert('Image must be 5MB or smaller.');
-            input.value = '';
-            return;
-        }
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            setPkgPreview(index, e.target.result);
-            const remEl = document.getElementById('pkg_removed_' + index);
-            if (remEl) remEl.value = '0';
-        };
-        reader.readAsDataURL(file);
+function triggerPkgFileInput(index) {
+    const input = document.getElementById('pkg_file_' + index);
+    if (input) input.click();
+}
+
+function showPkgCardError(index, message) {
+    const errBox = document.getElementById('pkg_error_' + index);
+    if (errBox) {
+        errBox.innerHTML = '<span>⚠️</span> <span>' + escapeHtml(message) + '</span>';
+        errBox.style.display = 'flex';
+    }
+    const wrap = document.getElementById('pkg_preview_wrap_' + index);
+    if (wrap) {
+        wrap.style.borderColor = '#ef4444';
     }
 }
 
-function handlePkgUrlChange(index, url) {
-    url = url.trim();
-    if (url) {
-        setPkgPreview(index, url);
+function clearPkgCardError(index) {
+    const errBox = document.getElementById('pkg_error_' + index);
+    if (errBox) {
+        errBox.innerHTML = '';
+        errBox.style.display = 'none';
+    }
+    const wrap = document.getElementById('pkg_preview_wrap_' + index);
+    if (wrap) {
+        wrap.style.borderColor = '#e2e8f0';
+    }
+}
+
+function showPkgSpinner(index) {
+    const spinner = document.getElementById('pkg_spinner_' + index);
+    if (spinner) spinner.style.display = 'flex';
+}
+
+function hidePkgSpinner(index) {
+    const spinner = document.getElementById('pkg_spinner_' + index);
+    if (spinner) spinner.style.display = 'none';
+}
+
+function handlePkgFileChange(index, input) {
+    clearPkgCardError(index);
+    if (!input || !input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const ext = file.name.split('.').pop().toLowerCase();
+    const allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
+
+    if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
+        showPkgCardError(index, 'Only JPG, PNG, and WEBP images are allowed.');
+        input.value = '';
+        return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+        showPkgCardError(index, 'Image size exceeds maximum limit of 10MB.');
+        input.value = '';
+        return;
+    }
+
+    showPkgSpinner(index);
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        hidePkgSpinner(index);
+        setPkgPreview(index, e.target.result);
         const remEl = document.getElementById('pkg_removed_' + index);
         if (remEl) remEl.value = '0';
-    }
+        const urlIn = document.getElementById('pkg_url_' + index);
+        if (urlIn) urlIn.value = '';
+    };
+    reader.onerror = function() {
+        hidePkgSpinner(index);
+        showPkgCardError(index, 'Failed to read image file. Please try again.');
+        input.value = '';
+    };
+    reader.readAsDataURL(file);
+}
+
+let pkgUrlDebounceTimers = {};
+function handlePkgUrlChange(index, url) {
+    clearPkgCardError(index);
+    url = (url || '').trim();
+    if (!url) return;
+
+    if (pkgUrlDebounceTimers[index]) clearTimeout(pkgUrlDebounceTimers[index]);
+    pkgUrlDebounceTimers[index] = setTimeout(function() {
+        if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) {
+            showPkgCardError(index, 'Please enter a valid HTTP or HTTPS image URL.');
+            return;
+        }
+
+        showPkgSpinner(index);
+        const testImg = new Image();
+        testImg.onload = function() {
+            hidePkgSpinner(index);
+            clearPkgCardError(index);
+            setPkgPreview(index, url);
+            const remEl = document.getElementById('pkg_removed_' + index);
+            if (remEl) remEl.value = '0';
+            const fileIn = document.getElementById('pkg_file_' + index);
+            if (fileIn) fileIn.value = '';
+        };
+        testImg.onerror = function() {
+            hidePkgSpinner(index);
+            showPkgCardError(index, 'Unable to load image from URL. Check URL accessibility.');
+        };
+        testImg.src = url;
+    }, 400);
 }
 
 function setPkgPreview(index, src) {
     const img = document.getElementById('pkg_preview_img_' + index);
     const ph = document.getElementById('pkg_placeholder_' + index);
     const btn = document.getElementById('pkg_remove_btn_' + index);
+    const wrap = document.getElementById('pkg_preview_wrap_' + index);
 
     if (img && ph && btn) {
         img.src = src;
@@ -2293,14 +2622,18 @@ function setPkgPreview(index, src) {
         btn.style.display = 'flex';
     }
 
+    if (wrap) {
+        wrap.classList.remove('is-invalid');
+        wrap.style.borderColor = '#10b981';
+        wrap.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.2)';
+    }
+
+    clearPkgCardError(index);
+
     if (index === 0) {
-        const wrap = document.getElementById('pkg_preview_wrap_0');
         if (wrap) {
-            wrap.classList.remove('is-invalid');
-            wrap.style.borderColor = '';
-            wrap.style.boxShadow = '';
-            const parent = wrap.closest('.field-row') || wrap.parentElement;
-            const err = parent ? parent.querySelector('.pkg-field-error') : null;
+            const parent = wrap.parentElement;
+            const err = parent ? parent.querySelector(':scope > .pkg-field-error') : null;
             if (err) err.remove();
         }
     }
@@ -2314,14 +2647,22 @@ function removePkgPhoto(index) {
     const urlIn = document.getElementById('pkg_url_' + index);
     const remIn = document.getElementById('pkg_removed_' + index);
     const existIn = document.getElementById('pkg_existing_' + index);
+    const wrap = document.getElementById('pkg_preview_wrap_' + index);
 
     if (img) { img.src = ''; img.style.display = 'none'; }
-    if (ph) { ph.style.display = 'block'; }
+    if (ph) { ph.style.display = 'flex'; }
     if (btn) { btn.style.display = 'none'; }
     if (fileIn) { fileIn.value = ''; }
     if (urlIn) { urlIn.value = ''; }
     if (existIn) { existIn.value = ''; }
     if (remIn) { remIn.value = '1'; }
+
+    if (wrap) {
+        wrap.style.borderColor = '#e2e8f0';
+        wrap.style.boxShadow = 'none';
+    }
+    clearPkgCardError(index);
+    hidePkgSpinner(index);
 }
 
 // -------------------------------------------------------------
@@ -2345,16 +2686,14 @@ function calculateFinancials() {
         }
     });
 
-    // 2. Hotel Net Rate per pax (Split across 2 pax standard occupancy)
+    // 2. Hotel Net Rate: roomRate * nights (Do not divide by 2)
     const hotelTotal = (selectedHotelName !== 'None') ? (selectedHotelRate * nights) : 0;
-    const hotelPerPax = hotelTotal / 2;
 
-    // 3. Rental Net Rate per pax (1 Scooter per 2 pax)
+    // 3. Rental Net Rate: dailyRate * days (Do not divide by 2)
     const vehicleTotal = (selectedVehicleModel !== 'None') ? (selectedVehicleDailyRate * days) : 0;
-    const vehiclePerPax = vehicleTotal / 2;
 
     // 4. Subtotal & Platform Fee
-    const subtotal = totalThingsToDoRate + totalAttractionsRate + hotelPerPax + vehiclePerPax + guideMargin;
+    const subtotal = totalThingsToDoRate + totalAttractionsRate + hotelTotal + vehicleTotal + guideMargin;
     const platformFee = Math.round(subtotal * 0.08);
     const calculatedTotal = Math.round(subtotal + platformFee);
 
@@ -2371,8 +2710,8 @@ function calculateFinancials() {
 
     if (actEl) actEl.innerText = '₱' + totalThingsToDoRate.toLocaleString('en-US', { minimumFractionDigits: 2 });
     if (attEl) attEl.innerText = '₱' + totalAttractionsRate.toLocaleString('en-US', { minimumFractionDigits: 2 });
-    if (hotEl) hotEl.innerText = '₱' + hotelPerPax.toLocaleString('en-US', { minimumFractionDigits: 2 });
-    if (renEl) renEl.innerText = '₱' + vehiclePerPax.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    if (hotEl) hotEl.innerText = '₱' + hotelTotal.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    if (renEl) renEl.innerText = '₱' + vehicleTotal.toLocaleString('en-US', { minimumFractionDigits: 2 });
     if (marEl) marEl.innerText = '₱' + guideMargin.toLocaleString('en-US', { minimumFractionDigits: 2 });
     if (plaEl) plaEl.innerText = '₱' + platformFee.toLocaleString('en-US', { minimumFractionDigits: 2 });
     if (marVal) marVal.innerText = '₱' + guideMargin.toLocaleString('en-US');
@@ -2387,19 +2726,14 @@ function calculateFinancials() {
 
     if (cAct) cAct.value = totalThingsToDoRate;
     if (cAtt) cAtt.value = totalAttractionsRate;
-    if (cHot) cHot.value = hotelPerPax;
-    if (cRen) cRen.value = vehiclePerPax;
+    if (cHot) cHot.value = hotelTotal;
+    if (cRen) cRen.value = vehicleTotal;
     if (cPla) cPla.value = platformFee;
 
-    // Only update total input if not in edit mode or if totalPkgInput is 0/default
-    if (!<?= $isEdit ? 'true' : 'false' ?> || !totalPkgInput || parseFloat(totalPkgInput.value) <= 0) {
-        if (totalPkgInput) totalPkgInput.value = calculatedTotal;
-        if (totEl) totEl.innerText = '₱' + calculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2 });
-        if (cFin) cFin.value = calculatedTotal;
-    } else {
-        if (totEl && totalPkgInput) totEl.innerText = '₱' + Number(totalPkgInput.value).toLocaleString('en-US', { minimumFractionDigits: 2 });
-        if (cFin && totalPkgInput) cFin.value = totalPkgInput.value;
-    }
+    // Always update total package input so input and simulation stay completely consistent
+    if (totalPkgInput) totalPkgInput.value = calculatedTotal;
+    if (totEl) totEl.innerText = '₱' + calculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    if (cFin) cFin.value = calculatedTotal;
 }
 
 // Initial render on page load
@@ -2409,5 +2743,11 @@ document.addEventListener('DOMContentLoaded', () => {
     renderStep3Details();
     updateItineraryDays();
     calculateFinancials();
+
+    const initialHotelId = <?= json_encode(!empty($selectedHotelId) ? (int)$selectedHotelId : (!empty($selectedHotelRoomId) && $selectedHotelRoomId > 0 ? (int)$selectedHotelRoomId : 'none')) ?>;
+    const initialHotelTitle = <?= json_encode(!empty($selectedHotelName) && $selectedHotelName !== 'None' ? (string)$selectedHotelName : '') ?>;
+    if (typeof selectHotelProperty === 'function') {
+        selectHotelProperty(initialHotelId, initialHotelTitle);
+    }
 });
 </script>

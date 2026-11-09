@@ -99,6 +99,9 @@ $router->post('/guides/{id}/contact', [MessageController::class, 'contactGuidePr
 // ---- Dashboard (all roles) ------------------------------------------------
 $router->get('/dashboard', [DashboardController::class, 'index'], ['auth']);
 $router->get('/dashboard/reviews', [DashboardController::class, 'reviews'], ['provider']);
+$router->get('/dashboard/package-requests', [DashboardController::class, 'packageRequests'], ['provider']);
+$router->post('/dashboard/package-requests/{id}/agree', [DashboardController::class, 'agreePackageRequest'], ['provider']);
+$router->post('/dashboard/package-requests/{id}/reject', [DashboardController::class, 'rejectPackageRequest'], ['provider']);
 
 // ---- Documents & Verification ---------------------------------------------
 $router->get('/documents', [DocumentController::class, 'myDocuments'], ['auth']);

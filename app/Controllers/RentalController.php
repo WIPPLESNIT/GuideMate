@@ -403,6 +403,7 @@ final class RentalController extends Controller
 
         if ($status === 'cancelled' && $paid) {
             RentalRequest::refund((int) $id, $note !== '' ? $note : null);
+            \App\Services\PackageBookingService::onRentalUpdated((int) $id, 'cancelled', (int) Auth::id());
             if ($customerEmail !== '') {
                 NotificationService::rentalDeclined(
                     $customerEmail,
@@ -415,6 +416,7 @@ final class RentalController extends Controller
         }
 
         RentalRequest::updateStatus((int) $id, $status, $note !== '' ? $note : null);
+        \App\Services\PackageBookingService::onRentalUpdated((int) $id, $status, (int) Auth::id());
         if ($status === 'approved' && $customerEmail !== '') {
             NotificationService::rentalConfirmed($customerEmail, $vehicleName, $pickupDate);
             flash('success', 'Rental confirmed. The tourist has been notified.');

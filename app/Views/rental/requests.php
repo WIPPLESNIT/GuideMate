@@ -60,10 +60,30 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                             ?>
                                 <tr class="<?= $isPending ? 'row-pending' : '' ?>"<?= $isPending ? ' style="background:#FFFBEB;"' : '' ?>>
                                     <td class="col-vehicle">
-                                        <strong class="vehicle-title"><?= e($r['vehicle_name']) ?></strong>
-                                        <div class="hint" style="font-size:0.8rem;margin-top:2px;">
-                                            <?= e($r['vehicle_type']) ?> · <?= e($r['shop_name']) ?>
-                                        </div>
+                                        <?php
+                                        $isPkgReq = !empty($r['package_booking_ref']);
+                                        $vName = !empty($r['vehicle_name']) && $r['vehicle_name'] !== 'Travel Package'
+                                            ? (string) $r['vehicle_name']
+                                            : (!empty($r['vehicle_db_name'])
+                                                ? (string) $r['vehicle_db_name']
+                                                : trim(($r['vehicle_make'] ?? '') . ' ' . ($r['vehicle_model'] ?? '')));
+                                        if ($vName === '') {
+                                            $vName = 'Partner Vehicle';
+                                        }
+                                        $vType = !empty($r['vehicle_type']) ? (string) $r['vehicle_type'] : (!empty($r['vehicle_type_db']) ? (string) $r['vehicle_type_db'] : 'Scooter');
+                                        ?>
+                                        <?php if ($isPkgReq): ?>
+                                            <strong class="vehicle-title"><?= e($vName) ?></strong>
+                                            <div style="font-size:0.75rem;font-weight:700;color:var(--brand, #059669);margin-top:2px;display:flex;align-items:center;gap:0.35rem;">
+                                                <span style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:0.7rem;padding:1px 6px;border-radius:10px;font-weight:700;">Travel Package</span>
+                                                <span class="hint" style="color:#64748b;font-weight:500;font-size:0.75rem;">· <?= e($vType) ?></span>
+                                            </div>
+                                        <?php else: ?>
+                                            <strong class="vehicle-title"><?= e($vName) ?></strong>
+                                            <div class="hint" style="font-size:0.8rem;margin-top:2px;">
+                                                <?= e($vType) ?> · <?= e($r['shop_name']) ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </td>
                                     <td class="col-customer">
                                         <strong class="customer-name"><?= e($r['customer_name']) ?></strong>
@@ -71,7 +91,7 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                                         <?php if (!empty($r['customer_phone'])): ?>
                                             <div class="hint" style="font-size:0.78rem;"><?= e((string) $r['customer_phone']) ?></div>
                                         <?php endif; ?>
-                                        <?php if (!empty($r['notes'])): ?>
+                                        <?php if (empty($r['package_booking_ref']) && !empty($r['notes'])): ?>
                                             <button type="button" 
                                                     class="rental-note-btn" 
                                                     data-open-note-modal
@@ -92,7 +112,20 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                                         <small class="hint"><?= (int) $r['rental_days'] ?> day(s)</small>
                                     </td>
                                     <td class="col-payment">
-                                        <strong style="color:var(--brand, #059669);display:block;"><?= money((float) $r['total_amount']) ?></strong>
+                                        <?php
+                                        $rentalDays = max(1, (int) ($r['rental_days'] ?? 1));
+                                        $dailyRate = (float) ($r['vehicle_daily_rate'] ?? 0);
+                                        $payAmount = (float) ($r['total_amount'] ?? 0);
+                                        if ($isPkgReq && $dailyRate > 0) {
+                                            $payAmount = round($dailyRate * $rentalDays, 2);
+                                        }
+                                        ?>
+                                        <strong style="color:var(--brand, #059669);display:block;font-size:0.95rem;"><?= money($payAmount) ?></strong>
+                                        <?php if ($dailyRate > 0): ?>
+                                            <small class="hint d-block" style="font-size:0.72rem;color:#64748b;margin-top:1px;">
+                                                <?= money($dailyRate) ?> × <?= $rentalDays ?> day<?= $rentalDays > 1 ? 's' : '' ?>
+                                            </small>
+                                        <?php endif; ?>
                                         <div style="margin-top:2px;">
                                             <?php if ($paymentStatus === 'paid'): ?>
                                                 <span class="pill pill-approved" style="font-size:0.72rem;padding:2px 8px;">Paid</span>
@@ -105,16 +138,44 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                                         </div>
                                     </td>
                                     <td class="col-id-doc">
-                                        <?php if (!empty($r['id_document'])): ?>
-                                            <a href="<?= e(url($r['id_document'])) ?>" target="_blank" rel="noopener" class="doc-link" style="font-weight:600;font-size:0.84rem;">
-                                                📎 <?= e((string) ($r['id_type'] ?? 'ID')) ?> ↗
-                                            </a>
-                                            <?php if (!empty($r['id_number'])): ?>
-                                                <div class="hint" style="font-size:0.76rem;">No. <?= e((string) $r['id_number']) ?></div>
-                                            <?php endif; ?>
-                                            <div class="hint" style="font-size:0.72rem;color:var(--ink-300);">Held until return</div>
+                                        <?php
+                                        $idDoc = !empty($r['guide_id_doc'])
+                                            ? $r['guide_id_doc']
+                                            : (!empty($r['fallback_guide_id_doc'])
+                                                ? $r['fallback_guide_id_doc']
+                                                : (!empty($r['id_document']) ? $r['id_document'] : ''));
+                                        $isGuideId = !empty($r['guide_id_doc']) || !empty($r['fallback_guide_id_doc']);
+                                        $idLabel = $isGuideId ? 'Tour Guide ID' : (string) ($r['id_type'] ?? 'ID');
+                                        $guideName = (string) ($r['customer_name'] ?? 'Tour Guide Host');
+                                        ?>
+                                        <?php if (!empty($idDoc)): ?>
+                                            <div class="rental-id-doc-wrap" style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;">
+                                                <a href="<?= e(url($idDoc)) ?>"
+                                                   target="_blank"
+                                                   rel="noopener"
+                                                   class="rental-id-doc-link doc-link"
+                                                   data-doc-preview="1"
+                                                   data-doc-url="<?= e(url($idDoc)) ?>"
+                                                   data-doc-label="<?= e($idLabel) ?>"
+                                                   data-doc-type="Document"
+                                                   data-doc-status="pending"
+                                                   data-doc-owner="<?= e($guideName) ?>">
+                                                    <span>📎</span>
+                                                    <span><?= e($idLabel) ?></span>
+                                                    <span style="font-size:0.75rem;opacity:0.75;">↗</span>
+                                                </a>
+                                                <?php if (!empty($r['id_number'])): ?>
+                                                    <div class="hint" style="font-size:0.75rem;margin-top:2px;">No. <?= e((string) $r['id_number']) ?></div>
+                                                <?php endif; ?>
+                                                <div class="hint" style="font-size:0.72rem;color:<?= $isGuideId ? '#0284c7' : 'var(--ink-400)' ?>;">
+                                                    <?= $isGuideId ? 'Guide verification document' : 'Tourist valid ID' ?>
+                                                </div>
+                                            </div>
                                         <?php else: ?>
-                                            <small class="hint">—</small>
+                                            <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;">
+                                                <span style="color:#94a3b8;font-size:0.85rem;font-weight:600;">—</span>
+                                                <small class="hint" style="font-size:0.72rem;color:#94a3b8;">No document provided</small>
+                                            </div>
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-status">
@@ -294,9 +355,19 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                                                         </form>
                                                     <?php endif; ?>
 
-                                                    <?php if (!empty($r['id_document'])): ?>
+                                                    <?php if (!empty($idDoc)): ?>
                                                         <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
-                                                        <a href="<?= e(url($r['id_document'])) ?>" target="_blank" rel="noopener" class="res-action-item" role="menuitem">
+                                                        <a href="<?= e(url($idDoc)) ?>"
+                                                           target="_blank"
+                                                           rel="noopener"
+                                                           class="res-action-item doc-link"
+                                                           role="menuitem"
+                                                           data-doc-preview="1"
+                                                           data-doc-url="<?= e(url($idDoc)) ?>"
+                                                           data-doc-label="<?= e($idLabel) ?>"
+                                                           data-doc-type="Document"
+                                                           data-doc-status="pending"
+                                                           data-doc-owner="<?= e($guideName) ?>">
                                                             <?= admin_icon('documents', 14) ?> View Verification ID
                                                         </a>
                                                     <?php endif; ?>

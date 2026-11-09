@@ -220,6 +220,11 @@ $isCatFiltered = ($category !== 'all');
                     $catGroup = $isPackage ? 'packages' : ($isAttraction ? 'attractions' : 'things-to-do');
                     $schedCount = (int) ($l['schedule_count'] ?? 0);
                     $cap = (int) ($l['total_capacity'] ?? $l['capacity'] ?? 10);
+                    $pkgOverallStatus = 'none';
+                    if ($isPackage) {
+                        $pkgSummary = \App\Models\PackageService::getProviderApprovalSummary((int) $l['id']);
+                        $pkgOverallStatus = $pkgSummary['overall_status'];
+                    }
 
                     $titleLower = strtolower((string) ($l['title'] ?? ''));
                     $guideLower = strtolower((string) (($l['guide_name'] ?? '') . ' ' . ($l['guide_email'] ?? '')));
@@ -241,6 +246,7 @@ $isCatFiltered = ($category !== 'all');
                         data-id="<?= (int) $l['id'] ?>"
                         data-status="<?= e($lStatus) ?>"
                         data-category="<?= e($catGroup) ?>"
+                        data-pkg-status="<?= e($pkgOverallStatus) ?>"
                         data-title="<?= e($titleLower) ?>"
                         data-guide="<?= e($guideLower) ?>"
                         data-area="<?= e($areaLower) ?>"
@@ -296,6 +302,23 @@ $isCatFiltered = ($category !== 'all');
                             <span class="pill <?= e(\App\Models\Listing::hotelStatusPillClass($lStatus)) ?>">
                                 <?= e(\App\Models\Listing::hotelStatusLabel($lStatus)) ?>
                             </span>
+                            <?php if ($isPackage): ?>
+                                <div style="margin-top:6px;">
+                                    <?php if ($pkgOverallStatus === 'agreed'): ?>
+                                        <span class="pill" style="font-size:0.72rem;padding:3px 8px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700;display:inline-flex;align-items:center;gap:3px;" title="All required providers have approved inclusion in this package">
+                                            ✓ Agreed
+                                        </span>
+                                    <?php elseif ($pkgOverallStatus === 'rejected'): ?>
+                                        <span class="pill" style="font-size:0.72rem;padding:3px 8px;background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;font-weight:700;display:inline-flex;align-items:center;gap:3px;" title="At least one provider has declined inclusion">
+                                            ✕ Rejected
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="pill" style="font-size:0.72rem;padding:3px 8px;background:#fefce8;color:#a16207;border:1px solid #fde047;font-weight:700;display:inline-flex;align-items:center;gap:3px;" title="Waiting for provider approval responses">
+                                            ⏳ Pending
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
                         </td>
                         <td class="col-audit" data-label="Dates / Audit" style="font-size:0.8rem;">
                             <?php if (!empty($l['submitted_at'])): ?>
@@ -312,7 +335,11 @@ $isCatFiltered = ($category !== 'all');
                         </td>
                         <td class="vehicle-actions-cell col-actions" data-label="Actions" style="text-align:right;vertical-align:middle;">
                             <div class="vehicle-actions-vertical">
-                                <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical">Inspect</a>
+                                <?php if ($isPackage): ?>
+                                    <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical" style="font-weight:700;color:#059669;border-color:#10b981;">View</a>
+                                <?php else: ?>
+                                    <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical">Inspect</a>
+                                <?php endif; ?>
 
                                 <?php if ($lStatus !== 'approved'): ?>
                                     <form method="post" action="<?= e(url('/admin/guide-listings/' . (int) $l['id'] . '/approve')) ?>" class="vehicle-action-form" onsubmit="return confirm('Approve and publish this guide listing? It will immediately become live for travelers.');">

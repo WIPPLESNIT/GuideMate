@@ -215,6 +215,17 @@ export default function PackageDetailScreen() {
   };
 
   const handleStartBooking = () => {
+    if (packageData?.has_active_booking) {
+      Alert.alert(
+        'Active Booking Exists',
+        'You already have an active booking for this travel package. You can book this package again once your current trip is completed.',
+        [
+          { text: 'View in My Trips', onPress: () => router.push('/(tabs)/trips') },
+          { text: 'OK', style: 'cancel' },
+        ]
+      );
+      return;
+    }
     setGuestsCount((prev) => Math.max(minPax, prev));
     setBookingStep('form');
     setPaymentReference('');
@@ -340,9 +351,26 @@ export default function PackageDetailScreen() {
       });
       setBookingResult(res);
       setBookingStep('confirmed');
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Could not complete booking. Please try again.';
-      Alert.alert('Booking Error', msg);
+      if (err?.status === 409 || err?.data?.has_active_booking) {
+        Alert.alert(
+          'Active Booking Exists',
+          msg,
+          [
+            {
+              text: 'View in My Trips',
+              onPress: () => {
+                setBookingVisible(false);
+                router.push('/(tabs)/trips');
+              },
+            },
+            { text: 'OK', style: 'cancel' },
+          ]
+        );
+      } else {
+        Alert.alert('Booking Error', msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -816,6 +844,7 @@ export default function PackageDetailScreen() {
             >
               <Text style={[styles.exclusionsTitle, { color: colors.textSub }]}>
                 What&apos;s Not Included:
+                {/* What's Not Included: */}
               </Text>
               {packageData.exclusions.map((exc, index) => (
                 <View key={index} style={styles.exclusionItem}>
@@ -1171,6 +1200,32 @@ export default function PackageDetailScreen() {
         ) : null}
       </ScrollView>
 
+      {/* Active Booking Notification Banner */}
+      {packageData.has_active_booking ? (
+        <View
+          style={{
+            backgroundColor: isDark ? '#1E293B' : '#EFF6FF',
+            borderTopWidth: 1,
+            borderTopColor: isDark ? '#334155' : '#DBEAFE',
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+            <Ionicons name="information-circle" size={16} color="#2563EB" />
+            <Text style={{ fontSize: 12, color: isDark ? '#93C5FD' : '#1E40AF', flex: 1 }} numberOfLines={1}>
+              Active trip booked ({packageData.active_booking?.ref || 'Active'})
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/trips')}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#2563EB' }}>View in Trips →</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* Sticky Bottom Floating Booking Bar */}
       <View
         style={[
@@ -1199,12 +1254,26 @@ export default function PackageDetailScreen() {
 
         <View style={styles.stickyActionsRow}>
           <TouchableOpacity
-            style={[styles.bookMainBtn, { backgroundColor: colors.primary }]}
+            style={[
+              styles.bookMainBtn,
+              { backgroundColor: packageData.has_active_booking ? (isDark ? '#334155' : '#E2E8F0') : colors.primary },
+            ]}
             onPress={handleStartBooking}
             activeOpacity={0.85}
           >
-            <Ionicons name="calendar-outline" size={17} color="#FFFFFF" />
-            <Text style={styles.bookMainBtnText}>Book Package</Text>
+            <Ionicons
+              name={packageData.has_active_booking ? 'time-outline' : 'calendar-outline'}
+              size={17}
+              color={packageData.has_active_booking ? (isDark ? '#94A3B8' : '#475569') : '#FFFFFF'}
+            />
+            <Text
+              style={[
+                styles.bookMainBtnText,
+                packageData.has_active_booking ? { color: isDark ? '#94A3B8' : '#475569' } : undefined,
+              ]}
+            >
+              {packageData.has_active_booking ? 'Active Booking' : 'Book Package'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

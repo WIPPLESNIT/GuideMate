@@ -1263,3 +1263,317 @@ Body:
 Great news! Your guide listing for 3D2N South Cebu Adventure: Canyoneering, Sardine Run, Simala Shrine, Sumilon Island & Honda Click V2 Scooter has been approved by the administrator and is now published and visible to travelers.
 
 ----------------------------------------
+[2026-11-06 23:57:55] LOCAL MAIL
+To: marcgerardrepuesto2003@gmail.com
+Subject: Welcome to GuideMate
+Body:
+Hi Marc,
+
+Welcome to GuideMate! Start exploring the best of Cebu.
+
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-06 23:59:05] LOCAL MAIL
+To: marcgerardrepuesto2003@gmail.com
+Subject: Application Approved
+Body:
+Hi Marc Gerard Pasulohan Repuesto,
+
+Your Tour Guide application has been approved. You can now use your partner account on GuideMate.
+
+
+----------------------------------------
+[2026-11-07 00:11:38] LOCAL MAIL
+To: marcgerardrepuesto2003@gmail.com
+Subject: Listing approved — marc
+Body:
+Great news! Your guide listing for marc has been approved by the administrator and is now published and visible to travelers.
+
+----------------------------------------
+[2026-11-07 04:38:33] LOCAL MAIL
+To: marcgerardrepuesto2003@gmail.com
+Subject: Listing update — wras
+Body:
+Your guide listing for wras was not approved by the administrator.
+
+Reason: i dont like it
+
+You can review the feedback, update your listing details, photos, or schedule, and resubmit it for approval from your dashboard.
+
+----------------------------------------
+[2026-11-07 04:49:18] LOCAL MAIL
+To: jelliandelgado@gmail.com
+Subject: Welcome to GuideMate
+Body:
+Hi Jellian,
+
+Welcome to GuideMate! Start exploring the best of Cebu.
+
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-07 04:49:53] LOCAL MAIL
+To: jelliandelgado@gmail.com
+Subject: Application Approved
+Body:
+Hi Jellian B. Delgado,
+
+Your Hotel Partner application has been approved. You can now use your partner account on GuideMate.
+
+
+----------------------------------------
+[2026-11-07 05:01:57] LOCAL MAIL
+To: jelliandelgado@gmail.com
+Subject: Hotel listing approved — Bahay Ni Silingan
+Body:
+Great news! Your hotel property listing for Bahay Ni Silingan has been approved by the administrator and is now published and available for travelers. You can now configure room types and inventory from your dashboard.
+
+----------------------------------------
+[2026-11-07 09:44:14] LOCAL MAIL
+To: jubas@gmail.com
+Subject: Welcome to GuideMate
+Body:
+Hi Junril,
+
+Welcome to GuideMate! Start exploring the best of Cebu.
+
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-07 09:45:21] LOCAL MAIL
+To: jubas@gmail.com
+Subject: Application Approved
+Body:
+Hi Junril Ubas,
+
+Your Tour Guide application has been approved. You can now use your partner account on GuideMate.
+
+
+----------------------------------------
+[2026-11-08 18:40:51] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Kawasan Falls Canyoneering Adventure on 2026-11-10 was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.39/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-08 18:40:51] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation â€” Kawasan Falls Canyoneering Adventure
+Body:
+Sample Account booked "Kawasan Falls Canyoneering Adventure" and payment was received.
+
+Date: 2026-11-10
+Guests: 1
+Amount paid: PHP 2,100.00
+Payment: InstaPay QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-08 18:40:51] LOCAL MAIL
+To: johnlloyd@gmail.com
+Subject: New booking awaiting your confirmation â€” Kawasan Falls Canyoneering Adventure
+Body:
+Sample Account booked "Kawasan Falls Canyoneering Adventure" and payment was received.
+
+Date: 2026-11-10
+Guests: 1
+Amount paid: PHP 2,100.00
+Payment: InstaPay QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-08 21:18:06] LOCAL MAIL
+To: migyong@sample.com
+Subject: Travel Package Inclusion Request — test
+Body:
+Hello Miguel Yongzon,
+
+A licensed tour guide has requested to bundle your service into a new GuideMate Travel Package.
+
+PACKAGE DETAILS:
+• Travel Package: test
+• Guide Host: Marc Repuesto (guide.moalboal@guidemate.local)
+• Duration: 3 Days / 2 Nights
+
+YOUR SERVICE REQUESTED:
+• Service Type: Vehicle Rental
+• Listing / Unit: Honda Click 125i V2 (Scooter)
+• Agreed Rate: ₱1,000.00 / day
+
+Planned Schedule Overview:
+  • Day 1: Day 1: test day
+  • Day 2: Day 2: day lang
+  • Day 3: Day 3: test ulit
+
+ACTION REQUIRED:
+Please review how your service will be utilized in this package and respond with your decision (Agree or Reject):
+http://localhost/GuideMate/public/dashboard/package-requests
+
+— The GuideMate Partner Team
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-08 21:20:02] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Service Partner Agreed to Package — test
+Body:
+Hello Marc Repuesto,
+
+Service partner Miguel Yongzon has responded to your inclusion request for "test".
+
+• Service: Vehicle
+• Decision: AGREED
+• Overall Package Approval Status: Agreed (All providers have approved)
+
+You can track and manage your travel packages here:
+http://localhost/GuideMate/public/dashboard/listings
+
+— The GuideMate Partner Team
+
+----------------------------------------
+[2026-11-08 21:20:38] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Listing approved — test
+Body:
+Great news! Your guide listing for test has been approved by the administrator and is now published and visible to travelers.
+
+----------------------------------------
+[2026-11-08 22:32:42] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Booking confirmed — test
+Body:
+Your booking for test on 2026-11-10 is confirmed.
+
+View bookings: http://localhost/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-08 22:33:09] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Booking confirmed — test
+Body:
+Your booking for test on 2026-11-10 is confirmed.
+
+View bookings: http://localhost/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-08 22:34:06] LOCAL MAIL
+To: marc@guidemate.com
+Subject: Rental confirmed — 2022 Honda Click 125i V2 Automatic
+Body:
+Your reservation for 2022 Honda Click 125i V2 Automatic (pickup 2026-11-10) has been confirmed by the rental partner.
+
+They will contact you to arrange delivery.
+
+----------------------------------------
+[2026-11-09 10:06:52] LOCAL MAIL
+To: migyong@sample.com
+Subject: Travel Package Inclusion Request — test package title
+Body:
+Hello Miguel Yongzon,
+
+A licensed tour guide has requested to bundle your service into a new GuideMate Travel Package.
+
+PACKAGE DETAILS:
+• Travel Package: test package title
+• Guide Host: Marc Repuesto (guide.moalboal@guidemate.local)
+• Duration: 3 Days / 2 Nights
+
+YOUR SERVICE REQUESTED:
+• Service Type: Vehicle Rental
+• Listing / Unit: Honda Click 125i V2 (Scooter)
+• Agreed Rate: ₱1,000.00 / day
+
+Planned Schedule Overview:
+  • Day 1: Day 1: tes 
+  • Day 2: Day 2: test day ulit
+  • Day 3: Day 3: sige lang og test
+
+ACTION REQUIRED:
+Please review how your service will be utilized in this package and respond with your decision (Agree or Reject):
+http://localhost/GuideMate/public/dashboard/package-requests
+
+— The GuideMate Partner Team
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-09 10:07:59] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Service Partner Agreed to Package — test package title
+Body:
+Hello Marc Repuesto,
+
+Service partner Miguel Yongzon has responded to your inclusion request for "test package title".
+
+• Service: Vehicle
+• Decision: AGREED
+• Overall Package Approval Status: Agreed (All providers have approved)
+
+You can track and manage your travel packages here:
+http://localhost/GuideMate/public/dashboard/listings
+
+— The GuideMate Partner Team
+
+----------------------------------------
+[2026-11-09 10:10:31] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Listing approved — test package title
+Body:
+Great news! Your guide listing for test package title has been approved by the administrator and is now published and visible to travelers.
+
+----------------------------------------
+[2026-11-09 10:12:41] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Booking confirmed — test package title
+Body:
+Your booking for test package title on 2026-11-11 is confirmed.
+
+View bookings: http://localhost/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-09 10:18:45] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test package title (#GM-PKG-20261109-4CAB6A)
+Body:
+Great news! All participating providers for your Travel Package 'test package title' have confirmed your reservation. Package Booking Reference: GM-PKG-20261109-4CAB6A. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-09 10:18:45] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Rental confirmed — 2022 Honda Click 125i V2 Automatic
+Body:
+Your reservation for 2022 Honda Click 125i V2 Automatic (pickup 2026-11-11) has been confirmed by the rental partner.
+
+They will contact you to arrange delivery.
+
+----------------------------------------
+[2026-11-09 11:22:34] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test package title (#GM-PKG-20261109-4CAB6A)
+Body:
+Great news! All participating providers for your Travel Package 'test package title' have confirmed your reservation. Package Booking Reference: GM-PKG-20261109-4CAB6A. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-09 11:22:47] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test package title (#GM-PKG-20261109-4CAB6A)
+Body:
+Great news! All participating providers for your Travel Package 'test package title' have confirmed your reservation. Package Booking Reference: GM-PKG-20261109-4CAB6A. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-09 11:59:31] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Trip Completed: test package title (#GM-PKG-20261109-4CAB6A)
+Body:
+Your Travel Package 'test package title' has been marked as Completed by your tour guide host. Thank you for traveling with GuideMate! You may now leave a review to share your travel experience.
+
+----------------------------------------

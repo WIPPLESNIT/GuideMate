@@ -388,14 +388,96 @@ HTML;
         self::send($email, $subject, $body);
     }
 
-    private static function send(string $to, string $subject, string $body, ?string $htmlBody = null): bool
+    public static function packageInclusionRequest(
+        string $email,
+        string $providerName,
+        string $packageTitle,
+        string $guideName,
+        string $guideEmail,
+        string $guidePhone,
+        string $serviceType,
+        string $serviceName,
+        string $rateFormatted,
+        string $durationText,
+        array $itineraryDays,
+        int $packageId,
+        int $serviceId
+    ): void {
+        $subject = "Travel Package Inclusion Request — {$packageTitle}";
+        $reviewUrl = self::appUrl('/dashboard/package-requests');
+
+        $itinSummary = '';
+        if (!empty($itineraryDays)) {
+            $itinSummary = "\nPlanned Schedule Overview:\n";
+            foreach (array_slice($itineraryDays, 0, 4) as $d) {
+                $dayNum = $d['day'] ?? '?';
+                $dayTitle = $d['title'] ?? ('Day ' . $dayNum);
+                $itinSummary .= "  • Day {$dayNum}: {$dayTitle}\n";
+            }
+        }
+
+        $textBody = "Hello {$providerName},\n\n"
+            . "A licensed tour guide has requested to bundle your service into a new GuideMate Travel Package.\n\n"
+            . "PACKAGE DETAILS:\n"
+            . "• Travel Package: {$packageTitle}\n"
+            . "• Guide Host: {$guideName}" . ($guideEmail ? " ({$guideEmail})" : "") . ($guidePhone ? " | Phone: {$guidePhone}" : "") . "\n"
+            . "• Duration: {$durationText}\n\n"
+            . "YOUR SERVICE REQUESTED:\n"
+            . "• Service Type: {$serviceType}\n"
+            . "• Listing / Unit: {$serviceName}\n"
+            . "• Agreed Rate: {$rateFormatted}\n"
+            . $itinSummary . "\n"
+            . "ACTION REQUIRED:\n"
+            . "Please review how your service will be utilized in this package and respond with your decision (Agree or Reject):\n"
+            . "{$reviewUrl}\n\n"
+            . "— The GuideMate Partner Team\n"
+            . self::appUrl('/');
+
+        self::send($email, $subject, $textBody);
+    }
+
+    public static function packageProviderDecision(
+        string $email,
+        string $guideName,
+        string $providerName,
+        string $serviceType,
+        string $packageTitle,
+        string $decision,
+        ?string $rejectionReason,
+        string $overallStatus
+    ): void {
+        $isAgreed = ($decision === 'agreed' || $decision === 'approved');
+        $subject = $isAgreed
+            ? "Service Partner Agreed to Package — {$packageTitle}"
+            : "Service Partner Declined Package Inclusion — {$packageTitle}";
+
+        $statusLabel = match($overallStatus) {
+            'agreed' => 'Agreed (All providers have approved)',
+            'rejected' => 'Rejected (At least one provider declined)',
+            default => 'Pending (Waiting for other providers)',
+        };
+
+        $body = "Hello {$guideName},\n\n"
+            . "Service partner {$providerName} has responded to your inclusion request for \"{$packageTitle}\".\n\n"
+            . "• Service: {$serviceType}\n"
+            . "• Decision: " . ($isAgreed ? "AGREED" : "REJECTED") . "\n"
+            . (!$isAgreed && $rejectionReason ? "• Reason: {$rejectionReason}\n" : "")
+            . "• Overall Package Approval Status: {$statusLabel}\n\n"
+            . "You can track and manage your travel packages here:\n"
+            . self::appUrl('/dashboard/listings') . "\n\n"
+            . "— The GuideMate Partner Team";
+
+        self::send($email, $subject, $body);
+    }
+
+    public static function send(string $to, string $subject, string $body, ?string $htmlBody = null): bool
     {
         $mailOk = Mailer::send($to, $subject, $body, $htmlBody);
         SmsService::notifyIfConfigured($to, $subject);
         return $mailOk;
     }
 
-    private static function appUrl(string $path = '/'): string
+    public static function appUrl(string $path = '/'): string
     {
         $base = trim((string) (App::config('app')['url'] ?? ''));
         if ($base !== '') {

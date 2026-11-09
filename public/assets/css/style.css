@@ -87,7 +87,6 @@ img { max-width: 100%; display: block; }
 
 /* Button Hover Stability — buttons remain stationary on hover across all roles */
 button:hover,
-button:hover,
 [role="button"]:hover,
 .btn:hover,
 .btn-primary:hover,
@@ -597,11 +596,15 @@ input[type="checkbox"].is-invalid { outline: 2px solid #DC2626; outline-offset: 
 .input.has-toggle { padding-right: 42px; }
 
 /* Password visibility toggle button */
-.toggle-password {
+.toggle-password,
+.toggle-password:hover,
+.toggle-password:focus,
+.toggle-password:focus-visible,
+.toggle-password:active {
     position: absolute;
     right: 10px;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translateY(-50%) !important;
     background: transparent;
     border: none;
     padding: 6px;
@@ -615,6 +618,7 @@ input[type="checkbox"].is-invalid { outline: 2px solid #DC2626; outline-offset: 
     line-height: 1;
     transition: color 0.15s ease, background-color 0.15s ease;
     z-index: 2;
+    box-shadow: none !important;
 }
 .toggle-password svg {
     pointer-events: none;
@@ -5524,12 +5528,12 @@ a.stat-clickable:focus-visible {
     padding-right: 1.5rem !important;
 }
 .guide-bookings-table .col-customer { width: 16%; }
-.guide-bookings-table .col-listing  { width: 20%; }
-.guide-bookings-table .col-date     { width: 11%; white-space: nowrap; }
-.guide-bookings-table .col-guests   { width: 7%; text-align: center; white-space: nowrap; }
-.guide-bookings-table .col-total    { width: 11%; white-space: nowrap; }
-.guide-bookings-table .col-payment  { width: 9%; white-space: nowrap; }
-.guide-bookings-table .col-status   { width: 18%; white-space: nowrap; text-align: left; }
+.guide-bookings-table .col-listing  { width: 19%; }
+.guide-bookings-table .col-date     { width: 10%; white-space: nowrap; }
+.guide-bookings-table .col-guests   { width: 5%; text-align: center; white-space: nowrap; }
+.guide-bookings-table .col-total    { width: 10%; white-space: nowrap; }
+.guide-bookings-table .col-payment  { width: 8%; white-space: nowrap; }
+.guide-bookings-table .col-status   { width: 24%; white-space: nowrap; text-align: left; vertical-align: middle; }
 .guide-bookings-table .col-actions  { width: 8%; text-align: right; white-space: nowrap; padding-right: 1.5rem !important; }
 
 .guide-bookings-table tr.row-pending {
@@ -5592,6 +5596,22 @@ a.stat-clickable:focus-visible {
     border-radius: 9999px;
     max-width: 100%;
     box-sizing: border-box;
+}
+.guide-bookings-table .pill-awaiting-providers,
+.guide-bookings-table tr.row-pending .pill-pending {
+    background: #ffffff !important;
+    color: #b45309 !important;
+    border: 1.5px solid #f59e0b !important;
+    box-shadow: 0 1px 3px rgba(245, 158, 11, 0.15) !important;
+    font-weight: 700 !important;
+    padding: 0.28rem 0.75rem !important;
+    font-size: 0.74rem !important;
+    gap: 0.35rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    border-radius: 9999px !important;
 }
 .guide-bookings-table .col-actions .res-action-wrap {
     display: inline-flex;
@@ -5763,19 +5783,19 @@ a.stat-clickable:focus-visible {
 }
 .rental-requests-table th.col-vehicle,
 .rental-requests-table td.col-vehicle {
-    width: 20%;
+    width: 21%;
     min-width: 175px;
     padding-left: 1.25rem;
 }
 .rental-requests-table th.col-customer,
 .rental-requests-table td.col-customer {
-    width: 20%;
-    min-width: 170px;
+    width: 19%;
+    min-width: 165px;
 }
 .rental-requests-table th.col-pickup,
 .rental-requests-table td.col-pickup {
-    width: 10%;
-    min-width: 90px;
+    width: 9%;
+    min-width: 85px;
 }
 .rental-requests-table th.col-payment,
 .rental-requests-table td.col-payment {
@@ -5784,24 +5804,47 @@ a.stat-clickable:focus-visible {
 }
 .rental-requests-table th.col-id-doc,
 .rental-requests-table td.col-id-doc {
-    width: 13%;
-    min-width: 110px;
+    width: 19%;
+    min-width: 180px;
+    vertical-align: middle;
 }
 .rental-requests-table th.col-status,
 .rental-requests-table td.col-status {
-    width: 20%;
-    min-width: 175px;
+    width: 14%;
+    min-width: 130px;
     vertical-align: middle;
     overflow: visible;
 }
 .rental-requests-table th.col-actions,
 .rental-requests-table td.col-actions {
-    width: 8%;
-    min-width: 60px;
+    width: 7%;
+    min-width: 55px;
     text-align: center;
     vertical-align: middle;
     padding-right: 1.25rem !important;
     padding-left: 0.25rem !important;
+}
+.rental-requests-table .rental-id-doc-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: #0369a1;
+    background: #e0f2fe;
+    padding: 0.32rem 0.65rem;
+    border-radius: 6px;
+    text-decoration: none;
+    border: 1px solid #bae6fd;
+    white-space: nowrap;
+    line-height: 1.3;
+    transition: all 0.15s ease;
+}
+.rental-requests-table .rental-id-doc-link:hover {
+    background: #bae6fd !important;
+    color: #075985 !important;
+    border-color: #7dd3fc !important;
+    box-shadow: 0 1px 3px rgba(3, 105, 161, 0.15) !important;
 }
 .rental-requests-table td.col-actions {
     white-space: nowrap;
@@ -6324,4 +6367,35 @@ a.stat-clickable:focus-visible {
 .partner-docs-empty-text span {
     font-size: 0.78rem;
     color: rgba(255, 255, 255, 0.45);
+}
+
+/* Guide Dashboard: New Travel Package Button (Matches New Listing Button Style) */
+.btn-new-travel-package {
+    --btn-bg: var(--coral-500);
+    background: var(--coral-500) !important;
+    color: #ffffff !important;
+    border: 1.5px solid transparent !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: .5rem !important;
+    padding: .8rem 1.4rem !important;
+    border-radius: 999px !important;
+    font: inherit !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    transition: transform .12s ease, box-shadow .2s ease, background .2s ease !important;
+}
+.btn-new-travel-package:hover {
+    background: var(--coral-600) !important;
+    border-color: transparent !important;
+    box-shadow: var(--shadow-md) !important;
+    transform: none !important;
+    color: #ffffff !important;
+}
+.btn-new-travel-package:active {
+    transform: none !important;
 }

@@ -782,6 +782,61 @@ $incRental = $packageData['rental'] ?? ($packageInclusions['rental'] ?? null);
 
     <!-- Sidebar / Decision & Metadata Column -->
     <div class="admin-vehicle-sidebar" style="min-width:0;">
+        <?php if ($isPackage):
+            $pkgApproval = \App\Models\PackageService::getProviderApprovalSummary((int) $listing['id']);
+            $pStatus = $pkgApproval['overall_status'];
+        ?>
+            <div class="panel" style="background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:14px;margin-bottom:1.5rem;overflow:hidden;">
+                <div class="panel-head" style="padding:1rem 1.25rem;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;">
+                    <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#ffffff;">Provider Approval Status</h3>
+                    <?php if ($pStatus === 'agreed'): ?>
+                        <span style="background:#059669;color:#ffffff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:12px;">✓ Agreed</span>
+                    <?php elseif ($pStatus === 'rejected'): ?>
+                        <span style="background:#dc2626;color:#ffffff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:12px;">✕ Rejected</span>
+                    <?php else: ?>
+                        <span style="background:#d97706;color:#ffffff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:12px;">⏳ Pending</span>
+                    <?php endif; ?>
+                </div>
+                <div class="panel-body" style="padding:1.25rem;">
+                    <?php if (empty($pkgApproval['services'])): ?>
+                        <div style="font-size:0.85rem;color:#94a3b8;">
+                            Guide-only package (no external accommodation or rental vehicle required).
+                        </div>
+                    <?php else: ?>
+                        <div style="display:flex;flex-direction:column;gap:0.75rem;">
+                            <?php foreach ($pkgApproval['services'] as $s):
+                                $sType = ucfirst((string) ($s['service_type'] ?? 'Service'));
+                                $sStatus = strtolower((string) ($s['status'] ?? 'pending'));
+                                $pName = (string) ($s['provider_name'] ?? 'Provider Partner');
+                                $itemLabel = ($s['service_type'] === 'hotel')
+                                    ? (($s['hotel_name'] ?? 'Hotel') . ' (' . ($s['room_name'] ?? 'Room') . ')')
+                                    : trim(($s['vehicle_make'] ?? '') . ' ' . ($s['vehicle_model'] ?? ''));
+                            ?>
+                                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:0.75rem;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                                        <strong style="color:#ffffff;font-size:0.85rem;"><?= e($sType) ?>: <?= e($pName) ?></strong>
+                                        <?php if ($sStatus === 'agreed' || $sStatus === 'approved'): ?>
+                                            <span style="color:#34d399;font-size:0.75rem;font-weight:700;">✓ Agreed</span>
+                                        <?php elseif ($sStatus === 'rejected'): ?>
+                                            <span style="color:#f87171;font-size:0.75rem;font-weight:700;">✕ Declined</span>
+                                        <?php else: ?>
+                                            <span style="color:#fbbf24;font-size:0.75rem;font-weight:700;">⏳ Pending</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div style="font-size:0.78rem;color:#94a3b8;"><?= e($itemLabel) ?></div>
+                                    <?php if ($sStatus === 'rejected' && !empty($s['rejection_reason'])): ?>
+                                        <div style="font-size:0.75rem;color:#fca5a5;margin-top:4px;">
+                                            Reason: <?= e($s['rejection_reason']) ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <!-- Decision Box -->
         <div class="panel" style="margin-bottom:1.5rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:14px;">
             <div class="panel-head" style="border-bottom:1px solid rgba(255,255,255,0.08);padding:1rem 1.25rem;">

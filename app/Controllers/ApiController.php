@@ -3107,8 +3107,151 @@ final class ApiController extends Controller
         }
         $isPackage = ($booking['category_slug'] ?? '') === 'packages'
             || !empty($booking['is_package'])
+            || !empty($booking['package_booking_ref'])
             || $packageDetails !== null
             || str_contains(strtolower((string)($booking['listing_title'] ?? '')), 'package');
+
+        if ($isPackage && ($packageDetails === null || empty($packageDetails['inclusions']))) {
+            $pkgListing = Listing::find($listingId);
+            if ($pkgListing !== null) {
+                $pkgGuide = User::find((int) ($pkgListing['user_id'] ?? 1));
+                $inspected = \App\Controllers\AdminController::buildPackageInspectionData($pkgListing, $pkgGuide);
+                
+                $inclusions = [];
+                if (!empty($inspected['inclusions']['attractions'])) {
+                    foreach ($inspected['inclusions']['attractions'] as $attr) {
+                        $inclusions[] = [
+                            'type' => 'attraction',
+                            'title' => (string) $attr['title'],
+                            'subtitle' => (string) (!empty($attr['summary']) ? $attr['summary'] : (!empty($attr['area']) ? $attr['area'] : 'Attraction access')),
+                            'icon' => 'water-outline',
+                            'badge' => 'ATTRACTION',
+                        ];
+                    }
+                }
+                if (!empty($inspected['inclusions']['things_to_do'])) {
+                    foreach ($inspected['inclusions']['things_to_do'] as $act) {
+                        $inclusions[] = [
+                            'type' => 'activity',
+                            'title' => (string) $act['title'],
+                            'subtitle' => (string) (!empty($act['summary']) ? $act['summary'] : (!empty($act['area']) ? $act['area'] : 'Activity tour')),
+                            'icon' => 'compass-outline',
+                            'badge' => 'THINGS TO DO',
+                        ];
+                    }
+                }
+                $hotelIncluded = !empty($inspected['hotel_included']) && !empty($inspected['hotel']);
+                $rentalIncluded = !empty($inspected['rental_included']) && !empty($inspected['rental']);
+
+                if ($hotelIncluded) {
+                    $inclusions[] = [
+                        'type' => 'hotel',
+                        'title' => (string) ($inspected['hotel']['hotel_name'] ?? 'Hotel Stay'),
+                        'subtitle' => (string) ($inspected['hotel']['room_name'] ?? 'Room'),
+                        'icon' => 'bed-outline',
+                        'badge' => 'HOTEL STAY',
+                    ];
+                }
+                if ($rentalIncluded) {
+                    $inclusions[] = [
+                        'type' => 'rental',
+                        'title' => (string) ($inspected['rental']['vehicle_name'] ?? $inspected['rental']['name'] ?? 'Vehicle Rental'),
+                        'subtitle' => (string) ($inspected['rental']['vehicle_type'] ?? 'Vehicle'),
+                        'icon' => 'car-sport-outline',
+                        'badge' => 'VEHICLE RENTAL',
+                    ];
+                }
+
+                $packageDetails = [
+                    'type' => 'package_booking',
+                    'package_id' => $listingId,
+                    'package_title' => $pkgListing['title'],
+                    'package_booking_ref' => $booking['package_booking_ref'] ?? ('GM-PKG-' . date('Ymd', strtotime($booking['created_at'] ?? 'now')) . '-' . $booking['id']),
+                    'travel_date' => (string) $booking['booking_date'],
+                    'check_in_date' => (string) ($booking['check_in_date'] ?? $booking['booking_date']),
+                    'check_out_date' => (string) ($booking['check_out_date'] ?? $booking['booking_date']),
+                    'duration_days' => max(1, (int) ($inspected['duration_days'] ?? 3)),
+                    'duration_nights' => max(0, (int) ($inspected['duration_nights'] ?? 2)),
+                    'duration' => $inspected['duration_code'] ?? '3D2N',
+                    'destination' => $inspected['destination'] ?? ($pkgListing['area'] ?? 'Cebu'),
+                    'meeting_point' => $inspected['meeting_point'] ?? ($pkgListing['address'] ?? 'Meeting point coordinated with guide'),
+                    'guests_count' => (int) $booking['guests'],
+                    'inclusions' => $inclusions,
+                    'exclusions' => $inspected['exclusions'] ?? [],
+                    'itinerary' => $inspected['itinerary'] ?? [],
+                    'accommodation' => $hotelIncluded ? $inspected['hotel'] : null,
+                    'rental' => $rentalIncluded ? $inspected['rental'] : null,
+                    'hotel_included' => $hotelIncluded,
+                    'rental_included' => $rentalIncluded,
+                    'guide' => [
+                        'id' => (int) ($pkgListing['user_id'] ?? 1),
+                        'name' => $pkgGuide['name'] ?? ($booking['guide_name'] ?? 'Marc Repuesto'),
+                        'avatar' => $pkgGuide['avatar'] ?? ($booking['guide_avatar'] ?? ''),
+                        'phone' => $pkgGuide['phone'] ?? ($booking['guide_phone'] ?? '0917 123 4567'),
+                    ],
+                ];
+            }
+        }
+
+        if ($packageDetails !== null) {
+            if (!isset($packageDetails['hotel_included'])) {
+                $packageDetails['hotel_included'] = !empty($packageDetails['accommodation']);
+            }
+            if (!isset($packageDetails['rental_included'])) {
+                $packageDetails['rental_included'] = !empty($packageDetails['rental']);
+            }
+        }
+
+        $pkgSummary = $isPackage
+            ? \App\Services\PackageBookingService::getPackageBookingSummary($booking['package_booking_ref'] ?? $booking['id'])
+            : null;
+        $overallPackageStatus = (($booking['status'] ?? '') === 'completed' || ($booking['package_overall_status'] ?? '') === 'completed')
+            ? 'completed'
+            : ($pkgSummary['overall_status'] ?? ($booking['package_overall_status'] ?? $status));
+
+        $providerStatuses = $pkgSummary['items'] ?? [];
+        if (empty($providerStatuses) && $isPackage) {
+            $guideItemStatus = ($status === 'confirmed' && empty($booking['package_overall_status'])) ? 'pending' : ($status === 'cancelled' ? 'cancelled' : 'pending');
+            $providerStatuses = [
+                [
+                    'service_type' => 'guide',
+                    'provider_id' => (int) ($packageDetails['guide']['id'] ?? $booking['guide_id'] ?? 1),
+                    'provider_name' => (string) ($packageDetails['guide']['name'] ?? $booking['guide_name'] ?? 'Marc Repuesto'),
+                    'service_title' => (string) ($booking['listing_title'] ?? 'Guided Tour Activities'),
+                    'status' => $guideItemStatus,
+                ]
+            ];
+            if (!empty($packageDetails['hotel_included']) && !empty($packageDetails['accommodation'])) {
+                $hotel = $packageDetails['accommodation'];
+                $providerStatuses[] = [
+                    'service_type' => 'hotel',
+                    'provider_id' => (int) ($hotel['hotel_id'] ?? $hotel['user_id'] ?? 0),
+                    'provider_name' => (string) ($hotel['hotel_name'] ?? $hotel['name'] ?? 'Hotel Provider'),
+                    'service_title' => (string) ($hotel['room_name'] ?? $hotel['roomType'] ?? 'Room Accommodation'),
+                    'status' => 'pending',
+                ];
+            }
+            if (!empty($packageDetails['rental_included']) && !empty($packageDetails['rental'])) {
+                $rental = $packageDetails['rental'];
+                $providerStatuses[] = [
+                    'service_type' => 'vehicle',
+                    'provider_id' => (int) ($rental['vehicle_id'] ?? $rental['user_id'] ?? 0),
+                    'provider_name' => (string) ($rental['owner_name'] ?? $rental['rental_name'] ?? 'Rental Provider'),
+                    'service_title' => (string) ($rental['vehicle_name'] ?? $rental['name'] ?? 'Vehicle Rental'),
+                    'status' => 'pending',
+                ];
+            }
+        }
+
+        if ($isPackage) {
+            if ($overallPackageStatus === 'completed') {
+                $isCompleted = true;
+                $canReview = !$reviewed;
+                $canReport = empty($booking['dispute_id']);
+            } elseif ($overallPackageStatus === 'confirmed') {
+                $canReport = empty($booking['dispute_id']);
+            }
+        }
 
         return [
             'id' => (int) $booking['id'],
@@ -3163,8 +3306,18 @@ final class ApiController extends Controller
                     ? 'Paid'
                     : (((float) ($booking['balance_amount'] ?? 0) > 0 || (float) ($booking['deposit_amount'] ?? 0) > 0) ? 'Pending' : 'Settled')),
             'hotel_status' => (string) ($booking['hotel_status'] ?? ''),
-            'status' => $status,
-            'status_label' => !empty($booking['hotel_status']) ? match ($booking['hotel_status']) {
+            'package_booking_ref' => $booking['package_booking_ref'] ?? ($pkgSummary['package_booking_ref'] ?? ($packageDetails['package_booking_ref'] ?? null)),
+            'package_overall_status' => $overallPackageStatus,
+            'provider_statuses' => $providerStatuses,
+            'status' => $isPackage ? $overallPackageStatus : $status,
+            'status_label' => $isPackage ? match ($overallPackageStatus) {
+                'pending' => 'Pending Confirmations',
+                'partially_confirmed' => 'Awaiting Providers Confirmation',
+                'confirmed' => 'Confirmed',
+                'cancelled' => 'Cancelled',
+                'completed' => 'Completed',
+                default => ucfirst(str_replace('_', ' ', $overallPackageStatus)),
+            } : (!empty($booking['hotel_status']) ? match ($booking['hotel_status']) {
                 'pending' => 'Pending Review',
                 'accepted' => 'Accepted',
                 'deposit_paid' => 'Deposit Paid',
@@ -3182,7 +3335,7 @@ final class ApiController extends Controller
                 'refunded' => 'Refunded',
                 'disputed' => 'In review',
                 default => ucfirst($status),
-            },
+            }),
             'area' => (string) ($booking['area'] ?? ''),
             'reviewed' => $reviewed,
             'can_review' => $canReview,
@@ -3649,7 +3802,46 @@ final class ApiController extends Controller
             ", [$id, $id]);
 
             if ($row) {
+                $pkgApprovalStatus = \App\Models\PackageService::getOverallStatus(
+                    (int) $row['id'],
+                    isset($row['package_approval_status']) ? (string) $row['package_approval_status'] : null
+                );
+                $currentUserId = ApiAuth::id() ?? \App\Core\Auth::id();
+                $isOwnerOrAdmin = ($currentUserId !== null && ((int)$row['user_id'] === (int)$currentUserId || \App\Core\Auth::isAdmin()));
+
+                if ($pkgApprovalStatus !== 'agreed' && !$isOwnerOrAdmin) {
+                    $this->json(['error' => 'This travel package is not currently available.'], 404);
+                    return;
+                }
+
                 $pkg = $this->formatListingAsPackage($row);
+                $viewerId = ApiAuth::id() ?? \App\Core\Auth::id() ?? ($_SESSION['user_id'] ?? null);
+                if ($viewerId !== null) {
+                    $activeBooking = \App\Core\Database::first("
+                        SELECT id, status, package_overall_status, package_booking_ref
+                        FROM bookings
+                        WHERE user_id = ?
+                          AND listing_id = ?
+                          AND (
+                              status IN ('pending', 'confirmed')
+                              OR package_overall_status IN ('pending', 'partially_confirmed', 'confirmed')
+                          )
+                          AND status NOT IN ('completed', 'cancelled', 'refunded')
+                        ORDER BY id DESC
+                        LIMIT 1
+                    ", [$viewerId, (int) $row['id']]);
+
+                    $pkg['has_active_booking'] = (bool) $activeBooking;
+                    $pkg['active_booking'] = $activeBooking ? [
+                        'id' => (int) $activeBooking['id'],
+                        'status' => $activeBooking['status'],
+                        'overall_status' => $activeBooking['package_overall_status'] ?? $activeBooking['status'],
+                        'ref' => $activeBooking['package_booking_ref'] ?? ('BK-' . $activeBooking['id']),
+                    ] : null;
+                } else {
+                    $pkg['has_active_booking'] = false;
+                    $pkg['active_booking'] = null;
+                }
                 $this->json(['package' => $pkg]);
                 return;
             }
@@ -3657,8 +3849,35 @@ final class ApiController extends Controller
 
         // 2. Fallback to full catalog (including static packages)
         $packages = $this->getPackagesCatalog();
+        $viewerId = ApiAuth::id() ?? \App\Core\Auth::id() ?? ($_SESSION['user_id'] ?? null);
         foreach ($packages as $pkg) {
             if ((string)$pkg['id'] === (string)$id || ($pkg['slug'] ?? '') === $id) {
+                if ($viewerId !== null && !empty($pkg['id']) && is_numeric($pkg['id'])) {
+                    $activeBooking = \App\Core\Database::first("
+                        SELECT id, status, package_overall_status, package_booking_ref
+                        FROM bookings
+                        WHERE user_id = ?
+                          AND listing_id = ?
+                          AND (
+                              status IN ('pending', 'confirmed')
+                              OR package_overall_status IN ('pending', 'partially_confirmed', 'confirmed')
+                          )
+                          AND status NOT IN ('completed', 'cancelled', 'refunded')
+                        ORDER BY id DESC
+                        LIMIT 1
+                    ", [$viewerId, (int) $pkg['id']]);
+
+                    $pkg['has_active_booking'] = (bool) $activeBooking;
+                    $pkg['active_booking'] = $activeBooking ? [
+                        'id' => (int) $activeBooking['id'],
+                        'status' => $activeBooking['status'],
+                        'overall_status' => $activeBooking['package_overall_status'] ?? $activeBooking['status'],
+                        'ref' => $activeBooking['package_booking_ref'] ?? ('BK-' . $activeBooking['id']),
+                    ] : null;
+                } else {
+                    $pkg['has_active_booking'] = false;
+                    $pkg['active_booking'] = null;
+                }
                 $this->json(['package' => $pkg]);
                 return;
             }
@@ -3749,6 +3968,89 @@ final class ApiController extends Controller
             ");
             $listingId = $existingPkg ? (int) $existingPkg['id'] : 1;
         }
+
+        // Active booking prevention: prevent duplicate bookings while current booking is in progress
+        $activeBooking = \App\Core\Database::first("
+            SELECT id, status, package_overall_status, package_booking_ref
+            FROM bookings
+            WHERE user_id = ?
+              AND listing_id = ?
+              AND (
+                  status IN ('pending', 'confirmed')
+                  OR package_overall_status IN ('pending', 'partially_confirmed', 'confirmed')
+              )
+              AND status NOT IN ('completed', 'cancelled', 'refunded')
+            ORDER BY id DESC
+            LIMIT 1
+        ", [$userId, $listingId]);
+
+        if ($activeBooking) {
+            $this->json([
+                'error' => 'You already have an active booking for this travel package. You can book this package again once your current trip is completed.',
+                'has_active_booking' => true,
+                'active_booking' => [
+                    'id' => (int) $activeBooking['id'],
+                    'status' => $activeBooking['status'],
+                    'overall_status' => $activeBooking['package_overall_status'] ?? $activeBooking['status'],
+                    'ref' => $activeBooking['package_booking_ref'] ?? ('BK-' . $activeBooking['id']),
+                ],
+            ], 409);
+            return;
+        }
+
+        try {
+            $bookingRes = \App\Services\PackageBookingService::createPackageBooking((int) $listingId, (int) $userId, [
+                'guestsCount' => $guestsCount,
+                'travelDate' => $travelDate,
+                'contactName' => $contactName,
+                'contactPhone' => $contactPhone,
+                'contactEmail' => (string) ($body['contactEmail'] ?? ''),
+                'notes' => $notes,
+                'paymentMethod' => $paymentMethod,
+                'voucherDiscount' => $voucherDiscount,
+            ]);
+
+            $bookingId = $bookingRes['parent_booking_id'];
+            $pkgRef = $bookingRes['package_booking_ref'];
+            $finalTotal = (float) $bookingRes['total_amount'];
+
+            // Increment promo code usage if applicable
+            if ($voucherCode !== '' && $voucherDiscount > 0) {
+                try {
+                    $codeRow = \App\Core\Database::first("SELECT id FROM promo_codes WHERE code = ?", [$voucherCode]);
+                    if ($codeRow) {
+                        \App\Core\Database::run("UPDATE promo_codes SET uses_count = uses_count + 1 WHERE id = ?", [$codeRow['id']]);
+                        \App\Core\Database::run("UPDATE bookings SET promo_code_id = ?, discount_amount = ? WHERE id = ?", [
+                            $codeRow['id'],
+                            $voucherDiscount,
+                            $bookingId,
+                        ]);
+                    }
+                } catch (\Throwable) {}
+            }
+
+            $this->json([
+                'success' => true,
+                'bookingId' => 'BK-' . $bookingId,
+                'rawBookingId' => (int) $bookingId,
+                'packageBookingRef' => $pkgRef,
+                'packageTitle' => $target['title'],
+                'totalPrice' => $finalTotal,
+                'basePrice' => $packageBasePrice,
+                'taxes' => $taxes,
+                'environmentalFees' => $environmentalFees,
+                'voucherDiscount' => $voucherDiscount,
+                'status' => 'pending',
+                'overallStatus' => 'pending',
+                'travelDate' => $travelDate,
+                'guestsCount' => $guestsCount,
+                'guideName' => $guideName,
+                'paymentReference' => $pkgRef,
+                'allocations' => $bookingRes['allocations'] ?? [],
+                'message' => 'Your travel package booking has been submitted (Ref #' . $pkgRef . ')! All participating providers have received reservation requests.',
+            ]);
+            return;
+        } catch (\Throwable) {}
 
         $txnRef = 'TXN-PKG-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
 
@@ -3891,13 +4193,22 @@ final class ApiController extends Controller
                 JOIN users u ON u.id = l.user_id
                 LEFT JOIN reviews r ON r.listing_id = l.id
                 WHERE (c.slug = 'packages' OR c.slug = 'travel-packages' OR l.title LIKE '%Package%' OR l.title LIKE '%Travel Package%')
-                  AND l.status IN ('approved', 'pending')
+                  AND l.status = 'approved'
                 GROUP BY l.id
                 ORDER BY l.id DESC
             ");
 
             $packages = [];
             foreach ($rows as $row) {
+                // Sourced from database: tourists can only view Agreed packages
+                $pkgApprovalStatus = \App\Models\PackageService::getOverallStatus(
+                    (int) $row['id'],
+                    isset($row['package_approval_status']) ? (string) $row['package_approval_status'] : null
+                );
+                if ($pkgApprovalStatus !== 'agreed') {
+                    // Pending and Rejected packages are not visible to tourists
+                    continue;
+                }
                 $packages[] = $this->formatListingAsPackage($row);
             }
             return $packages;
@@ -4127,6 +4438,8 @@ final class ApiController extends Controller
             'accommodationDetail' => $accommodationDetail,
             'rentalIncluded' => (bool) $inspected['rental_included'],
             'rentalDetail' => $rentalDetail,
+            'approval_status' => 'agreed',
+            'package_approval_status' => 'agreed',
             'reviews' => (function() use ($id) {
                 if ((int)$id <= 0) return [];
                 try {

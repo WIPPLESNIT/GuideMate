@@ -89,7 +89,16 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
 
                                         <!-- 2. PROPERTY -->
                                         <td>
-                                            <strong style="color:var(--ink-400);font-size:0.88rem;display:block;line-height:1.25;"><?= e($propertyName) ?></strong>
+                                            <?php if (!empty($b['package_booking_ref'])): ?>
+                                                <?php
+                                                $notesData = !empty($b['notes']) ? json_decode((string) $b['notes'], true) : [];
+                                                $pkgTitle = !empty($notesData['package_title']) ? $notesData['package_title'] : (!empty($b['listing_title']) ? $b['listing_title'] : 'Travel Package');
+                                                ?>
+                                                <strong style="color:var(--ink-400);font-size:0.88rem;display:block;line-height:1.25;" title="<?= e($pkgTitle) ?>"><?= e($pkgTitle) ?></strong>
+                                                <div style="font-size:0.75rem;font-weight:600;color:var(--brand, #059669);margin-top:2px;">Travel Package</div>
+                                            <?php else: ?>
+                                                <strong style="color:var(--ink-400);font-size:0.88rem;display:block;line-height:1.25;"><?= e($propertyName) ?></strong>
+                                            <?php endif; ?>
                                         </td>
 
                                         <!-- 3. ROOM & STAY -->
@@ -275,12 +284,12 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                             <thead>
                                 <tr>
                                     <th class="col-customer" style="width:16%;"><?= e(__('th_customer', 'Customer')) ?></th>
-                                    <th class="col-listing" style="width:20%;"><?= e(__('th_listing', 'Listing')) ?></th>
-                                    <th class="col-date" style="width:11%;white-space:nowrap;"><?= e(__('th_date', 'Date')) ?></th>
-                                    <th class="col-guests" style="width:7%;text-align:center;white-space:nowrap;"><?= e(__('g_guests', 'Guests')) ?></th>
-                                    <th class="col-total" style="width:11%;white-space:nowrap;"><?= e(__('th_total', 'Total')) ?></th>
-                                    <th class="col-payment" style="width:9%;white-space:nowrap;"><?= e(__('g_payment', 'Payment')) ?></th>
-                                    <th class="col-status" style="width:18%;white-space:nowrap;"><?= e(__('th_status', 'Status')) ?></th>
+                                    <th class="col-listing" style="width:19%;"><?= e(__('th_listing', 'Listing')) ?></th>
+                                    <th class="col-date" style="width:10%;white-space:nowrap;"><?= e(__('th_date', 'Date')) ?></th>
+                                    <th class="col-guests" style="width:5%;text-align:center;white-space:nowrap;"><?= e(__('g_guests', 'Guests')) ?></th>
+                                    <th class="col-total" style="width:10%;white-space:nowrap;"><?= e(__('th_total', 'Total')) ?></th>
+                                    <th class="col-payment" style="width:8%;white-space:nowrap;"><?= e(__('g_payment', 'Payment')) ?></th>
+                                    <th class="col-status" style="width:24%;white-space:nowrap;"><?= e(__('th_status', 'Status')) ?></th>
                                     <th class="col-actions" style="width:8%;text-align:right;padding-right:1.5rem;" aria-label="<?= e(__('th_actions', 'Actions')) ?>"></th>
                                 </tr>
                             </thead>
@@ -297,9 +306,18 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
 
                                     <!-- 2. LISTING -->
                                     <td class="col-listing">
-                                        <a href="<?= e(url('/listing/' . ($b['listing_slug'] ?? $b['listing_id']))) ?>" target="_blank" class="booking-listing-link" title="<?= e($b['listing_title']) ?>">
-                                            <?= e($b['listing_title']) ?>
-                                        </a>
+                                        <?php if (!empty($b['package_booking_ref'])): ?>
+                                            <?php
+                                             $notesData = !empty($b['notes']) ? json_decode((string) $b['notes'], true) : [];
+                                             $pkgTitle = !empty($notesData['package_title']) ? $notesData['package_title'] : (!empty($b['listing_title']) ? $b['listing_title'] : 'Travel Package');
+                                             ?>
+                                            <strong class="booking-listing-link" style="color:var(--ink-400, #0f172a);font-size:0.88rem;display:block;line-height:1.25;" title="<?= e($pkgTitle) ?>"><?= e($pkgTitle) ?></strong>
+                                            <div style="font-size:0.75rem;font-weight:600;color:var(--brand, #059669);margin-top:2px;">Travel Package</div>
+                                        <?php else: ?>
+                                            <a href="<?= e(url('/listing/' . ($b['listing_slug'] ?? $b['listing_id']))) ?>" target="_blank" class="booking-listing-link" title="<?= e($b['listing_title']) ?>">
+                                                <?= e($b['listing_title']) ?>
+                                            </a>
+                                        <?php endif; ?>
                                     </td>
 
                                     <!-- 3. DATE -->
@@ -324,7 +342,28 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
 
                                     <!-- 7. STATUS -->
                                     <td class="col-status" style="white-space:nowrap;">
-                                        <span class="pill pill-<?= e($b['status']) ?>" style="display:inline-flex;align-items:center;justify-content:center;padding:0.22rem 0.55rem;font-size:0.72rem;font-weight:600;line-height:1.2;white-space:nowrap;border-radius:9999px;"><?= e(status_label((string) $b['status'])) ?></span>
+                                        <?php
+                                        $bStatus = (string) $b['status'];
+                                        $isPkg = !empty($b['package_booking_ref']);
+                                        $overallPkgStatus = (string) ($b['package_overall_status'] ?? '');
+                                        $isCompleted = ($bStatus === 'completed' || $overallPkgStatus === 'completed');
+                                        $isCancelled = in_array($bStatus, ['cancelled', 'refunded'], true) || $overallPkgStatus === 'cancelled';
+                                        $isAwaiting = $isPkg && !$isCompleted && !$isCancelled && ($overallPkgStatus === 'partially_confirmed' || $overallPkgStatus === 'pending' || ($bStatus === 'pending' && empty($overallPkgStatus)));
+
+                                        if ($isCompleted): ?>
+                                            <span class="pill pill-completed" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;border-radius:9999px;"><?= e(__('completed', 'Completed')) ?></span>
+                                        <?php elseif ($isCancelled): ?>
+                                            <span class="pill pill-cancelled" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;border-radius:9999px;"><?= e(status_label($bStatus === 'refunded' ? 'refunded' : 'cancelled')) ?></span>
+                                        <?php elseif ($isAwaiting): ?>
+                                            <span class="pill pill-pending pill-awaiting-providers" style="display:inline-flex;align-items:center;justify-content:center;gap:0.35rem;padding:0.28rem 0.75rem;font-size:0.74rem;font-weight:700;line-height:1.2;white-space:nowrap;border-radius:9999px;background:#FFFFFF;color:#B45309;border:1.5px solid #F59E0B;box-shadow:0 1px 3px rgba(245, 158, 11, 0.15);">
+                                                <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#F59E0B;flex-shrink:0;"></span>
+                                                Awaiting Providers Confirmation
+                                            </span>
+                                        <?php elseif ($isPkg && ($overallPkgStatus === 'confirmed' || ($bStatus === 'confirmed' && empty($overallPkgStatus)))): ?>
+                                            <span class="pill pill-confirmed" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;border-radius:9999px;"><?= e(__('confirmed', 'Confirmed')) ?></span>
+                                        <?php else: ?>
+                                            <span class="pill pill-<?= e($bStatus) ?>" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;border-radius:9999px;"><?= e(status_label($bStatus)) ?></span>
+                                        <?php endif; ?>
                                     </td>
 
                                     <!-- 8. ACTIONS (3-DOT OVERFLOW MENU MATCHING MY LISTING) -->
@@ -357,7 +396,7 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                             <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
                                                                 <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
                                                             </button>
-                                                        <?php elseif ($b['status'] === 'confirmed'): ?>
+                                                        <?php elseif (($b['status'] === 'confirmed' || ($isPkg && $overallPkgStatus === 'confirmed')) && !$isCompleted): ?>
                                                             <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
                                                                 <?= admin_icon('check-circle', 14) ?> <?= e(__('g_complete', 'Complete')) ?>
                                                             </button>
@@ -380,7 +419,7 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                                 <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
                                                             </button>
                                                         </form>
-                                                    <?php elseif ($b['status'] === 'confirmed'): ?>
+                                                    <?php elseif (($b['status'] === 'confirmed' || ($isPkg && $overallPkgStatus === 'confirmed')) && !$isCompleted): ?>
                                                         <form method="post" action="<?= e(url('/dashboard/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form guide-booking-action" data-action="complete">
                                                             <?= csrf_field() ?>
                                                             <input type="hidden" name="status" class="guide-status-select" value="completed">
@@ -396,12 +435,14 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                             </button>
                                                         </form>
                                                     <?php endif; ?>
-                                                    <?php if (!$isWarned && in_array($b['status'], ['pending', 'confirmed'], true)): ?>
-                                                        <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                    <?php if (!$isPkg): ?>
+                                                        <?php if (!$isWarned && in_array($b['status'], ['pending', 'confirmed'], true)): ?>
+                                                            <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                        <?php endif; ?>
+                                                        <a href="<?= e(url('/listing/' . ($b['listing_slug'] ?? $b['listing_id']))) ?>" target="_blank" class="res-action-item" role="menuitem">
+                                                            <?= admin_icon('eye', 14) ?> <?= e(__('d_view_live', 'View live listing')) ?>
+                                                        </a>
                                                     <?php endif; ?>
-                                                    <a href="<?= e(url('/listing/' . ($b['listing_slug'] ?? $b['listing_id']))) ?>" target="_blank" class="res-action-item" role="menuitem">
-                                                        <?= admin_icon('eye', 14) ?> <?= e(__('d_view_live', 'View live listing')) ?>
-                                                    </a>
                                                 </div>
                                             </div>
                                         </div>

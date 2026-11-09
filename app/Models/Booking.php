@@ -378,7 +378,16 @@ final class Booking
 
     public static function updateStatus(int $id, string $status): void
     {
-        Database::run('UPDATE bookings SET status = ? WHERE id = ?', [$status, $id]);
+        if ($status === 'completed') {
+            Database::run("
+                UPDATE bookings
+                SET status = 'completed',
+                    package_overall_status = CASE WHEN package_booking_ref IS NOT NULL THEN 'completed' ELSE package_overall_status END
+                WHERE id = ?
+            ", [$id]);
+        } else {
+            Database::run('UPDATE bookings SET status = ? WHERE id = ?', [$status, $id]);
+        }
     }
 
     /**

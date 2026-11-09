@@ -199,6 +199,9 @@ export type ApiBooking = {
   guide_phone?: string;
   guide_id?: number | null;
   package_details?: any;
+  package_booking_ref?: string | null;
+  package_overall_status?: string | null;
+  provider_statuses?: any[];
   payment_method?: string;
   payment_reference?: string;
   payment_paid_at?: string;

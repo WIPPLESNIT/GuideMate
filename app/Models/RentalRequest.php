@@ -23,12 +23,55 @@ final class RentalRequest
      */
     public static function all(): array
     {
-        return Database::all(
-            'SELECT r.*, u.name AS user_name, u.email AS user_email
+        try {
+            PackageService::ensureTable();
+        } catch (\Throwable $e) {}
+
+        $rows = Database::all(
+            'SELECT r.*,
+                    u.name AS user_name,
+                    u.email AS user_email,
+                    v.name AS vehicle_db_name,
+                    v.make AS vehicle_make,
+                    v.model AS vehicle_model,
+                    v.type AS vehicle_type_db,
+                    v.price_per_day AS vehicle_daily_rate,
+                    COALESCE(
+                        NULLIF(r.guide_id_doc, ""),
+                        (SELECT ps.guide_id_doc FROM package_services ps WHERE (ps.vehicle_id = v.id OR ps.vehicle_id = CAST(r.vehicle_id AS UNSIGNED)) AND ps.service_type = "vehicle" AND ps.guide_id_doc IS NOT NULL AND ps.guide_id_doc != "" ORDER BY ps.id DESC LIMIT 1),
+                        (SELECT l.guide_vehicle_id_doc FROM listings l WHERE l.id = (SELECT b.listing_id FROM bookings b WHERE b.id = r.package_booking_id) AND l.guide_vehicle_id_doc IS NOT NULL AND l.guide_vehicle_id_doc != "" LIMIT 1)
+                    ) AS fallback_guide_id_doc
              FROM rental_requests r
              JOIN users u ON u.id = r.user_id
+             LEFT JOIN vehicles v ON CAST(v.id AS CHAR) = CAST(r.vehicle_id AS CHAR)
              ORDER BY FIELD(r.status, "pending", "approved", "contacted", "completed", "cancelled", "refunded"), r.created_at DESC'
         );
+
+        foreach ($rows as &$row) {
+            $isPkg = !empty($row['package_booking_ref']);
+            if ($isPkg) {
+                $days = max(1, (int) ($row['rental_days'] ?? 1));
+                $dailyRate = (float) ($row['vehicle_daily_rate'] ?? 0);
+                if ($dailyRate > 0) {
+                    $expectedTotal = round($dailyRate * $days, 2);
+                    if (abs((float) ($row['total_amount'] ?? 0) - $expectedTotal) > 0.01) {
+                        try {
+                            Database::run('UPDATE rental_requests SET total_amount = ? WHERE id = ?', [$expectedTotal, $row['id']]);
+                            $row['total_amount'] = $expectedTotal;
+                        } catch (\Throwable) {}
+                    }
+                }
+                if (empty($row['guide_id_doc']) && !empty($row['fallback_guide_id_doc'])) {
+                    try {
+                        Database::run('UPDATE rental_requests SET guide_id_doc = ? WHERE id = ?', [$row['fallback_guide_id_doc'], $row['id']]);
+                        $row['guide_id_doc'] = $row['fallback_guide_id_doc'];
+                    } catch (\Throwable) {}
+                }
+            }
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
@@ -38,8 +81,24 @@ final class RentalRequest
      */
     public static function forProvider(int $providerId): array
     {
-        return Database::all(
-            'SELECT r.*, u.name AS user_name, u.email AS user_email
+        try {
+            PackageService::ensureTable();
+        } catch (\Throwable $e) {}
+
+        $rows = Database::all(
+            'SELECT r.*,
+                    u.name AS user_name,
+                    u.email AS user_email,
+                    v.name AS vehicle_db_name,
+                    v.make AS vehicle_make,
+                    v.model AS vehicle_model,
+                    v.type AS vehicle_type_db,
+                    v.price_per_day AS vehicle_daily_rate,
+                    COALESCE(
+                        NULLIF(r.guide_id_doc, ""),
+                        (SELECT ps.guide_id_doc FROM package_services ps WHERE (ps.vehicle_id = v.id OR ps.vehicle_id = CAST(r.vehicle_id AS UNSIGNED)) AND ps.service_type = "vehicle" AND ps.guide_id_doc IS NOT NULL AND ps.guide_id_doc != "" ORDER BY ps.id DESC LIMIT 1),
+                        (SELECT l.guide_vehicle_id_doc FROM listings l WHERE l.id = (SELECT b.listing_id FROM bookings b WHERE b.id = r.package_booking_id) AND l.guide_vehicle_id_doc IS NOT NULL AND l.guide_vehicle_id_doc != "" LIMIT 1)
+                    ) AS fallback_guide_id_doc
              FROM rental_requests r
              JOIN users u ON u.id = r.user_id
              JOIN vehicles v ON CAST(v.id AS CHAR) = CAST(r.vehicle_id AS CHAR)
@@ -47,6 +106,32 @@ final class RentalRequest
              ORDER BY FIELD(r.status, "pending", "approved", "contacted", "completed", "cancelled", "refunded"), r.created_at DESC',
             [$providerId]
         );
+
+        foreach ($rows as &$row) {
+            $isPkg = !empty($row['package_booking_ref']);
+            if ($isPkg) {
+                $days = max(1, (int) ($row['rental_days'] ?? 1));
+                $dailyRate = (float) ($row['vehicle_daily_rate'] ?? 0);
+                if ($dailyRate > 0) {
+                    $expectedTotal = round($dailyRate * $days, 2);
+                    if (abs((float) ($row['total_amount'] ?? 0) - $expectedTotal) > 0.01) {
+                        try {
+                            Database::run('UPDATE rental_requests SET total_amount = ? WHERE id = ?', [$expectedTotal, $row['id']]);
+                            $row['total_amount'] = $expectedTotal;
+                        } catch (\Throwable) {}
+                    }
+                }
+                if (empty($row['guide_id_doc']) && !empty($row['fallback_guide_id_doc'])) {
+                    try {
+                        Database::run('UPDATE rental_requests SET guide_id_doc = ? WHERE id = ?', [$row['fallback_guide_id_doc'], $row['id']]);
+                        $row['guide_id_doc'] = $row['fallback_guide_id_doc'];
+                    } catch (\Throwable) {}
+                }
+            }
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**

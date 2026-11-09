@@ -645,6 +645,8 @@ final class HotelController extends Controller
                 break;
         }
 
+        \App\Services\PackageBookingService::onHotelBookingUpdated($bookingId, $action, (int) Auth::id());
+
         redirect($redirectTo === '/dashboard/bookings' ? '/dashboard/bookings' : '/dashboard#reservations');
     }
 

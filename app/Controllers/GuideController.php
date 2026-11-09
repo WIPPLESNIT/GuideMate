@@ -113,6 +113,10 @@ final class GuideController extends Controller
             return;
         }
         $listing = $this->ownedListing((int) $id);
+        if (($listing['category_slug'] ?? '') === 'packages') {
+            redirect('/dashboard/packages/' . (int) $id . '/edit');
+            return;
+        }
         if (($listing['category_slug'] ?? '') === 'hotels') {
             flash('error', 'Hotel listings are managed from My Hotels.');
             redirect('/dashboard/hotels');
@@ -335,6 +339,7 @@ final class GuideController extends Controller
                 flash('error', 'Your account has an active administrator warning. You cannot cancel or refund bookings until an admin clears it.');
                 redirect('/dashboard/bookings');
             }
+            \App\Services\PackageBookingService::onBookingUpdated((int) $booking['id'], 'cancelled', (int) Auth::id());
             if ($result['refunded']) {
                 NotificationService::bookingCancelled(
                     (string) $booking['customer_email'],
@@ -353,11 +358,12 @@ final class GuideController extends Controller
                 flash('error', 'This booking can no longer be updated.');
                 redirect('/dashboard/bookings');
             }
-            if ($status === 'completed' && $current !== 'confirmed') {
+            if ($status === 'completed' && !in_array($current, ['confirmed', 'completed'], true) && ($booking['package_overall_status'] ?? '') !== 'confirmed') {
                 flash('error', 'Confirm this booking first before marking it completed.');
                 redirect('/dashboard/bookings');
             }
             Booking::updateStatus((int) $booking['id'], $status);
+            \App\Services\PackageBookingService::onBookingUpdated((int) $booking['id'], $status, (int) Auth::id());
             if ($status === 'confirmed') {
                 Booking::ensureVerifyToken((int) $booking['id']);
                 NotificationService::bookingConfirmed(
@@ -906,131 +912,61 @@ final class GuideController extends Controller
 
         $userId = (int) Auth::id();
 
-        // 1. Guide's own approved activities & attractions, plus approved Cebu destinations
+        // 1. Guide's own approved activities & attractions only (No listings from other guides, no dummy data)
         $myActivities = [];
         try {
             $myActivities = \App\Core\Database::all("
                 SELECT l.id, l.title, l.area, l.price, l.price_unit, l.duration, l.cover_image, l.summary,
                        c.name as category_name, c.slug as category_slug,
-                       (CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) as is_mine
+                       1 as is_mine
                 FROM listings l
                 JOIN categories c ON c.id = l.category_id
-                WHERE l.status = 'approved' AND c.slug IN ('things-to-do', 'attractions', 'attraction-and-tours')
-                ORDER BY (CASE WHEN l.user_id = ? THEN 0 ELSE 1 END), l.id DESC
-            ", [$userId, $userId]);
+                WHERE l.user_id = ?
+                  AND l.status = 'approved'
+                  AND c.slug IN ('things-to-do', 'attractions', 'attraction-and-tours', 'tour-guides')
+                ORDER BY l.id DESC
+            ", [$userId]);
         } catch (\Throwable $e) {
             $myActivities = [];
         }
 
-        if (count($myActivities) < 2) {
-            $myActivities[] = [
-                'id' => 301,
-                'title' => 'Full Kawasan Canyoneering & Cliff Jumps',
-                'area' => 'Badian, South Cebu',
-                'price' => 2500.00,
-                'price_unit' => 'person',
-                'duration' => '4.5 Hours',
-                'cover_image' => 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=800&q=80',
-                'summary' => 'Guided river trek with 7 cliff jumps (3m to 12m) and natural water slides.',
-                'category_name' => 'Things to Do',
-                'category_slug' => 'things-to-do',
-                'is_mine' => 1,
-            ];
-            $myActivities[] = [
-                'id' => 302,
-                'title' => 'Moalboal Sardine Run & Sea Turtle Snorkel',
-                'area' => 'Moalboal, South Cebu',
-                'price' => 1200.00,
-                'price_unit' => 'person',
-                'duration' => '2.5 Hours',
-                'cover_image' => 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80',
-                'summary' => 'Panagsama reef marine sanctuary with mask, snorkel, and life vest.',
-                'category_name' => 'Things to Do',
-                'category_slug' => 'things-to-do',
-                'is_mine' => 1,
-            ];
-            $myActivities[] = [
-                'id' => 303,
-                'title' => 'Kawasan Falls Natural Park',
-                'area' => 'Badian, South Cebu',
-                'price' => 250.00,
-                'price_unit' => 'person',
-                'duration' => 'Full Day',
-                'cover_image' => 'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=800&q=80',
-                'summary' => 'Badian Ecological Park entrance & conservation ticket to turquoise multi-tier falls.',
-                'category_name' => 'Attraction',
-                'category_slug' => 'attractions',
-                'is_mine' => 0,
-            ];
-            $myActivities[] = [
-                'id' => 304,
-                'title' => 'Osmeña Peak 360-Degree Ridge Trek',
-                'area' => 'Dalaguete, South Cebu',
-                'price' => 500.00,
-                'price_unit' => 'person',
-                'duration' => '3 Hours',
-                'cover_image' => 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80',
-                'summary' => 'Hike to Cebu highest peak with jagged green rock formations overlooking the sea.',
-                'category_name' => 'Attraction',
-                'category_slug' => 'attractions',
-                'is_mine' => 0,
-            ];
+        // 2. Approved hotels and available hotel rooms from database (no dummy/hardcoded data)
+        $hotels = [];
+        try {
+            $hotels = \App\Core\Database::all("
+                SELECT l.id, l.user_id, l.title, l.area, l.cover_image, l.summary, l.check_in_time, l.check_out_time,
+                       u.name as partner_name,
+                       (SELECT COUNT(*) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL)) as available_room_count,
+                       (SELECT MIN(hr.price_per_night) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL) AND hr.price_per_night > 0) as min_price
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                JOIN users u ON u.id = l.user_id
+                WHERE l.status = 'approved' AND c.slug = 'hotels'
+                ORDER BY l.title ASC
+            ");
+        } catch (\Throwable $e) {
+            $hotels = [];
         }
 
-        // 2. Approved hotel rooms from accommodation partners with actual listing cover photos & check-in times
         $hotelRooms = [];
         try {
             $hotelRooms = \App\Core\Database::all("
-                SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.amenities, hr.image as room_image,
+                SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.room_size, hr.amenities, hr.image as room_image, hr.description as room_description,
                        l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover, l.check_in_time, l.check_out_time,
                        u.name as partner_name
                 FROM hotel_rooms hr
                 JOIN listings l ON l.id = hr.listing_id
                 JOIN users u ON u.id = l.user_id
-                WHERE l.status = 'approved' AND hr.status = 'available'
+                WHERE l.status = 'approved'
+                  AND hr.status = 'available'
+                  AND (hr.available_units > 0 OR hr.available_units IS NULL)
                 ORDER BY hr.price_per_night ASC
-                LIMIT 20
             ");
         } catch (\Throwable $e) {
             $hotelRooms = [];
         }
 
-        if ($hotelRooms === []) {
-            $hotelRooms = [
-                [
-                    'id' => 101,
-                    'listing_id' => 1,
-                    'room_name' => 'Deluxe Poolside Queen Room',
-                    'price_per_night' => 2200.00,
-                    'max_guests' => 2,
-                    'bed_type' => '1 Queen Bed',
-                    'amenities' => '["Free High-Speed Wi-Fi", "Swimming Pool Access", "Complimentary Daily Breakfast", "Air Conditioning & Hot Water"]',
-                    'hotel_name' => 'Moalboal Beach Haven Resort',
-                    'hotel_area' => 'Moalboal, Cebu',
-                    'hotel_cover' => 'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&q=80',
-                    'check_in_time' => '14:00:00',
-                    'check_out_time' => '12:00:00',
-                    'partner_name' => 'Sea Breeze Hospitality',
-                ],
-                [
-                    'id' => 102,
-                    'listing_id' => 2,
-                    'room_name' => 'Family Garden Villa Suite',
-                    'price_per_night' => 3800.00,
-                    'max_guests' => 4,
-                    'bed_type' => '2 Double Beds',
-                    'amenities' => '["Free High-Speed Wi-Fi", "Garden Balcony", "Air Conditioning", "Hot Water Shower"]',
-                    'hotel_name' => 'Kawasan Eco-Lodge & Spa',
-                    'hotel_area' => 'Badian, Cebu',
-                    'hotel_cover' => 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&q=80',
-                    'check_in_time' => '14:00:00',
-                    'check_out_time' => '12:00:00',
-                    'partner_name' => 'Eco-Lodge Partner',
-                ],
-            ];
-        }
-
-        // 3. Approved vehicles from rental partners with actual vehicle images
+        // 3. Approved and available vehicles from rental partners (no dummy/hardcoded data, exclude already booked)
         $vehicles = [];
         try {
             $vehicles = \App\Core\Database::all("
@@ -1039,45 +975,18 @@ final class GuideController extends Controller
                        u.name as partner_name
                 FROM vehicles v
                 JOIN users u ON u.id = v.user_id
-                WHERE v.status = 'approved' AND v.is_available = 1
+                WHERE v.status = 'approved'
+                  AND v.is_available = 1
+                  AND v.id NOT IN (
+                      SELECT CAST(rr.vehicle_id AS UNSIGNED)
+                      FROM rental_requests rr
+                      WHERE rr.status IN ('approved', 'contacted')
+                        AND CURDATE() <= DATE_ADD(rr.pickup_date, INTERVAL rr.rental_days DAY)
+                  )
                 ORDER BY v.price_per_day ASC
-                LIMIT 20
             ");
         } catch (\Throwable $e) {
             $vehicles = [];
-        }
-
-        if (count($vehicles) < 2) {
-            $vehicles[] = [
-                'id' => 201,
-                'user_id' => 167,
-                'make' => 'Yamaha',
-                'model' => 'NMAX 155cc ABS',
-                'year' => 2023,
-                'vehicle_type' => 'Scooter',
-                'vehicle_name' => 'Yamaha NMAX 155cc ABS Automatic',
-                'daily_rate' => 650.00,
-                'vehicle_image' => 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&q=80',
-                'location' => 'Moalboal, Cebu',
-                'description' => 'Top-of-the-line maxi-scooter with ABS, phone mount, and dual helmets.',
-                'specs' => '["Automatic Transmission", "ABS Brakes", "2 Helmets Included"]',
-                'partner_name' => 'Cebu South Moto Rentals',
-            ];
-            $vehicles[] = [
-                'id' => 202,
-                'user_id' => 167,
-                'make' => 'Toyota',
-                'model' => 'HiAce Commuter Van',
-                'year' => 2022,
-                'vehicle_type' => 'Van',
-                'vehicle_name' => 'Toyota HiAce Commuter 12-Seater (with Driver)',
-                'daily_rate' => 3800.00,
-                'vehicle_image' => 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&q=80',
-                'location' => 'Cebu City / South Cebu',
-                'description' => 'Spacious air-conditioned passenger van for groups and families.',
-                'specs' => '["12 Seats", "Air Conditioned", "Professional Driver Included"]',
-                'partner_name' => 'Island Tour Van Fleet',
-            ];
         }
 
         $autoBadge = self::determinePackageBadge([], true);
@@ -1088,6 +997,7 @@ final class GuideController extends Controller
             'user' => Auth::user(),
             'guideStats' => $guideStats,
             'myActivities' => $myActivities,
+            'hotels' => $hotels,
             'hotelRooms' => $hotelRooms,
             'vehicles' => $vehicles,
             'package' => null,
@@ -1098,6 +1008,22 @@ final class GuideController extends Controller
             'defaultAssurance' => '',
             'existingPhotos' => [],
             'selectedActivities' => [],
+            'selectedActivityIds' => [],
+            'selectedHotelId' => 0,
+            'selectedHotelRoomId' => 0,
+            'selectedHotelName' => 'None',
+            'selectedHotelRoom' => '',
+            'selectedHotelRate' => 0,
+            'selectedHotelAmenities' => [],
+            'selectedHotelCheckin' => '',
+            'selectedHotelCheckout' => '',
+            'selectedVehicleId' => 0,
+            'selectedVehicleModel' => 'None',
+            'selectedVehicleDailyRate' => 0,
+            'selectedVehicleType' => '',
+            'selectedVehicleLocation' => '',
+            'selectedVehicleSpecs' => [],
+            'parsedItineraryDays' => [],
             'errors' => errors(),
         ]);
     }
@@ -1126,96 +1052,61 @@ final class GuideController extends Controller
             return;
         }
 
-        // 1. Guide's own approved activities & attractions
+        // 1. Guide's own approved activities & attractions only (No other guides, no dummy data)
         $myActivities = [];
         try {
             $myActivities = \App\Core\Database::all("
                 SELECT l.id, l.title, l.area, l.price, l.price_unit, l.duration, l.cover_image, l.summary,
                        c.name as category_name, c.slug as category_slug,
-                       (CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) as is_mine
+                       1 as is_mine
                 FROM listings l
                 JOIN categories c ON c.id = l.category_id
-                WHERE l.status = 'approved' AND c.slug IN ('things-to-do', 'attractions', 'attraction-and-tours')
-                ORDER BY (CASE WHEN l.user_id = ? THEN 0 ELSE 1 END), l.id DESC
-            ", [$userId, $userId]);
+                WHERE l.user_id = ?
+                  AND l.status = 'approved'
+                  AND c.slug IN ('things-to-do', 'attractions', 'attraction-and-tours', 'tour-guides')
+                ORDER BY l.id DESC
+            ", [$userId]);
         } catch (\Throwable $e) {
             $myActivities = [];
         }
 
-        if (count($myActivities) < 2) {
-            $myActivities[] = [
-                'id' => 301,
-                'title' => 'Full Kawasan Canyoneering & Cliff Jumps',
-                'area' => 'Badian, South Cebu',
-                'price' => 2500.00,
-                'price_unit' => 'person',
-                'duration' => '4.5 Hours',
-                'cover_image' => 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=800&q=80',
-                'summary' => 'Guided river trek with 7 cliff jumps (3m to 12m) and natural water slides.',
-                'category_name' => 'Things to Do',
-                'category_slug' => 'things-to-do',
-                'is_mine' => 1,
-            ];
-            $myActivities[] = [
-                'id' => 302,
-                'title' => 'Moalboal Sardine Run & Sea Turtle Snorkel',
-                'area' => 'Moalboal, South Cebu',
-                'price' => 1200.00,
-                'price_unit' => 'person',
-                'duration' => '2.5 Hours',
-                'cover_image' => 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80',
-                'summary' => 'Panagsama reef marine sanctuary with mask, snorkel, and life vest.',
-                'category_name' => 'Things to Do',
-                'category_slug' => 'things-to-do',
-                'is_mine' => 1,
-            ];
-            $myActivities[] = [
-                'id' => 303,
-                'title' => 'Kawasan Falls Natural Park',
-                'area' => 'Badian, South Cebu',
-                'price' => 250.00,
-                'price_unit' => 'person',
-                'duration' => 'Full Day',
-                'cover_image' => 'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=800&q=80',
-                'summary' => 'Badian Ecological Park entrance & conservation ticket to turquoise multi-tier falls.',
-                'category_name' => 'Attraction',
-                'category_slug' => 'attractions',
-                'is_mine' => 0,
-            ];
-            $myActivities[] = [
-                'id' => 304,
-                'title' => 'Osmeña Peak 360-Degree Ridge Trek',
-                'area' => 'Dalaguete, South Cebu',
-                'price' => 500.00,
-                'price_unit' => 'person',
-                'duration' => '3 Hours',
-                'cover_image' => 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80',
-                'summary' => 'Hike to Cebu highest peak with jagged green rock formations overlooking the sea.',
-                'category_name' => 'Attraction',
-                'category_slug' => 'attractions',
-                'is_mine' => 0,
-            ];
+        // 2. Approved hotels and available hotel rooms from database (no dummy/hardcoded data)
+        $hotels = [];
+        try {
+            $hotels = \App\Core\Database::all("
+                SELECT l.id, l.user_id, l.title, l.area, l.cover_image, l.summary, l.check_in_time, l.check_out_time,
+                       u.name as partner_name,
+                       (SELECT COUNT(*) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL)) as available_room_count,
+                       (SELECT MIN(hr.price_per_night) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL) AND hr.price_per_night > 0) as min_price
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                JOIN users u ON u.id = l.user_id
+                WHERE l.status = 'approved' AND c.slug = 'hotels'
+                ORDER BY l.title ASC
+            ");
+        } catch (\Throwable $e) {
+            $hotels = [];
         }
 
-        // 2. Approved hotel rooms
         $hotelRooms = [];
         try {
             $hotelRooms = \App\Core\Database::all("
-                SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.amenities, hr.image as room_image,
+                SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.room_size, hr.amenities, hr.image as room_image, hr.description as room_description,
                        l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover, l.check_in_time, l.check_out_time,
                        u.name as partner_name
                 FROM hotel_rooms hr
                 JOIN listings l ON l.id = hr.listing_id
                 JOIN users u ON u.id = l.user_id
-                WHERE l.status = 'approved' AND hr.status = 'available'
+                WHERE l.status = 'approved'
+                  AND hr.status = 'available'
+                  AND (hr.available_units > 0 OR hr.available_units IS NULL)
                 ORDER BY hr.price_per_night ASC
-                LIMIT 20
             ");
         } catch (\Throwable $e) {
             $hotelRooms = [];
         }
 
-        // 3. Approved vehicles
+        // 3. Approved and available vehicles from rental partners (no dummy/hardcoded data, exclude booked)
         $vehicles = [];
         try {
             $vehicles = \App\Core\Database::all("
@@ -1224,9 +1115,15 @@ final class GuideController extends Controller
                        u.name as partner_name
                 FROM vehicles v
                 JOIN users u ON u.id = v.user_id
-                WHERE v.status = 'approved' AND v.is_available = 1
+                WHERE v.status = 'approved'
+                  AND v.is_available = 1
+                  AND v.id NOT IN (
+                      SELECT CAST(rr.vehicle_id AS UNSIGNED)
+                      FROM rental_requests rr
+                      WHERE rr.status IN ('approved', 'contacted')
+                        AND CURDATE() <= DATE_ADD(rr.pickup_date, INTERVAL rr.rental_days DAY)
+                  )
                 ORDER BY v.price_per_day ASC
-                LIMIT 20
             ");
         } catch (\Throwable $e) {
             $vehicles = [];
@@ -1238,7 +1135,7 @@ final class GuideController extends Controller
             $photos = [$package['cover_image']];
         }
 
-        // 5. Parse structured description parts
+        // 5. Parse structured description parts & metadata
         $rawDesc = (string) ($package['description'] ?? '');
         $itinerary = '';
         $policies = '';
@@ -1261,10 +1158,56 @@ final class GuideController extends Controller
             $policies = trim($m[1]);
             $cleanDesc = trim(str_replace($m[0], '', $cleanDesc));
         }
-        if (preg_match('/--- Day-by-Day Itinerary ---\s*(.*)$/s', $cleanDesc, $m)) {
+
+        $parsedItineraryDays = [];
+        if (preg_match('/--- Day-by-Day Itinerary ---\s*(.*?)(?=\n\n--- Policies|\n\nExperience Tags:|$)/s', $cleanDesc, $m)) {
             $itinerary = trim($m[1]);
             $cleanDesc = trim(str_replace($m[0], '', $cleanDesc));
+            $decodedItin = json_decode($itinerary, true);
+            if (is_array($decodedItin) && !empty($decodedItin)) {
+                $parsedItineraryDays = array_map(function ($d, $idx) {
+                    $dayNum = (int) ($d['day'] ?? ($idx + 1));
+                    $dayTitle = (string) ($d['title'] ?? ('Day ' . $dayNum));
+                    $dayDesc = (string) ($d['desc'] ?? ($d['description'] ?? ''));
+                    $sched = isset($d['schedule']) && is_array($d['schedule']) ? $d['schedule'] : [];
+                    $hl = isset($d['highlights']) && is_array($d['highlights']) ? $d['highlights'] : [];
+                    return [
+                        'day' => $dayNum,
+                        'title' => $dayTitle,
+                        'desc' => $dayDesc,
+                        'description' => $dayDesc,
+                        'schedule' => $sched,
+                        'highlights' => $hl,
+                    ];
+                }, $decodedItin, array_keys($decodedItin));
+            } else {
+                $dayBlocks = preg_split('/(?=Day\s+\d+:)/i', $itinerary, -1, PREG_SPLIT_NO_EMPTY);
+                foreach ($dayBlocks as $idx => $block) {
+                    $lines = array_filter(array_map('trim', explode("\n", trim($block))));
+                    $dayTitle = array_shift($lines) ?? ('Day ' . ($idx + 1));
+                    $dayDesc = '';
+                    $daySchedule = [];
+                    $dayHighlights = [];
+                    foreach ($lines as $line) {
+                        if (preg_match('/^(\d{1,2}:\d{2}\s*(?:AM|PM))\s*[-:–]?\s*(.*)$/i', $line, $sm)) {
+                            $daySchedule[] = ['time' => trim($sm[1]), 'activity' => trim($sm[2])];
+                        } elseif (str_starts_with($line, '✓') || str_starts_with($line, '•') || str_starts_with($line, '-')) {
+                            $dayHighlights[] = trim(ltrim($line, '✓•- '));
+                        } else {
+                            $dayDesc .= ($dayDesc !== '' ? ' ' : '') . $line;
+                        }
+                    }
+                    $parsedItineraryDays[] = [
+                        'day' => $idx + 1,
+                        'title' => $dayTitle,
+                        'desc' => $dayDesc,
+                        'schedule' => $daySchedule,
+                        'highlights' => $dayHighlights,
+                    ];
+                }
+            }
         }
+
         if (preg_match('/Experience Tags:\s*(.*)$/m', $cleanDesc, $m)) {
             $tags = trim(str_replace(', ', "\n", $m[1]));
             $cleanDesc = trim(str_replace($m[0], '', $cleanDesc));
@@ -1278,24 +1221,189 @@ final class GuideController extends Controller
             $durationNights = (int) $dm[2];
         }
 
-        // 7. Parse included activities
+        // 7. Parse included services metadata (activities, hotel room, vehicle)
         $includedText = (string) ($package['included'] ?? '');
-        $selectedActivities = [];
-        if (preg_match('/Activities:\s*(.*)$/m', $includedText, $am)) {
+        $cleanInclusions = preg_replace('/<!--.*?-->/s', '', $includedText);
+        $cleanIncLines = [];
+        foreach (explode("\n", $cleanInclusions) as $l) {
+            $t = trim($l);
+            if ($t === '') continue;
+            if (preg_match('/^(Activities|Accommodation|Transportation)\s*:\s*/i', $t)) {
+                continue;
+            }
+            $cleanIncLines[] = $t;
+        }
+        $defaultInclusions = implode("\n", $cleanIncLines);
+
+        $serviceIds = null;
+        if (preg_match('/<!--\s*PACKAGE_SERVICES:\s*(\{.*?\})\s*-->/s', $includedText . "\n" . $rawDesc, $jm)) {
+            $serviceIds = json_decode($jm[1], true);
+        }
+
+        $selectedActivityIds = is_array($serviceIds) && !empty($serviceIds['activity_ids'])
+            ? array_map('intval', $serviceIds['activity_ids'])
+            : [];
+        $selectedHotelRoomId = is_array($serviceIds) && isset($serviceIds['hotel_room_id'])
+            ? (int) $serviceIds['hotel_room_id']
+            : 0;
+        $selectedVehicleId = is_array($serviceIds) && isset($serviceIds['vehicle_id'])
+            ? (int) $serviceIds['vehicle_id']
+            : 0;
+
+        // Fallback for activities by title if IDs not in metadata
+        if (empty($selectedActivityIds) && preg_match('/Activities:\s*(.*)$/m', $includedText, $am)) {
             $actTitles = array_map('trim', explode(',', $am[1]));
-            foreach ($actTitles as $idx => $aTitle) {
+            foreach ($actTitles as $aTitle) {
                 foreach ($myActivities as $mAct) {
                     if (strcasecmp($mAct['title'], $aTitle) === 0) {
-                        $selectedActivities[] = [
-                            'id' => (int) $mAct['id'],
-                            'title' => $mAct['title'],
-                            'rate' => (float) $mAct['price'],
-                            'area' => $mAct['area'],
-                            'cover' => $mAct['cover_image'],
-                            'category' => $mAct['category_name'] ?? 'Things to Do',
-                            'day' => 'Day ' . min(3, $idx + 1),
-                            'time' => '09:00 AM',
+                        $selectedActivityIds[] = (int) $mAct['id'];
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Ensure previously selected activities are in $myActivities so cards appear in Step 2
+        if (!empty($selectedActivityIds)) {
+            $existingMyIds = array_column($myActivities, 'id');
+            $missingIds = array_diff($selectedActivityIds, $existingMyIds);
+            if (!empty($missingIds)) {
+                $inPlaceholders = implode(',', array_fill(0, count($missingIds), '?'));
+                try {
+                    $missingActs = \App\Core\Database::all("
+                        SELECT l.id, l.title, l.area, l.price, l.price_unit, l.duration, l.cover_image, l.summary,
+                               c.name as category_name, c.slug as category_slug, 1 as is_mine
+                        FROM listings l
+                        JOIN categories c ON c.id = l.category_id
+                        WHERE l.id IN ($inPlaceholders)
+                    ", array_values($missingIds));
+                    foreach ($missingActs as $ma) {
+                        $myActivities[] = $ma;
+                    }
+                } catch (\Throwable $e) {}
+            }
+        }
+
+        $selectedActivities = [];
+        foreach ($myActivities as $idx => $mAct) {
+            if (in_array((int) $mAct['id'], $selectedActivityIds, true)) {
+                $selectedActivities[] = [
+                    'id' => (int) $mAct['id'],
+                    'title' => $mAct['title'],
+                    'rate' => (float) $mAct['price'],
+                    'area' => $mAct['area'],
+                    'cover' => $mAct['cover_image'],
+                    'category' => $mAct['category_name'] ?? 'Things to Do',
+                    'day' => 'Day ' . min(3, $idx + 1),
+                    'time' => '09:00 AM',
+                ];
+            }
+        }
+
+        // Retrieve previously selected Hotel Room details
+        $selectedHotelId = 0;
+        $selectedHotelRate = 0;
+        $selectedHotelName = 'None';
+        $selectedHotelRoom = '';
+        $selectedHotelAmenities = [];
+        $selectedHotelCheckin = '';
+        $selectedHotelCheckout = '';
+        if ($selectedHotelRoomId > 0) {
+            try {
+                $hRoomRow = \App\Core\Database::first("
+                    SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.room_size, hr.amenities, hr.image as room_image, hr.description as room_description,
+                           l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover, l.check_in_time, l.check_out_time,
+                           u.name as partner_name
+                    FROM hotel_rooms hr
+                    JOIN listings l ON l.id = hr.listing_id
+                    JOIN users u ON u.id = l.user_id
+                    WHERE hr.id = ?
+                ", [$selectedHotelRoomId]);
+                if ($hRoomRow) {
+                    $selectedHotelId = (int) ($hRoomRow['listing_id'] ?? 0);
+                    $selectedHotelRate = (float) $hRoomRow['price_per_night'];
+                    $selectedHotelName = (string) $hRoomRow['hotel_name'];
+                    $selectedHotelRoom = (string) $hRoomRow['room_name'];
+                    $selectedHotelAmenities = json_decode((string) ($hRoomRow['amenities'] ?? '[]'), true) ?: ['Free High-Speed Wi-Fi', 'Swimming Pool Access', 'Complimentary Daily Breakfast'];
+                    $selectedHotelCheckin = (string) ($hRoomRow['check_in_time'] ?? '14:00:00');
+                    $selectedHotelCheckout = (string) ($hRoomRow['check_out_time'] ?? '12:00:00');
+                    if (!in_array($selectedHotelRoomId, array_column($hotelRooms, 'id'), true)) {
+                        $hotelRooms[] = $hRoomRow;
+                    }
+                    if (!in_array((int)$hRoomRow['listing_id'], array_column($hotels, 'id'), true)) {
+                        $hotels[] = [
+                            'id' => (int)$hRoomRow['listing_id'],
+                            'user_id' => 0,
+                            'title' => $hRoomRow['hotel_name'],
+                            'area' => $hRoomRow['hotel_area'],
+                            'cover_image' => $hRoomRow['hotel_cover'],
+                            'summary' => '',
+                            'check_in_time' => $hRoomRow['check_in_time'],
+                            'check_out_time' => $hRoomRow['check_out_time'],
+                            'partner_name' => $hRoomRow['partner_name'],
                         ];
+                    }
+                }
+            } catch (\Throwable $e) {}
+        } elseif (preg_match('/Accommodation:\s*([^\n\r(]+)/i', $includedText, $hm)) {
+            $parsedHName = trim($hm[1]);
+            if ($parsedHName !== '' && stripos($parsedHName, 'none') === false && stripos($parsedHName, 'no hotel') === false) {
+                foreach ($hotelRooms as $hr) {
+                    if (strcasecmp($hr['hotel_name'], $parsedHName) === 0 || strcasecmp($hr['room_name'], $parsedHName) === 0) {
+                        $selectedHotelRoomId = (int) $hr['id'];
+                        $selectedHotelName = $hr['hotel_name'];
+                        $selectedHotelRoom = $hr['room_name'];
+                        $selectedHotelRate = (float) $hr['price_per_night'];
+                        $selectedHotelAmenities = json_decode((string) ($hr['amenities'] ?? '[]'), true) ?: ['Free High-Speed Wi-Fi', 'Swimming Pool Access'];
+                        $selectedHotelCheckin = (string) ($hr['check_in_time'] ?? '14:00:00');
+                        $selectedHotelCheckout = (string) ($hr['check_out_time'] ?? '12:00:00');
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Retrieve previously selected Vehicle details
+        $selectedVehicleDailyRate = 0;
+        $selectedVehicleModel = 'None';
+        $selectedVehicleType = '';
+        $selectedVehicleLocation = '';
+        $selectedVehicleSpecs = [];
+        $selectedVehicleHandover = '13:00:00';
+        $selectedVehicleReturn = '12:00:00';
+        if ($selectedVehicleId > 0) {
+            try {
+                $vehRow = \App\Core\Database::first("
+                    SELECT v.id, v.user_id, v.make, v.model, v.year, v.type as vehicle_type, v.name as vehicle_name,
+                           v.price_per_day as daily_rate, v.image as vehicle_image, v.location, v.description, v.specs,
+                           u.name as partner_name
+                    FROM vehicles v
+                    JOIN users u ON u.id = v.user_id
+                    WHERE v.id = ?
+                ", [$selectedVehicleId]);
+                if ($vehRow) {
+                    $selectedVehicleDailyRate = (float) $vehRow['daily_rate'];
+                    $selectedVehicleModel = (string) ($vehRow['vehicle_name'] ?? ($vehRow['make'] . ' ' . $vehRow['model']));
+                    $selectedVehicleType = (string) ($vehRow['vehicle_type'] ?? 'Scooter');
+                    $selectedVehicleLocation = (string) ($vehRow['location'] ?? 'Cebu');
+                    $selectedVehicleSpecs = json_decode((string) ($vehRow['specs'] ?? '[]'), true) ?: ['Automatic Transmission', '2 Helmets Included'];
+                    if (!in_array($selectedVehicleId, array_column($vehicles, 'id'), true)) {
+                        $vehicles[] = $vehRow;
+                    }
+                }
+            } catch (\Throwable $e) {}
+        } elseif (preg_match('/Transportation:\s*([^\n\r(]+)/i', $includedText, $vm)) {
+            $parsedVName = trim($vm[1]);
+            if ($parsedVName !== '' && stripos($parsedVName, 'none') === false && stripos($parsedVName, 'no vehicle') === false) {
+                foreach ($vehicles as $v) {
+                    $vFullName = (string) ($v['vehicle_name'] ?? ($v['make'] . ' ' . $v['model']));
+                    if (strcasecmp($vFullName, $parsedVName) === 0 || stripos($vFullName, $parsedVName) !== false) {
+                        $selectedVehicleId = (int) $v['id'];
+                        $selectedVehicleModel = $vFullName;
+                        $selectedVehicleType = (string) ($v['vehicle_type'] ?? 'Scooter');
+                        $selectedVehicleDailyRate = (float) $v['daily_rate'];
+                        $selectedVehicleLocation = (string) ($v['location'] ?? 'Cebu');
+                        $selectedVehicleSpecs = json_decode((string) ($v['specs'] ?? '[]'), true) ?: ['Automatic Transmission', '2 Helmets Included'];
                         break;
                     }
                 }
@@ -1305,11 +1413,22 @@ final class GuideController extends Controller
         $autoBadge = self::determinePackageBadge($package, false);
         $guideStats = \App\Models\Booking::guideRatingStats((int) (Auth::id() ?? 0));
 
+        $guideVehicleIdDoc = (string) ($package['guide_vehicle_id_doc'] ?? ($servicesMeta['guide_vehicle_id_doc'] ?? ''));
+        if (empty($guideVehicleIdDoc) && $selectedVehicleId > 0) {
+            $docRow = \App\Core\Database::first("
+                SELECT guide_id_doc FROM package_services WHERE package_id = ? AND service_type = 'vehicle' LIMIT 1
+            ", [(int) $package['id']]);
+            if ($docRow && !empty($docRow['guide_id_doc'])) {
+                $guideVehicleIdDoc = (string) $docRow['guide_id_doc'];
+            }
+        }
+
         $this->view('guide/package-builder', [
             'title' => 'Edit Travel Package: ' . $package['title'],
             'user' => Auth::user(),
             'guideStats' => $guideStats,
             'myActivities' => $myActivities,
+            'hotels' => $hotels,
             'hotelRooms' => $hotelRooms,
             'vehicles' => $vehicles,
             'package' => $package,
@@ -1320,12 +1439,30 @@ final class GuideController extends Controller
             'defaultAssurance' => $defaultAssurance,
             'parsedDesc' => $cleanDesc,
             'parsedItinerary' => $itinerary,
+            'parsedItineraryDays' => $parsedItineraryDays,
             'parsedPolicies' => $policies,
             'parsedTags' => $tags,
             'durationDays' => $durationDays,
             'durationNights' => $durationNights,
             'existingPhotos' => $photos,
+            'defaultInclusions' => $defaultInclusions,
             'selectedActivities' => $selectedActivities,
+            'selectedActivityIds' => $selectedActivityIds,
+            'selectedHotelId' => $selectedHotelId,
+            'selectedHotelRoomId' => $selectedHotelRoomId,
+            'selectedHotelName' => $selectedHotelName,
+            'selectedHotelRoom' => $selectedHotelRoom,
+            'selectedHotelRate' => $selectedHotelRate,
+            'selectedHotelAmenities' => $selectedHotelAmenities,
+            'selectedHotelCheckin' => $selectedHotelCheckin,
+            'selectedHotelCheckout' => $selectedHotelCheckout,
+            'selectedVehicleId' => $selectedVehicleId,
+            'selectedVehicleModel' => $selectedVehicleModel,
+            'selectedVehicleDailyRate' => $selectedVehicleDailyRate,
+            'selectedVehicleType' => $selectedVehicleType,
+            'selectedVehicleLocation' => $selectedVehicleLocation,
+            'selectedVehicleSpecs' => $selectedVehicleSpecs,
+            'existingGuideVehicleIdDoc' => $guideVehicleIdDoc,
             'errors' => errors(),
         ]);
     }
@@ -1371,6 +1508,19 @@ final class GuideController extends Controller
         $description = trim((string) $this->input('description', ''));
         $itinerary = trim((string) $this->input('itinerary', ''));
         $inclusionsCustom = trim((string) $this->input('inclusions', ''));
+        // Strip comment tags and auto-generated service lines from custom inclusions
+        $inclusionsCustom = preg_replace('/<!--.*?-->/s', '', $inclusionsCustom);
+        $cleanIncLines = [];
+        foreach (explode("\n", $inclusionsCustom) as $l) {
+            $t = trim($l);
+            if ($t === '') continue;
+            if (preg_match('/^(Activities|Accommodation|Transportation)\s*:\s*/i', $t)) {
+                continue;
+            }
+            $cleanIncLines[] = $t;
+        }
+        $inclusionsCustom = implode("\n", $cleanIncLines);
+
         $exclusionsCustom = trim((string) $this->input('exclusions', ''));
         $policiesCustom = trim((string) $this->input('policies', ''));
 
@@ -1386,6 +1536,13 @@ final class GuideController extends Controller
         $activityIds = array_map('intval', (array) ($this->input('selected_activity_ids') ?? []));
         $hotelRoomId = (int) $this->input('selected_hotel_room', 0);
         $vehicleId = (int) $this->input('selected_vehicle_id', 0);
+
+        $guideVehicleIdDoc = null;
+        if ($vehicleId > 0 && isset($_FILES['guide_vehicle_id_doc']) && is_array($_FILES['guide_vehicle_id_doc']) && $_FILES['guide_vehicle_id_doc']['error'] === UPLOAD_ERR_OK) {
+            try {
+                $guideVehicleIdDoc = Upload::store($_FILES['guide_vehicle_id_doc'], 'guide-docs/' . Auth::id(), ['jpg', 'jpeg', 'png', 'pdf']);
+            } catch (\Throwable $e) {}
+        }
 
         $includedLines = [];
         if (!empty($activities)) {
@@ -1407,6 +1564,7 @@ final class GuideController extends Controller
             'activity_ids' => $activityIds,
             'hotel_room_id' => $hotelRoomId,
             'vehicle_id' => $vehicleId,
+            'guide_vehicle_id_doc' => $guideVehicleIdDoc,
         ];
         $includedLines[] = '<!-- PACKAGE_SERVICES: ' . json_encode($servicesMeta) . ' -->';
         $includedText = implode("\n", $includedLines);
@@ -1486,11 +1644,31 @@ final class GuideController extends Controller
             'included' => $includedText,
             'not_included' => $notIncludedText,
             'cover_image' => $cover,
+            'guide_vehicle_id_doc' => $guideVehicleIdDoc,
             'is_featured' => ($badge === 'Best Seller' || $badge === 'Featured') ? 1 : 0,
             'status' => 'pending',
         ]);
 
         Listing::syncImages($listingId, $photos);
+
+        // Decode itinerary for provider notifications
+        $decodedItin = [];
+        if (!empty($itinerary)) {
+            $decodedItin = json_decode($itinerary, true) ?: [];
+        }
+
+        // Synchronize required services (hotel & vehicle) and notify respective providers
+        \App\Models\PackageService::syncPackageServices(
+            (int) $listingId,
+            $hotelRoomId,
+            $vehicleId,
+            $activityIds,
+            (int) Auth::id(),
+            $title,
+            $decodedItin,
+            $durationText,
+            $guideVehicleIdDoc
+        );
 
         flash('success', 'Travel Package submitted successfully! It is now pending admin review and will be live once approved.');
         redirect('/dashboard/listings');
@@ -1538,6 +1716,19 @@ final class GuideController extends Controller
         $description = trim((string) $this->input('description', ''));
         $itinerary = trim((string) $this->input('itinerary', ''));
         $inclusionsCustom = trim((string) $this->input('inclusions', ''));
+        // Strip comment tags and auto-generated service lines from custom inclusions
+        $inclusionsCustom = preg_replace('/<!--.*?-->/s', '', $inclusionsCustom);
+        $cleanIncLines = [];
+        foreach (explode("\n", $inclusionsCustom) as $l) {
+            $t = trim($l);
+            if ($t === '') continue;
+            if (preg_match('/^(Activities|Accommodation|Transportation)\s*:\s*/i', $t)) {
+                continue;
+            }
+            $cleanIncLines[] = $t;
+        }
+        $inclusionsCustom = implode("\n", $cleanIncLines);
+
         $exclusionsCustom = trim((string) $this->input('exclusions', ''));
         $policiesCustom = trim((string) $this->input('policies', ''));
 
@@ -1546,10 +1737,20 @@ final class GuideController extends Controller
             $finalPrice = (float) $this->input('final_price_per_pax', 8499.00);
         }
 
-        // Collect Inclusions
+        // Collect Inclusions & Service IDs
         $activities = (array) ($this->input('activities') ?? []);
         $hotelName = trim((string) $this->input('selected_hotel_name', ''));
         $vehicleName = trim((string) $this->input('selected_vehicle_name', ''));
+        $activityIds = array_map('intval', (array) ($this->input('selected_activity_ids') ?? []));
+        $hotelRoomId = (int) $this->input('selected_hotel_room', 0);
+        $vehicleId = (int) $this->input('selected_vehicle_id', 0);
+
+        $guideVehicleIdDoc = null;
+        if ($vehicleId > 0 && isset($_FILES['guide_vehicle_id_doc']) && is_array($_FILES['guide_vehicle_id_doc']) && $_FILES['guide_vehicle_id_doc']['error'] === UPLOAD_ERR_OK) {
+            try {
+                $guideVehicleIdDoc = Upload::store($_FILES['guide_vehicle_id_doc'], 'guide-docs/' . Auth::id(), ['jpg', 'jpeg', 'png', 'pdf']);
+            } catch (\Throwable $e) {}
+        }
 
         $includedLines = [];
         if (!empty($activities)) {
@@ -1567,6 +1768,13 @@ final class GuideController extends Controller
             $includedLines[] = "Licensed Local Tour Guide Host & Trip Coordination\nAll Environmental & Local Tourism Fees\nFull safety equipment, life vests & rescue gear";
         }
 
+        $servicesMeta = [
+            'activity_ids' => $activityIds,
+            'hotel_room_id' => $hotelRoomId,
+            'vehicle_id' => $vehicleId,
+            'guide_vehicle_id_doc' => $guideVehicleIdDoc,
+        ];
+        $includedLines[] = '<!-- PACKAGE_SERVICES: ' . json_encode($servicesMeta) . ' -->';
         $includedText = implode("\n", $includedLines);
 
         $notIncludedText = $exclusionsCustom !== ''
@@ -1644,10 +1852,30 @@ final class GuideController extends Controller
             'included' => $includedText,
             'not_included' => $notIncludedText,
             'cover_image' => $cover,
+            'guide_vehicle_id_doc' => $guideVehicleIdDoc,
             'is_featured' => ($badge === 'Best Seller' || $badge === 'Featured') ? 1 : 0,
         ]);
 
         Listing::syncImages((int) $id, $photos);
+
+        // Decode itinerary for provider notifications
+        $decodedItin = [];
+        if (!empty($itinerary)) {
+            $decodedItin = json_decode($itinerary, true) ?: [];
+        }
+
+        // Synchronize required services (hotel & vehicle) and notify respective providers
+        \App\Models\PackageService::syncPackageServices(
+            (int) $id,
+            $hotelRoomId,
+            $vehicleId,
+            $activityIds,
+            (int) Auth::id(),
+            $title,
+            $decodedItin,
+            $durationText,
+            $guideVehicleIdDoc
+        );
 
         // Status transition handling:
         // If the package was rejected, resubmit it for review (status = 'pending') and clear rejection reason

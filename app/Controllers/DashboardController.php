@@ -219,4 +219,79 @@ final class DashboardController extends Controller
             'unread' => Message::unreadCount((int) $user['id']),
         ]);
     }
+
+    /**
+     * Package inclusion requests view for hotel & rental service partners.
+     */
+    public function packageRequests(): void
+    {
+        $user = Auth::user();
+        if ($user === null || !User::isProviderRole((string) ($user['role'] ?? ''))) {
+            abort(403, 'Service providers only.');
+        }
+
+        $providerId = (int) $user['id'];
+        $status = trim((string) $this->input('status', 'all'));
+        $requests = \App\Models\PackageService::getForProvider($providerId, $status);
+
+        // Fetch counts for tabs
+        $all = \App\Models\PackageService::getForProvider($providerId, 'all');
+        $counts = [
+            'all' => count($all),
+            'pending' => count(array_filter($all, fn($r) => !in_array(strtolower((string)($r['status'] ?? '')), ['agreed', 'approved', 'rejected'], true))),
+            'agreed' => count(array_filter($all, fn($r) => in_array(strtolower((string)($r['status'] ?? '')), ['agreed', 'approved'], true))),
+            'rejected' => count(array_filter($all, fn($r) => strtolower((string)($r['status'] ?? '')) === 'rejected')),
+        ];
+
+        $this->view('dashboard/package-requests', [
+            'title' => 'Package Inclusion Requests',
+            'user' => $user,
+            'requests' => $requests,
+            'status' => $status,
+            'counts' => $counts,
+        ]);
+    }
+
+    /**
+     * Provider agrees to include their service in a travel package.
+     */
+    public function agreePackageRequest(string $id): void
+    {
+        $this->verifyCsrf();
+        $user = Auth::user();
+        if ($user === null || !User::isProviderRole((string) ($user['role'] ?? ''))) {
+            abort(403, 'Service providers only.');
+        }
+
+        $res = \App\Models\PackageService::respond((int) $id, (int) $user['id'], 'agree');
+        if ($res['success']) {
+            flash('success', 'You have agreed to the inclusion of your service in this travel package!');
+        } else {
+            flash('error', $res['error'] ?? 'Could not record agreement.');
+        }
+
+        redirect('/dashboard/package-requests');
+    }
+
+    /**
+     * Provider rejects inclusion of their service in a travel package.
+     */
+    public function rejectPackageRequest(string $id): void
+    {
+        $this->verifyCsrf();
+        $user = Auth::user();
+        if ($user === null || !User::isProviderRole((string) ($user['role'] ?? ''))) {
+            abort(403, 'Service providers only.');
+        }
+
+        $reason = trim((string) $this->input('reason', ''));
+        $res = \App\Models\PackageService::respond((int) $id, (int) $user['id'], 'reject', $reason);
+        if ($res['success']) {
+            flash('info', 'You have declined inclusion in this travel package. The guide has been notified.');
+        } else {
+            flash('error', $res['error'] ?? 'Could not record response.');
+        }
+
+        redirect('/dashboard/package-requests');
+    }
 }

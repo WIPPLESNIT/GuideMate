@@ -101,6 +101,9 @@ function isTripHistory(b: ApiBooking): boolean {
   if (b.hotel_status === 'completed' || b.hotel_status === 'refunded') {
     return true;
   }
+  if (b.package_overall_status === 'completed' || b.package_overall_status === 'refunded') {
+    return true;
+  }
   return false;
 }
 
@@ -739,7 +742,22 @@ export default function TripsScreen() {
   };
 
   const renderPackageItem = (item: ApiBooking, isCompleted: boolean) => {
-    const statusColorVal = STATUS_COLOR[item.status] ?? '#059669';
+    const overallStatus = (item.package_overall_status || item.status || 'pending').toLowerCase();
+    const statusColorVal =
+      overallStatus === 'confirmed' ? '#059669' :
+      overallStatus === 'partially_confirmed' ? '#2563EB' :
+      overallStatus === 'cancelled' || overallStatus === 'refunded' ? '#DC2626' :
+      '#D97706';
+    const statusLabelText =
+      item.status_label || (
+        overallStatus === 'confirmed' ? 'Confirmed' :
+        overallStatus === 'partially_confirmed' ? 'Awaiting Providers Confirmation' :
+        overallStatus === 'cancelled' ? 'Cancelled' :
+        overallStatus === 'refunded' ? 'Refunded' :
+        overallStatus === 'completed' ? 'Completed' :
+        'Pending Confirmations'
+      );
+    const pkgRefText = item.package_booking_ref || `BK-${item.id}`;
     const canNavigate = item.status !== 'cancelled' && item.status !== 'refunded';
     const details = item.package_details;
     const guideName = item.guide_name || details?.guide?.name || 'Marc Repuesto';
@@ -762,7 +780,7 @@ export default function TripsScreen() {
               <View style={[styles.statusChip, { backgroundColor: statusColorVal + '22' }]}>
                 <View style={[styles.statusDot, { backgroundColor: statusColorVal }]} />
                 <Text style={[styles.statusText, { color: statusColorVal }]}>
-                  {item.status_label ?? STATUS_LABEL[item.status] ?? item.status}
+                  {statusLabelText}
                 </Text>
               </View>
             </View>
@@ -795,9 +813,58 @@ export default function TripsScreen() {
             <Text style={{ fontSize: 10, color: colors.textSub }}>Licensed Tour Guide Host</Text>
           </View>
           <View style={[styles.pkgRefPill, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
-            <Text style={[styles.pkgRefText, { color: colors.textSub }]}>BK-{item.id}</Text>
+            <Text style={[styles.pkgRefText, { color: colors.textSub }]}>{pkgRefText}</Text>
           </View>
         </View>
+
+        {/* Provider Confirmation Progress Strip */}
+        {(() => {
+          const guideItem = item.provider_statuses?.find((p: any) => p.service_type === 'guide');
+          const guideSt = guideItem?.status || (overallStatus === 'confirmed' && (!item.provider_statuses || item.provider_statuses.length === 0) ? 'confirmed' : 'pending');
+
+          const hotelItem = item.provider_statuses?.find((p: any) => p.service_type === 'hotel');
+          const hasHotel = Boolean(hotelItem || details?.hotel_included || details?.accommodation);
+          const hotelSt = hotelItem?.status || 'pending';
+
+          const vehicleItem = item.provider_statuses?.find((p: any) => p.service_type === 'vehicle');
+          const hasVehicle = Boolean(vehicleItem || details?.rental_included || details?.rental);
+          const vehicleSt = vehicleItem?.status || 'pending';
+
+          return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 7, marginHorizontal: 12, marginTop: 8, borderRadius: 8, backgroundColor: isDark ? '#1E2330' : '#F1F5F9' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSub }}>Providers:</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {/* Guide Provider */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Text style={{ fontSize: 11 }}>🧑‍💼</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: guideSt === 'confirmed' ? '#059669' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                    {guideSt === 'confirmed' ? '✓' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '✕' : '⏳')}
+                  </Text>
+                </View>
+
+                {/* Hotel Provider (only rendered if included) */}
+                {hasHotel ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                    <Text style={{ fontSize: 11 }}>🏨</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: hotelSt === 'confirmed' ? '#059669' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                      {hotelSt === 'confirmed' ? '✓' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '✕' : '⏳')}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* Vehicle Provider (only rendered if included) */}
+                {hasVehicle ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                    <Text style={{ fontSize: 11 }}>🛵</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: vehicleSt === 'confirmed' ? '#059669' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                      {vehicleSt === 'confirmed' ? '✓' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '✕' : '⏳')}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          );
+        })()}
 
         {/* Dates & Pax Grid */}
         <View style={[styles.pkgDatesGrid, { borderColor: colors.border, backgroundColor: isDark ? '#1E233044' : '#F8FAFC' }]}>
@@ -861,26 +928,26 @@ export default function TripsScreen() {
             </TouchableOpacity>
           ) : null}
 
-          {isCompleted ? (
+          {isCompleted || item.is_completed || overallStatus === 'completed' ? (
             <View style={styles.pkgActionRow}>
-              {item.can_review ? (
+              {item.can_review || overallStatus === 'completed' ? (
                 <TouchableOpacity
                   style={[styles.attractionActionBtn, { flex: 1, borderColor: colors.primary, paddingVertical: 9 }]}
                   activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
                 >
                   <Ionicons name="star-outline" size={14} color={colors.primary} />
-                  <Text style={[styles.attractionActionText, { color: colors.primary, fontSize: 12 }]}>Rate package</Text>
+                  <Text style={[styles.attractionActionText, { color: colors.primary, fontSize: 12 }]}>Leave Review</Text>
                 </TouchableOpacity>
               ) : null}
-              {item.can_report ? (
+              {item.can_report || overallStatus === 'completed' ? (
                 <TouchableOpacity
                   style={[styles.attractionActionBtn, { flex: 1, borderColor: '#EF4444', paddingVertical: 9 }]}
                   activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } })}
                 >
                   <Ionicons name="flag-outline" size={14} color="#EF4444" />
-                  <Text style={[styles.attractionActionText, { color: '#EF4444', fontSize: 12 }]}>Report issue</Text>
+                  <Text style={[styles.attractionActionText, { color: '#EF4444', fontSize: 12 }]}>Report an Issue</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -1773,10 +1840,92 @@ export default function TripsScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 18, paddingBottom: 24 }}>
-              {selectedPackageDetails ? (
-                <>
+              {selectedPackageDetails ? (() => {
+                const details = selectedPackageDetails.package_details;
+                const pkgRef = selectedPackageDetails.package_booking_ref || `BK-${selectedPackageDetails.id}`;
+                const overallStatus = (selectedPackageDetails.package_overall_status || selectedPackageDetails.status || 'pending').toLowerCase();
+                const guideName = selectedPackageDetails.guide_name || details?.guide?.name || 'Marc Repuesto';
+                const guideAvatar = selectedPackageDetails.guide_avatar || details?.guide?.avatar || '';
+
+                const guideItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'guide');
+                const guideSt = guideItem?.status || (overallStatus === 'confirmed' ? 'confirmed' : 'pending');
+
+                const hotelItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'hotel');
+                const hasHotel = Boolean(hotelItem || details?.hotel_included || details?.accommodation);
+                const hotelSt = hotelItem?.status || (overallStatus === 'confirmed' ? 'confirmed' : 'pending');
+                const hotelObj = details?.accommodation || details?.accommodationDetail;
+
+                const vehicleItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'vehicle');
+                const hasVehicle = Boolean(vehicleItem || details?.rental_included || details?.rental);
+                const vehicleSt = vehicleItem?.status || (details?.rental_request_status === 'approved' ? 'confirmed' : (overallStatus === 'confirmed' ? 'confirmed' : 'pending'));
+                const vehicleObj = details?.rental || details?.rentalDetail;
+
+                const inclusionsList: any[] = Array.isArray(details?.inclusions) ? details.inclusions : [];
+                const tourActivities = inclusionsList.filter((inc: any) => inc.type === 'attraction' || inc.type === 'activity');
+
+                return (
+                  <>
+                    {/* Provider Booking Approvals Status Card */}
+                    <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={[styles.detailSectionTitle, { color: colors.text, marginBottom: 0 }]}>Provider Booking Approvals</Text>
+                        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: overallStatus === 'confirmed' ? '#ECFDF5' : (overallStatus === 'cancelled' || overallStatus === 'refunded' ? '#FEF2F2' : '#EFF6FF') }}>
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: overallStatus === 'confirmed' ? '#059669' : (overallStatus === 'cancelled' || overallStatus === 'refunded' ? '#DC2626' : (overallStatus === 'partially_confirmed' ? '#2563EB' : '#D97706')) }}>
+                            {overallStatus === 'confirmed' ? 'ALL CONFIRMED' : (overallStatus === 'cancelled' || overallStatus === 'refunded' ? 'CANCELLED' : (overallStatus === 'partially_confirmed' ? 'PARTIALLY CONFIRMED' : 'PENDING APPROVALS'))}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={{ gap: 8, marginTop: 4 }}>
+                        {/* Guide */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={{ fontSize: 15 }}>🧑‍💼</Text>
+                            <View>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Tour Guide Host</Text>
+                              <Text style={{ fontSize: 11, color: colors.textSub }}>{guideName}</Text>
+                            </View>
+                          </View>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: guideSt === 'confirmed' ? '#059669' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                            {guideSt === 'confirmed' ? '✓ Confirmed' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '✕ Declined' : '⏳ Pending')}
+                          </Text>
+                        </View>
+
+                        {/* Hotel */}
+                        {hasHotel ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Text style={{ fontSize: 15 }}>🏨</Text>
+                              <View>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Hotel Accommodation</Text>
+                                <Text style={{ fontSize: 11, color: colors.textSub }}>{hotelObj?.name || hotelObj?.hotel_name || 'Partner Hotel'}</Text>
+                              </View>
+                            </View>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: hotelSt === 'confirmed' ? '#059669' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                              {hotelSt === 'confirmed' ? '✓ Confirmed' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '✕ Declined' : '⏳ Pending')}
+                            </Text>
+                          </View>
+                        ) : null}
+
+                        {/* Vehicle Rental */}
+                        {hasVehicle ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Text style={{ fontSize: 15 }}>🛵</Text>
+                              <View>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Vehicle Transportation</Text>
+                                <Text style={{ fontSize: 11, color: colors.textSub }}>{vehicleObj?.name || vehicleObj?.vehicle_name || 'Rental Vehicle'}</Text>
+                              </View>
+                            </View>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: vehicleSt === 'confirmed' ? '#059669' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                              {vehicleSt === 'confirmed' ? '✓ Confirmed' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '✕ Declined' : '⏳ Pending')}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+
                   {/* Guide Host Card */}
-                  <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border }]}>
+                  <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border, marginTop: 12 }]}>
                     <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Assigned Tour Guide Host</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
                       {selectedPackageDetails.guide_avatar ? (
@@ -1802,65 +1951,124 @@ export default function TripsScreen() {
                     {/* Activities & Attractions */}
                     <View style={{ marginTop: 10 }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary, textTransform: 'uppercase' }}>Tours &amp; Attractions Included</Text>
-                      <View style={{ marginTop: 6, gap: 6 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                          <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>Kawasan Falls Natural Park &amp; River Trek</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                          <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>Full Kawasan Canyoneering &amp; 7 Cliff Jumps</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                          <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>Moalboal Sardine Run &amp; Sea Turtle Snorkeling</Text>
-                        </View>
+                      <View style={{ marginTop: 8, gap: 8 }}>
+                        {tourActivities.length > 0 ? (
+                          tourActivities.map((act: any, idx: number) => (
+                            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                              <Ionicons name="checkmark-circle" size={16} color="#10B981" style={{ marginTop: 1 }} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }}>{act.title}</Text>
+                                {act.subtitle ? (
+                                  <Text style={{ fontSize: 11, color: colors.textSub, marginTop: 1 }}>{act.subtitle}</Text>
+                                ) : null}
+                              </View>
+                            </View>
+                          ))
+                        ) : (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                            <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>
+                              {selectedPackageDetails.listing_title}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     </View>
 
                     {/* Accommodation */}
                     <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#D97706', textTransform: 'uppercase' }}>Hotel Stay Accommodation</Text>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>Sea Breeze Oceanfront Resort</Text>
-                      <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Deluxe Queen Room (Balcony with Sea &amp; Pool View) ┬╖ 2 Nights</Text>
-                      <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>Check-in: Day 1 from 02:00 PM ┬╖ Check-out: Day 3 at 12:00 PM</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: hasHotel ? '#D97706' : colors.textMute, textTransform: 'uppercase' }}>Hotel Stay Accommodation</Text>
+                      {hasHotel ? (
+                        <>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>
+                            {hotelObj?.name || hotelObj?.hotel_name || selectedPackageDetails.room_name || 'Partner Hotel'}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                            {hotelObj?.roomType || hotelObj?.room_name || 'Selected Room'} · {selectedPackageDetails.nights ?? details?.duration_nights ?? 1} Night{((selectedPackageDetails.nights ?? details?.duration_nights ?? 1) > 1) ? 's' : ''}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>
+                            Check-in: {formatDate(selectedPackageDetails.check_in_date || selectedPackageDetails.booking_date)} from 02:00 PM · Check-out: {formatDate(selectedPackageDetails.check_out_date || selectedPackageDetails.booking_date)} at 12:00 PM
+                          </Text>
+                        </>
+                      ) : (
+                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4, fontStyle: 'italic' }}>
+                          No hotel accommodation bundled in this package.
+                        </Text>
+                      )}
                     </View>
 
                     {/* Transport */}
                     <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#2563EB', textTransform: 'uppercase' }}>Rental Transportation</Text>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>Yamaha NMAX 155cc Automatic Scooter</Text>
-                      <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>3 Full Days ┬╖ 2 DOT Helmets &amp; Phone Mount Included</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: hasVehicle ? '#2563EB' : colors.textMute, textTransform: 'uppercase' }}>Rental Transportation</Text>
+                      {hasVehicle ? (
+                        <>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>
+                            {vehicleObj?.name || vehicleObj?.vehicle_name || 'Partner Rental Vehicle'}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                            {selectedPackageDetails.days_count ?? details?.duration_days ?? 1} Full Days · {vehicleObj?.vehicle_type || 'Vehicle'} · Handover Included
+                          </Text>
+                        </>
+                      ) : (
+                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4, fontStyle: 'italic' }}>
+                          No rental vehicle bundled in this package.
+                        </Text>
+                      )}
                     </View>
                   </View>
 
                   {/* Day-by-Day Itinerary */}
                   <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border, marginTop: 12 }]}>
                     <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Day-by-Day Itinerary</Text>
-                    <View style={{ marginTop: 8, gap: 10 }}>
-                      <View>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Day 1: Coastal Arrival &amp; Turtle Snorkel</Text>
-                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
-                          01:00 PM: Resort check-in &amp; scooter handover briefing{"\n"}
-                          03:00 PM: Guided snorkeling session at Panagsama marine sanctuary{"\n"}
-                          05:30 PM: Golden hour sunset viewing along beach strip
+                    <View style={{ marginTop: 8, gap: 12 }}>
+                      {Array.isArray(details?.itinerary) && details.itinerary.length > 0 ? (
+                        details.itinerary.map((dayItem: any, dayIdx: number) => {
+                          const dayNum = dayItem.day ?? (dayIdx + 1);
+                          const dayTitle = dayItem.title ?? `Day ${dayNum}`;
+                          const dayDesc = dayItem.description ?? '';
+                          const scheduleList = Array.isArray(dayItem.schedule) ? dayItem.schedule : [];
+                          const highlightsList = Array.isArray(dayItem.highlights) ? dayItem.highlights : [];
+
+                          return (
+                            <View key={dayIdx} style={{ paddingBottom: dayIdx < details.itinerary.length - 1 ? 10 : 0, borderBottomWidth: dayIdx < details.itinerary.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                              <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>{dayTitle}</Text>
+                              {dayDesc ? (
+                                <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>{dayDesc}</Text>
+                              ) : null}
+
+                              {scheduleList.length > 0 ? (
+                                <View style={{ marginTop: 6, gap: 4 }}>
+                                  {scheduleList.map((slot: any, sIdx: number) => {
+                                    const timeStr = typeof slot === 'string' ? '' : (slot.time || '');
+                                    const actStr = typeof slot === 'string' ? slot : (slot.activity || slot.title || '');
+                                    return (
+                                      <Text key={sIdx} style={{ fontSize: 12, color: colors.textSub }}>
+                                        {timeStr ? <Text style={{ fontWeight: '700', color: colors.text }}>{timeStr}: </Text> : null}
+                                        {actStr}
+                                      </Text>
+                                    );
+                                  })}
+                                </View>
+                              ) : null}
+
+                              {highlightsList.length > 0 ? (
+                                <View style={{ marginTop: 6, gap: 3 }}>
+                                  {highlightsList.map((hl: string, hIdx: number) => (
+                                    <View key={hIdx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                      <Ionicons name="sparkles-outline" size={12} color="#10B981" />
+                                      <Text style={{ fontSize: 11, color: colors.textMute }}>{hl}</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              ) : null}
+                            </View>
+                          );
+                        })
+                      ) : (
+                        <Text style={{ fontSize: 12, color: colors.textSub, fontStyle: 'italic' }}>
+                          Guided daily schedule coordinated with your host upon arrival.
                         </Text>
-                      </View>
-                      <View>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Day 2: Full Kawasan Canyoneering Expedition</Text>
-                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
-                          08:00 AM: Scenic coastal scooter ride to Badian baseline{"\n"}
-                          09:00 AM: Canyoneering adventure &amp; cliff jumps with certified guide{"\n"}
-                          01:30 PM: Recovery hot lunch &amp; waterfall swim
-                        </Text>
-                      </View>
-                      <View>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>Day 3: Coastal Leisure &amp; Checkout</Text>
-                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
-                          08:30 AM: Complimentary resort breakfast &amp; swimming pool access{"\n"}
-                          12:00 PM: Resort checkout &amp; scooter return handover
-                        </Text>
-                      </View>
+                      )}
                     </View>
                   </View>
 
@@ -1868,15 +2076,43 @@ export default function TripsScreen() {
                   <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border, marginTop: 12 }]}>
                     <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Meeting &amp; Departure Point</Text>
                     <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text, marginTop: 4 }}>
-                      Panagsama Beach, Moalboal, Cebu
+                      {details?.meeting_point || selectedPackageDetails.address || selectedPackageDetails.area || 'Designated Meeting Point'}
                     </Text>
                     <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
-                      Your guide will meet you at the resort lobby or coordinate scooter delivery upon your arrival.
+                      Your guide will meet you at the designated location or coordinate directly with you upon arrival.
                     </Text>
                   </View>
 
                   {/* Action Buttons */}
                   <View style={{ marginTop: 18, gap: 10 }}>
+                    {(selectedPackageDetails.is_completed || selectedPackageDetails.status === 'completed' || selectedPackageDetails.package_overall_status === 'completed' || selectedPackageDetails.can_review) ? (
+                      <TouchableOpacity
+                        style={[styles.attractionActionBtn, { borderColor: colors.primary, backgroundColor: isDark ? '#1E2330' : '#F8FAFC', paddingVertical: 12 }]}
+                        onPress={() => {
+                          const item = selectedPackageDetails;
+                          setSelectedPackageDetails(null);
+                          router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } });
+                        }}
+                      >
+                        <Ionicons name="star-outline" size={16} color={colors.primary} />
+                        <Text style={[styles.attractionActionText, { color: colors.primary }]}>Leave Review</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {(selectedPackageDetails.is_completed || selectedPackageDetails.status === 'completed' || selectedPackageDetails.package_overall_status === 'completed' || selectedPackageDetails.can_report) ? (
+                      <TouchableOpacity
+                        style={[styles.attractionActionBtn, { borderColor: '#EF4444', backgroundColor: isDark ? '#1E2330' : '#F8FAFC', paddingVertical: 12 }]}
+                        onPress={() => {
+                          const item = selectedPackageDetails;
+                          setSelectedPackageDetails(null);
+                          router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } });
+                        }}
+                      >
+                        <Ionicons name="flag-outline" size={16} color="#EF4444" />
+                        <Text style={[styles.attractionActionText, { color: '#EF4444' }]}>Report an Issue</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
                     <TouchableOpacity
                       style={[styles.attractionActionBtn, { borderColor: colors.primary, backgroundColor: colors.primary, paddingVertical: 12 }]}
                       onPress={() => {
@@ -1897,7 +2133,8 @@ export default function TripsScreen() {
                     </TouchableOpacity>
                   </View>
                 </>
-              ) : null}
+              );
+            })() : null}
             </ScrollView>
           </View>
         </View>
@@ -1916,7 +2153,7 @@ export default function TripsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>Official Payment Receipt</Text>
                 <Text style={[styles.modalSubtitle, { color: colors.textSub }]}>
-                  Booking Ref: BK-{selectedPackageReceipt?.id}
+                  Booking Ref: {selectedPackageReceipt?.package_booking_ref || ('BK-' + selectedPackageReceipt?.id)}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setSelectedPackageReceipt(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
@@ -1932,18 +2169,19 @@ export default function TripsScreen() {
                 const fees = details?.environmental_fees ?? 250;
                 const discount = details?.voucher_discount ?? 0;
                 const voucherCode = details?.voucher_code ?? '';
+                const isConfirmed = (selectedPackageReceipt.package_overall_status || selectedPackageReceipt.status) === 'confirmed';
 
                 return (
                   <>
                     {/* Status Badge */}
-                    <View style={[styles.historyBanner, { backgroundColor: isDark ? '#064E3B33' : '#ECFDF5', borderColor: '#10B98166', marginTop: 0, marginBottom: 14 }]}>
-                      <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                    <View style={[styles.historyBanner, { backgroundColor: isConfirmed ? (isDark ? '#064E3B33' : '#ECFDF5') : (isDark ? '#78350F22' : '#FFFBEB'), borderColor: isConfirmed ? '#10B98166' : '#F59E0B66', marginTop: 0, marginBottom: 14 }]}>
+                      <Ionicons name={isConfirmed ? "checkmark-circle" : "time-outline"} size={18} color={isConfirmed ? "#059669" : "#D97706"} />
                       <View style={{ flex: 1, marginLeft: 8 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: isDark ? '#34D399' : '#065F46' }}>
-                          Γ£ô PAYMENT CONFIRMED &amp; SETTLED
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: isConfirmed ? (isDark ? '#34D399' : '#065F46') : (isDark ? '#FBBF24' : '#B45309') }}>
+                          {isConfirmed ? '✓ PAYMENT SETTLED & ALL CONFIRMED' : '⏳ PAYMENT RECEIVED · AWAITING PROVIDERS'}
                         </Text>
-                        <Text style={{ fontSize: 11, color: isDark ? '#A7F3D0' : '#047857', marginTop: 1 }}>
-                          Total package reservation is fully paid. No balances due.
+                        <Text style={{ fontSize: 11, color: isConfirmed ? (isDark ? '#A7F3D0' : '#047857') : (isDark ? '#FDE68A' : '#92400E'), marginTop: 1 }}>
+                          {isConfirmed ? 'All participating service providers have accepted. Package is fully confirmed.' : 'Total package payment is complete. Booking requests are pending provider confirmations.'}
                         </Text>
                       </View>
                     </View>
@@ -2015,8 +2253,8 @@ export default function TripsScreen() {
 
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
                         <Text style={{ fontSize: 12, color: colors.textMute }}>Booking Status</Text>
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669' }}>
-                          CONFIRMED
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: ((selectedPackageReceipt.package_overall_status || selectedPackageReceipt.status) === 'confirmed') ? '#059669' : (((selectedPackageReceipt.package_overall_status || selectedPackageReceipt.status) === 'cancelled' || (selectedPackageReceipt.package_overall_status || selectedPackageReceipt.status) === 'refunded') ? '#DC2626' : '#D97706'), textTransform: 'uppercase' }}>
+                          {selectedPackageReceipt.package_overall_status || selectedPackageReceipt.status || 'PENDING'}
                         </Text>
                       </View>
                     </View>

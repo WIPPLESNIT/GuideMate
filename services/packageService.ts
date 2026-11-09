@@ -97,6 +97,13 @@ export type TravelPackage = {
     confirmation: string;
     requirements: string[];
   };
+  has_active_booking?: boolean;
+  active_booking?: {
+    id: number;
+    status: string;
+    overall_status: string;
+    ref: string;
+  } | null;
 };
 
 export type PackageBookingRequest = {
@@ -903,21 +910,28 @@ export async function getPackages(query?: {
 
 export async function getPackageById(idOrSlug: string): Promise<TravelPackage | null> {
   try {
-    const url = `${API_BASE_URL}/api/packages/${encodeURIComponent(idOrSlug)}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (response.ok) {
-      const json = await response.json();
-      if (json.package) {
-        return json.package;
-      }
+    await restoreSession().catch(() => null);
+    const json = await api<{ package?: TravelPackage }>(`/api/packages/${encodeURIComponent(idOrSlug)}`);
+    if (json && json.package) {
+      return json.package;
     }
   } catch {
-    // Graceful fallback
+    // Graceful fallback to unauthenticated fetch / mock
+    try {
+      const url = `${API_BASE_URL}/api/packages/${encodeURIComponent(idOrSlug)}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (response.ok) {
+        const json = await response.json();
+        if (json.package) {
+          return json.package;
+        }
+      }
+    } catch {}
   }
 
   const found = MOCK_PACKAGES.find((p) => p.id === idOrSlug || p.slug === idOrSlug);
