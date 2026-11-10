@@ -160,25 +160,28 @@ export default function PackageDetailScreen() {
 
   const showcasePhotos = useMemo(() => {
     if (!packageData) return [];
-    const list: any[] = coverSource ? [coverSource] : [];
-    if (Array.isArray(packageData.gallery) && packageData.gallery.length > 0) {
+    const list: any[] = [];
+    const seen = new Set<string>();
+
+    const addPhoto = (p: any) => {
+      if (!p) return;
+      const key = typeof p === 'string' ? p : (p.uri ? String(p.uri) : JSON.stringify(p));
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(typeof p === 'string' ? { uri: resolveImage(p) } : p);
+      }
+    };
+
+    if (packageData.coverImage) {
+      addPhoto(packageData.coverImage);
+    }
+    if (Array.isArray(packageData.gallery)) {
       for (const g of packageData.gallery) {
-        if (g && typeof g === 'string') {
-          list.push({ uri: resolveImage(g) });
-        }
+        addPhoto(g);
       }
     }
-    if (list.length < 2) {
-      if (packageData.category === 'island-escape' || packageData.destination?.toLowerCase().includes('moalboal')) {
-        list.push(require('../../assets/images/places/sardine.jpg'));
-        list.push(require('../../assets/images/places/bantayan.jpg'));
-      } else if (packageData.destination?.toLowerCase().includes('cebu') || packageData.category === 'cultural') {
-        list.push(require('../../assets/images/places/templeofleah.jpg'));
-        list.push(require('../../assets/images/places/magellan.jpg'));
-      } else {
-        list.push(require('../../assets/images/places/whaleshark.jpg'));
-        list.push(require('../../assets/images/places/osmena.jpg'));
-      }
+    if (list.length === 0 && coverSource) {
+      list.push(coverSource);
     }
     return list;
   }, [coverSource, packageData]);
@@ -622,12 +625,12 @@ export default function PackageDetailScreen() {
               onPress={handleShowRating}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={`Rating: ${packageData.rating > 0 ? packageData.rating.toFixed(1) : '4.9'} stars. Click to view reviews.`}
+              accessibilityLabel={`Rating: ${packageData.rating > 0 && packageData.reviewCount > 0 ? packageData.rating.toFixed(1) : 'No Reviews Yet'}`}
             >
               <Ionicons name="star" size={18} color={colors.primary} />
               <Text style={[styles.specLabel, { color: colors.textMute }]}>RATING</Text>
-              <Text style={[styles.specValue, { color: colors.primary }]}>
-                {packageData.rating > 0 ? packageData.rating.toFixed(1) : '4.9'}
+              <Text style={[styles.specValue, { color: colors.primary, fontSize: packageData.rating > 0 && packageData.reviewCount > 0 ? 13 : 11 }]}>
+                {packageData.rating > 0 && packageData.reviewCount > 0 ? `${packageData.rating.toFixed(1)} (${packageData.reviewCount})` : 'No Reviews Yet'}
               </Text>
             </TouchableOpacity>
           </View>

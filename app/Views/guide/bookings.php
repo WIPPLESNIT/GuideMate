@@ -26,8 +26,8 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                 </div>
             <?php endif; ?>
 
-            <div class="panel <?= $isHotel ? 'hotel-reservations-panel' : 'guide-bookings-panel' ?>">
-                <div class="panel-body <?= $isHotel ? 'hotel-reservations-wrap' : 'guide-bookings-wrap' ?>" style="padding:0;">
+            <div class="panel <?= $isHotel ? 'hotel-reservations-panel' : 'guide-bookings-panel' ?>" style="overflow:visible;">
+                <div class="panel-body <?= $isHotel ? 'hotel-reservations-wrap' : 'guide-bookings-wrap' ?>" style="padding:0;overflow:visible;">
                     <?php if ($bookings === []): ?>
                         <div class="empty-state" style="padding:3rem 1rem;"><div class="big"><?= $isHotel ? '🏨' : '📅' ?></div><p><?= $isHotel ? 'No hotel reservations yet.' : e(__('d_no_bookings', 'No bookings yet.')) ?></p></div>
                     <?php elseif ($isHotel): ?>

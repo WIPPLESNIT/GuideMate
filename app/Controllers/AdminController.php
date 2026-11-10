@@ -531,7 +531,7 @@ final class AdminController extends Controller
                 $hotel = Database::first("
                     SELECT hr.id as room_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.image as room_image, hr.amenities as room_amenities,
                            l.id as hotel_listing_id, l.user_id as user_id, l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
-                           l.check_in_time, l.check_out_time, l.included as hotel_included, u.name as partner_name, u.id as partner_id, u.email as partner_email, u.phone as partner_phone
+                           l.included as hotel_included, u.name as partner_name, u.id as partner_id, u.email as partner_email, u.phone as partner_phone
                     FROM hotel_rooms hr
                     JOIN listings l ON l.id = hr.listing_id
                     JOIN users u ON u.id = l.user_id
@@ -550,7 +550,7 @@ final class AdminController extends Controller
                         $hotel = Database::first("
                             SELECT hr.id as room_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.image as room_image, hr.amenities as room_amenities,
                                    l.id as hotel_listing_id, l.user_id as user_id, l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
-                                   l.check_in_time, l.check_out_time, l.included as hotel_included, u.name as partner_name, u.id as partner_id, u.email as partner_email, u.phone as partner_phone
+                                   l.included as hotel_included, u.name as partner_name, u.id as partner_id, u.email as partner_email, u.phone as partner_phone
                             FROM hotel_rooms hr
                             JOIN listings l ON l.id = hr.listing_id
                             JOIN users u ON u.id = l.user_id

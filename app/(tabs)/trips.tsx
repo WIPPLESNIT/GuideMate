@@ -320,6 +320,11 @@ export default function TripsScreen() {
     const list: TripUnifiedItem[] = [];
 
     for (const b of bookings) {
+      // Sub-bookings of a parent travel package should never appear as a separate top-level trip card
+      if (typeof b.notes_raw === 'string' && b.notes_raw.includes('"package_sub_booking"')) {
+        continue;
+      }
+
       const isHistory = isTripHistory(b);
       const isPkg = Boolean(
         b.is_package ||
@@ -1852,13 +1857,31 @@ export default function TripsScreen() {
 
                 const hotelItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'hotel');
                 const hasHotel = Boolean(hotelItem || details?.hotel_included || details?.accommodation);
-                const hotelSt = hotelItem?.status || (overallStatus === 'confirmed' ? 'confirmed' : 'pending');
+                const hotelSt = hotelItem?.hotel_reservation_status || hotelItem?.status || (overallStatus === 'confirmed' ? 'confirmed' : 'pending');
                 const hotelObj = details?.accommodation || details?.accommodationDetail;
 
                 const vehicleItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'vehicle');
                 const hasVehicle = Boolean(vehicleItem || details?.rental_included || details?.rental);
-                const vehicleSt = vehicleItem?.status || (details?.rental_request_status === 'approved' ? 'confirmed' : (overallStatus === 'confirmed' ? 'confirmed' : 'pending'));
+                const vehicleSt = vehicleItem?.rental_request_status || vehicleItem?.status || (details?.rental_request_status === 'approved' ? 'confirmed' : (overallStatus === 'confirmed' ? 'confirmed' : 'pending'));
                 const vehicleObj = details?.rental || details?.rentalDetail;
+
+                const guideConfirmed = guideSt === 'confirmed' || guideSt === 'completed';
+                const hotelConfirmed = !hasHotel || hotelSt === 'confirmed' || hotelSt === 'checked_in' || hotelSt === 'completed';
+                const vehicleConfirmed = !hasVehicle || vehicleSt === 'confirmed' || vehicleSt === 'approved' || vehicleSt === 'contacted' || vehicleSt === 'completed';
+
+                const isAnyCancelled = guideSt === 'cancelled' || guideSt === 'rejected' || (hasHotel && (hotelSt === 'cancelled' || hotelSt === 'rejected')) || (hasVehicle && (vehicleSt === 'cancelled' || vehicleSt === 'rejected'));
+                const isAllConfirmed = guideConfirmed && hotelConfirmed && vehicleConfirmed;
+                const isPartiallyConfirmed = !isAllConfirmed && (guideConfirmed || (hasHotel && hotelConfirmed) || (hasVehicle && vehicleConfirmed));
+
+                const approvalsBadgeText = isAnyCancelled
+                  ? 'CANCELLED'
+                  : (isAllConfirmed ? 'ALL CONFIRMED' : (isPartiallyConfirmed ? 'PARTIALLY CONFIRMED' : 'PENDING APPROVALS'));
+                const approvalsBadgeBg = isAnyCancelled
+                  ? '#FEF2F2'
+                  : (isAllConfirmed ? '#ECFDF5' : '#EFF6FF');
+                const approvalsBadgeColor = isAnyCancelled
+                  ? '#DC2626'
+                  : (isAllConfirmed ? '#059669' : (isPartiallyConfirmed ? '#2563EB' : '#D97706'));
 
                 const inclusionsList: any[] = Array.isArray(details?.inclusions) ? details.inclusions : [];
                 const tourActivities = inclusionsList.filter((inc: any) => inc.type === 'attraction' || inc.type === 'activity');
@@ -1869,9 +1892,9 @@ export default function TripsScreen() {
                     <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border }]}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                         <Text style={[styles.detailSectionTitle, { color: colors.text, marginBottom: 0 }]}>Provider Booking Approvals</Text>
-                        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: overallStatus === 'confirmed' ? '#ECFDF5' : (overallStatus === 'cancelled' || overallStatus === 'refunded' ? '#FEF2F2' : '#EFF6FF') }}>
-                          <Text style={{ fontSize: 11, fontWeight: '800', color: overallStatus === 'confirmed' ? '#059669' : (overallStatus === 'cancelled' || overallStatus === 'refunded' ? '#DC2626' : (overallStatus === 'partially_confirmed' ? '#2563EB' : '#D97706')) }}>
-                            {overallStatus === 'confirmed' ? 'ALL CONFIRMED' : (overallStatus === 'cancelled' || overallStatus === 'refunded' ? 'CANCELLED' : (overallStatus === 'partially_confirmed' ? 'PARTIALLY CONFIRMED' : 'PENDING APPROVALS'))}
+                        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: approvalsBadgeBg }}>
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: approvalsBadgeColor }}>
+                            {approvalsBadgeText}
                           </Text>
                         </View>
                       </View>
@@ -1885,8 +1908,8 @@ export default function TripsScreen() {
                               <Text style={{ fontSize: 11, color: colors.textSub }}>{guideName}</Text>
                             </View>
                           </View>
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: guideSt === 'confirmed' ? '#059669' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '#DC2626' : '#D97706') }}>
-                            {guideSt === 'confirmed' ? '✓ Confirmed' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '✕ Declined' : '⏳ Pending')}
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: guideConfirmed ? '#059669' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                            {guideSt === 'completed' ? '✓ Completed' : (guideSt === 'confirmed' ? '✓ Confirmed' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '✕ Declined' : '⏳ Pending'))}
                           </Text>
                         </View>
 
@@ -1900,8 +1923,8 @@ export default function TripsScreen() {
                                 <Text style={{ fontSize: 11, color: colors.textSub }}>{hotelObj?.name || hotelObj?.hotel_name || 'Partner Hotel'}</Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: hotelSt === 'confirmed' ? '#059669' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '#DC2626' : '#D97706') }}>
-                              {hotelSt === 'confirmed' ? '✓ Confirmed' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '✕ Declined' : '⏳ Pending')}
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: hotelConfirmed ? '#059669' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                              {hotelSt === 'checked_in' ? '✓ Checked In' : (hotelSt === 'completed' ? '✓ Completed' : (hotelSt === 'confirmed' ? '✓ Confirmed' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '✕ Declined' : '⏳ Pending')))}
                             </Text>
                           </View>
                         ) : null}
@@ -1916,8 +1939,8 @@ export default function TripsScreen() {
                                 <Text style={{ fontSize: 11, color: colors.textSub }}>{vehicleObj?.name || vehicleObj?.vehicle_name || 'Rental Vehicle'}</Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: vehicleSt === 'confirmed' ? '#059669' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '#DC2626' : '#D97706') }}>
-                              {vehicleSt === 'confirmed' ? '✓ Confirmed' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '✕ Declined' : '⏳ Pending')}
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: vehicleConfirmed ? '#059669' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '#DC2626' : '#D97706') }}>
+                              {vehicleSt === 'contacted' ? '✓ Contacted' : (vehicleSt === 'completed' ? '✓ Completed' : ((vehicleSt === 'confirmed' || vehicleSt === 'approved') ? '✓ Confirmed' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '✕ Declined' : '⏳ Pending')))}
                             </Text>
                           </View>
                         ) : null}

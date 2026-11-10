@@ -8,7 +8,7 @@ import { Chip, ScreenTitle } from '../../components/ui';
 import { getSession } from '../../lib/authStore';
 import { useTheme } from '../../lib/theme';
 import { VOUCHERS, formatVoucherMinimum } from '../../lib/vouchers';
-import { ApiVoucher, getVouchers } from '../../services/api';
+import { ApiVoucher, getVouchers, redeemVoucher } from '../../services/api';
 
 const LOCATIONS = ['Philippines'];
 

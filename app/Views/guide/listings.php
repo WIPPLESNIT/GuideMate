@@ -730,6 +730,7 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
             { id: 'nl_capacity', label: 'Slots / Capacity' }
         ];
         form.addEventListener('submit', function (e) {
+            e.preventDefault();
             var missing = [];
             required.forEach(function (f) {
                 var el = document.getElementById(f.id);
@@ -738,11 +739,67 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                 if (empty) { missing.push(f.label); }
             });
             if (missing.length > 0) {
-                e.preventDefault();
                 errorBox.textContent = 'Please fill in: ' + missing.join(', ') + '.';
                 errorBox.style.display = 'block';
                 errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
             }
+
+            var origBtnText = submitBtn ? submitBtn.textContent : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Saving...';
+            }
+            clearListingError();
+
+            var fd = new FormData(form);
+            fetch(form.action, {
+                method: 'POST',
+                body: fd,
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(function (res) {
+                return res.json().then(function (data) {
+                    return { ok: res.ok, status: res.status, data: data };
+                }).catch(function () {
+                    return { ok: res.ok, status: res.status, data: {} };
+                });
+            })
+            .then(function (result) {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = origBtnText;
+                }
+                if (result.ok && result.data && (result.data.success || result.data.listing)) {
+                    closeModal();
+                    window.location.reload();
+                } else {
+                    var msg = (result.data && result.data.error)
+                        ? result.data.error
+                        : 'Failed to save changes. Please check all fields and try again.';
+                    if (result.data && result.data.errors && typeof result.data.errors === 'object') {
+                        var errList = Object.values(result.data.errors);
+                        if (errList.length > 0) {
+                            msg = errList.join(' ');
+                        }
+                    }
+                    errorBox.textContent = msg;
+                    errorBox.style.display = 'block';
+                    errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            })
+            .catch(function () {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = origBtnText;
+                }
+                errorBox.textContent = 'A network error occurred while saving. Please try again.';
+                errorBox.style.display = 'block';
+                errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
         });
     }
     <?php if ($openModal): ?>openCreateListingModal();<?php endif; ?>

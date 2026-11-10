@@ -7,6 +7,7 @@ import {
   Image,
   Platform,
   RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -43,6 +44,8 @@ const PackageCardItem = React.memo(function PackageCardItem({
   formatPrice: (amount: number) => string;
 }) {
   const [isFavorited, setIsFavorited] = useState(false);
+  const [cardWidth, setCardWidth] = useState(0);
+  const [activePhotoIdx, setActivePhotoIdx] = useState(0);
 
   const handlePress = useCallback(() => {
     onPress(item);
@@ -52,6 +55,29 @@ const PackageCardItem = React.memo(function PackageCardItem({
     () => getPackageCoverSource(item.localImageKey, item.coverImage),
     [item.localImageKey, item.coverImage]
   );
+
+  const photos = useMemo(() => {
+    const list: any[] = [];
+    const seen = new Set<string>();
+
+    const add = (p: any) => {
+      if (!p) return;
+      const key = typeof p === 'string' ? p : (p.uri ? String(p.uri) : JSON.stringify(p));
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(typeof p === 'string' ? { uri: resolveImage(p) } : p);
+      }
+    };
+
+    if (item.coverImage) add(item.coverImage);
+    if (Array.isArray(item.gallery)) {
+      for (const g of item.gallery) add(g);
+    }
+    if (list.length === 0 && coverSource) {
+      list.push(coverSource);
+    }
+    return list.slice(0, 4);
+  }, [coverSource, item.coverImage, item.gallery]);
 
   return (
     <TouchableOpacity
@@ -66,9 +92,38 @@ const PackageCardItem = React.memo(function PackageCardItem({
       onPress={handlePress}
       activeOpacity={0.9}
     >
-      {/* 1. Cover Photo with Things to Do layout matching Reference Image 1 */}
-      <View style={styles.imageWrap}>
-        <Image source={coverSource} style={styles.cardImage} />
+      {/* 1. Cover Photo / Gallery with deduplicated uploaded photos */}
+      <View
+        style={styles.imageWrap}
+        onLayout={(e) => {
+          const w = e.nativeEvent.layout.width;
+          if (w > 0 && w !== cardWidth) setCardWidth(w);
+        }}
+      >
+        {photos.length > 1 && cardWidth > 0 ? (
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            nestedScrollEnabled={true}
+            onMomentumScrollEnd={(e) => {
+              const w = e.nativeEvent.layoutMeasurement.width;
+              if (w > 0) {
+                const idx = Math.round(e.nativeEvent.contentOffset.x / w);
+                if (idx >= 0 && idx < photos.length) setActivePhotoIdx(idx);
+              }
+            }}
+            style={{ width: '100%', height: '100%' }}
+          >
+            {photos.map((src, idx) => (
+              <View key={idx} style={{ width: cardWidth, height: 190 }}>
+                <Image source={src} style={styles.cardImage} />
+              </View>
+            ))}
+          </ScrollView>
+        ) : (
+          <Image source={photos[0] || coverSource} style={styles.cardImage} />
+        )}
 
         {/* Favorite Heart Top-Left */}
         <TouchableOpacity
@@ -89,6 +144,16 @@ const PackageCardItem = React.memo(function PackageCardItem({
         <View style={styles.ratingPos}>
           <RatingPill rating={item.rating} count={item.reviewCount} />
         </View>
+
+        {/* Photo Counter Pill (shown only when > 1 photo) */}
+        {photos.length > 1 ? (
+          <View style={styles.photoCountPill}>
+            <Ionicons name="images-outline" size={10} color="#FFFFFF" />
+            <Text style={styles.photoCountText}>
+              {activePhotoIdx + 1}/{photos.length}
+            </Text>
+          </View>
+        ) : null}
 
         {/* Location Chip Bottom-Left */}
         {item.destination ? (
@@ -499,6 +564,24 @@ const styles = StyleSheet.create({
     top: 10,
     right: 10,
     zIndex: 5,
+  },
+  photoCountPill: {
+    position: 'absolute',
+    top: 10,
+    left: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    zIndex: 5,
+  },
+  photoCountText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
   heart: {
     position: 'absolute',

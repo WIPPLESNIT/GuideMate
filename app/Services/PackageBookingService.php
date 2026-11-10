@@ -744,10 +744,15 @@ final class PackageBookingService
 
         $pkgRef = (string) $item['package_booking_ref'];
         $mappedAction = match ($action) {
-            'confirm', 'confirm_deposit', 'accept', 'check_in', 'settle_balance' => 'confirm',
+            'settle_balance', 'completed' => 'completed',
+            'confirm', 'confirm_deposit', 'accept', 'check_in' => 'confirm',
             'cancel', 'no_show' => 'cancel',
             default => 'pending',
         };
+
+        if ($action === 'check_in') {
+            Database::run("UPDATE bookings SET hotel_status = 'checked_in' WHERE id = ?", [$bookingId]);
+        }
 
         self::respond($pkgRef, 'hotel', (int) $item['provider_id'], $mappedAction);
     }
@@ -787,9 +792,9 @@ final class PackageBookingService
         }
 
         $pkgRef = (string) $item['package_booking_ref'];
-        $action = in_array($status, ['approved', 'contacted', 'completed'], true)
+        $action = in_array($status, ['approved', 'contacted'], true)
             ? 'confirm'
-            : ($status === 'cancelled' ? 'cancel' : 'pending');
+            : ($status === 'completed' ? 'completed' : ($status === 'cancelled' ? 'cancel' : 'pending'));
 
         self::respond($pkgRef, 'vehicle', (int) $item['provider_id'], $action);
     }
@@ -830,7 +835,7 @@ final class PackageBookingService
             throw new RuntimeException("Package booking service item not found for reference {$pkgRef}.");
         }
 
-        $newStatus = ($action === 'confirm') ? 'confirmed' : 'cancelled';
+        $newStatus = ($action === 'confirm' || $action === 'completed') ? (($action === 'completed') ? 'completed' : 'confirmed') : 'cancelled';
 
         Database::run("
             UPDATE package_booking_items
@@ -838,11 +843,22 @@ final class PackageBookingService
             WHERE id = ?
         ", [$newStatus, $reason, $item['id']]);
 
-        // Keep sub-booking records in sync
+        // Keep sub-booking records in sync without demoting progressed statuses
         if ($item['sub_booking_id'] !== null) {
             $subId = (int) $item['sub_booking_id'];
-            if ($newStatus === 'confirmed') {
-                Database::run("UPDATE bookings SET status = 'confirmed', hotel_status = 'confirmed' WHERE id = ?", [$subId]);
+            if ($newStatus === 'confirmed' || $newStatus === 'completed') {
+                Database::run("
+                    UPDATE bookings
+                    SET status = CASE
+                            WHEN status = 'completed' OR ? = 'completed' THEN 'completed'
+                            ELSE 'confirmed'
+                        END,
+                        hotel_status = CASE
+                            WHEN hotel_status IN ('checked_in', 'completed') THEN hotel_status
+                            ELSE 'confirmed'
+                        END
+                    WHERE id = ?
+                ", [$newStatus, $subId]);
             } else {
                 Database::run("UPDATE bookings SET status = 'cancelled', hotel_status = 'cancelled', cancellation_reason = ? WHERE id = ?", [$reason ?? 'Cancelled by provider', $subId]);
             }
@@ -850,8 +866,15 @@ final class PackageBookingService
 
         if ($item['rental_request_id'] !== null) {
             $rId = (int) $item['rental_request_id'];
-            if ($newStatus === 'confirmed') {
-                Database::run("UPDATE rental_requests SET status = 'approved' WHERE id = ?", [$rId]);
+            if ($newStatus === 'confirmed' || $newStatus === 'completed') {
+                Database::run("
+                    UPDATE rental_requests
+                    SET status = CASE
+                        WHEN status IN ('contacted', 'completed') THEN status
+                        ELSE 'approved'
+                    END
+                    WHERE id = ?
+                ", [$rId]);
             } else {
                 Database::run("UPDATE rental_requests SET status = 'cancelled' WHERE id = ?", [$rId]);
             }
@@ -1115,7 +1138,9 @@ final class PackageBookingService
                    COALESCE(u.email, v_owner.email, h_owner.email, '') AS provider_email,
                    COALESCE(u.phone, v_owner.phone, h_owner.phone, '') AS provider_phone,
                    COALESCE(NULLIF(pbi.provider_id, 0), v_owner.id, h_owner.id, 0) AS resolved_provider_id,
-                   rr.status AS rental_request_status
+                   rr.status AS rental_request_status,
+                   sub_b.hotel_status AS hotel_reservation_status,
+                   sub_b.status AS sub_booking_status
             FROM package_booking_items pbi
             LEFT JOIN users u ON u.id = pbi.provider_id
             LEFT JOIN rental_requests rr ON rr.id = pbi.rental_request_id
@@ -1135,9 +1160,24 @@ final class PackageBookingService
                 Database::run("UPDATE package_booking_items SET provider_id = ? WHERE id = ?", [$realProvId, $it['id']]);
                 $it['provider_id'] = $realProvId;
             }
-            if ($it['service_type'] === 'vehicle' && ($it['rental_request_status'] ?? '') === 'approved' && $it['status'] === 'pending') {
-                Database::run("UPDATE package_booking_items SET status = 'confirmed' WHERE id = ?", [$it['id']]);
-                $it['status'] = 'confirmed';
+            if ($it['service_type'] === 'vehicle') {
+                $rStatus = (string) ($it['rental_request_status'] ?? '');
+                if (in_array($rStatus, ['approved', 'contacted'], true) && $it['status'] === 'pending') {
+                    Database::run("UPDATE package_booking_items SET status = 'confirmed' WHERE id = ?", [$it['id']]);
+                    $it['status'] = 'confirmed';
+                } elseif ($rStatus === 'completed' && $it['status'] !== 'completed') {
+                    Database::run("UPDATE package_booking_items SET status = 'completed' WHERE id = ?", [$it['id']]);
+                    $it['status'] = 'completed';
+                }
+            } elseif ($it['service_type'] === 'hotel') {
+                $hStatus = (string) ($it['hotel_reservation_status'] ?? '');
+                if (in_array($hStatus, ['confirmed', 'checked_in'], true) && $it['status'] === 'pending') {
+                    Database::run("UPDATE package_booking_items SET status = 'confirmed' WHERE id = ?", [$it['id']]);
+                    $it['status'] = 'confirmed';
+                } elseif ($hStatus === 'completed' && $it['status'] !== 'completed') {
+                    Database::run("UPDATE package_booking_items SET status = 'completed' WHERE id = ?", [$it['id']]);
+                    $it['status'] = 'completed';
+                }
             }
         }
         unset($it);

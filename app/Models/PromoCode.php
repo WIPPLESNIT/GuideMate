@@ -105,10 +105,24 @@ final class PromoCode
     public static function catalogForUser(?int $userId): array
     {
         self::ensureTables();
-        $used = $userId !== null ? self::codesRedeemedBy($userId) : [];
+        $redeemed = [];
+        $used = [];
+        if ($userId !== null) {
+            $rows = Database::all('SELECT code, booking_id FROM voucher_redemptions WHERE user_id = ?', [$userId]);
+            foreach ($rows as $r) {
+                $c = strtoupper((string) $r['code']);
+                $redeemed[] = $c;
+                if ($r['booking_id'] !== null) {
+                    $used[] = $c;
+                }
+            }
+        }
         $out = [];
         foreach (self::SALE_CATALOG as $code => $item) {
+            $c = strtoupper($code);
             $until = (string) $item['valid_until'];
+            $isRedeemed = in_array($c, $redeemed, true);
+            $isUsed = in_array($c, $used, true);
             $out[] = [
                 'code' => $code,
                 'label' => (string) $item['label'],
@@ -117,7 +131,8 @@ final class PromoCode
                 'discount_percent' => $item['discount_percent'],
                 'discount_amount' => $item['discount_amount'],
                 'expires' => 'Valid until ' . date('M j', strtotime($until)),
-                'used' => in_array($code, $used, true),
+                'redeemed' => $isRedeemed,
+                'used' => $isUsed,
             ];
         }
         return $out;
@@ -146,21 +161,78 @@ final class PromoCode
         return $row !== null;
     }
 
-    public static function recordRedemption(int $userId, string $code, int $bookingId): void
+    public static function userHasUsed(int $userId, string $code): bool
     {
         self::ensureTables();
+        $row = Database::first(
+            'SELECT id FROM voucher_redemptions WHERE user_id = ? AND code = ? AND booking_id IS NOT NULL LIMIT 1',
+            [$userId, strtoupper(trim($code))]
+        );
+        return $row !== null;
+    }
+
+    /**
+     * Redeem a voucher to a user account.
+     *
+     * @return array{success: bool, message?: string, error?: string}
+     */
+    public static function redeemByUser(int $userId, string $code): array
+    {
+        self::ensureTables();
+        $normalized = strtoupper(trim($code));
+        $promo = self::findByCode($normalized);
+        if ($promo === null) {
+            return ['success' => false, 'error' => 'Invalid voucher code.'];
+        }
+
+        $existing = Database::first(
+            'SELECT id, booking_id FROM voucher_redemptions WHERE user_id = ? AND code = ? LIMIT 1',
+            [$userId, $normalized]
+        );
+        if ($existing !== null) {
+            return ['success' => false, 'error' => 'You have already redeemed this voucher.'];
+        }
+
         try {
             Database::insert(
-                'INSERT INTO voucher_redemptions (user_id, code, booking_id) VALUES (?, ?, ?)',
-                [$userId, strtoupper(trim($code)), $bookingId]
+                'INSERT INTO voucher_redemptions (user_id, code, booking_id) VALUES (?, ?, NULL)',
+                [$userId, $normalized]
             );
+            return ['success' => true, 'message' => 'Voucher successfully redeemed to your account!'];
         } catch (Throwable $e) {
-            $msg = $e->getMessage();
-            if (str_contains($msg, '1062') || stripos($msg, 'Duplicate') !== false) {
-                return;
-            }
-            throw $e;
+            return ['success' => false, 'error' => 'Failed to redeem voucher.'];
         }
+    }
+
+    /**
+     * Mark a redeemed voucher as used in a booking.
+     */
+    public static function markRedemptionUsed(int $userId, string $code, int $bookingId): void
+    {
+        self::ensureTables();
+        $normalized = strtoupper(trim($code));
+        $existing = Database::first(
+            'SELECT id FROM voucher_redemptions WHERE user_id = ? AND code = ? LIMIT 1',
+            [$userId, $normalized]
+        );
+        if ($existing !== null) {
+            Database::run(
+                'UPDATE voucher_redemptions SET booking_id = ? WHERE id = ?',
+                [$bookingId, $existing['id']]
+            );
+        } else {
+            try {
+                Database::insert(
+                    'INSERT INTO voucher_redemptions (user_id, code, booking_id) VALUES (?, ?, ?)',
+                    [$userId, $normalized, $bookingId]
+                );
+            } catch (Throwable) {}
+        }
+    }
+
+    public static function recordRedemption(int $userId, string $code, int $bookingId): void
+    {
+        self::markRedemptionUsed($userId, $code, $bookingId);
     }
 
     /**
@@ -180,19 +252,33 @@ final class PromoCode
      */
     public static function validate(string $code, float $subtotal, ?int $userId = null): array
     {
-        $row = self::findByCode($code);
+        $normalized = strtoupper(trim($code));
+        $row = self::findByCode($normalized);
         if ($row === null) {
             return ['valid' => false, 'discount' => 0.0, 'id' => null, 'message' => 'Invalid promo code.'];
         }
-        $normalized = strtoupper(trim($code));
-        if ($userId !== null && self::userHasRedeemed($userId, $normalized)) {
-            return [
-                'valid' => false,
-                'discount' => 0.0,
-                'id' => null,
-                'message' => 'You already used this voucher. Each voucher can only be redeemed once per account.',
-            ];
+
+        if ($userId !== null) {
+            // Check if user has redeemed from Deals & Offers
+            if (!self::userHasRedeemed($userId, $normalized)) {
+                return [
+                    'valid' => false,
+                    'discount' => 0.0,
+                    'id' => null,
+                    'message' => 'You must redeem this voucher from Deals & Offers before using it.',
+                ];
+            }
+            // Check if already used in a booking
+            if (self::userHasUsed($userId, $normalized)) {
+                return [
+                    'valid' => false,
+                    'discount' => 0.0,
+                    'id' => null,
+                    'message' => 'You have already used this voucher on a previous booking.',
+                ];
+            }
         }
+
         $today = date('Y-m-d');
         if (!empty($row['valid_from']) && $today < $row['valid_from']) {
             return ['valid' => false, 'discount' => 0.0, 'id' => null, 'message' => 'This promo code is not active yet.'];

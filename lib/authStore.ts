@@ -110,6 +110,21 @@ export async function loginWithSocial(provider: SocialProvider): Promise<Session
 
 // Finish a real provider sign-in once we already hold a verified token (e.g.
 // a Facebook access token). No password, so nothing is saved for biometrics.
+
+export async function loginWithSocialAccount(
+  provider: SocialProvider,
+  account: { id?: string; name: string; email: string }
+): Promise<SessionUser> {
+  const subject = account.id || (provider + '-' + Date.now());
+  const data = await apiSocialLogin({
+    provider,
+    subject,
+    name: account.name,
+    email: account.email,
+  });
+  return persistSocial(data.token, data.user);
+}
+
 export async function loginWithSocialToken(
   provider: SocialProvider,
   token: string

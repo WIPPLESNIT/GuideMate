@@ -7,6 +7,60 @@ import { API_BASE_URL, SOCIAL_AUTH } from '../config';
 
 WebBrowser.maybeCompleteAuthSession();
 
+export type GoogleAccountProfile = {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+};
+
+const GOOGLE_ACCOUNTS_KEY = 'guidemate_google_accounts_list';
+
+export const DEFAULT_GOOGLE_ACCOUNTS: GoogleAccountProfile[] = [
+  {
+    id: 'google-sample-acc',
+    name: 'Sample Account',
+    email: 'samacc@gamail.com',
+  },
+  {
+    id: 'google-marc-repuesto',
+    name: 'Marc Repuesto',
+    email: 'guide.moalboal@guidemate.local',
+  },
+  {
+    id: 'google-christian-tourist',
+    name: 'Christian',
+    email: 'tourist.cebu@guidemate.local',
+  },
+];
+
+export async function getSavedGoogleAccounts(): Promise<GoogleAccountProfile[]> {
+  try {
+    const raw = await AsyncStorage.getItem(GOOGLE_ACCOUNTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return DEFAULT_GOOGLE_ACCOUNTS;
+}
+
+export async function saveGoogleAccount(account: GoogleAccountProfile): Promise<GoogleAccountProfile[]> {
+  const accounts = await getSavedGoogleAccounts();
+  const exists = accounts.find((a) => a.email.toLowerCase() === account.email.toLowerCase());
+  let updated: GoogleAccountProfile[];
+  if (exists) {
+    updated = accounts.map((a) => (a.email.toLowerCase() === account.email.toLowerCase() ? account : a));
+  } else {
+    updated = [account, ...accounts];
+  }
+  await AsyncStorage.setItem(GOOGLE_ACCOUNTS_KEY, JSON.stringify(updated));
+  return updated;
+}
+
+
 export type SocialProvider = 'google' | 'facebook';
 
 export type SocialCredential =

@@ -3526,7 +3526,6 @@ tr.is-menu-open {
 }
 .res-action-dropdown.drop-up {
     top: auto;
-    bottom: calc(100% + 4px);
 }
 .res-action-form {
     margin: 0;
@@ -5480,15 +5479,15 @@ a.stat-clickable:focus-visible {
 }
 
 /* Guide Bookings Table & Panel */
+.panel.guide-bookings-panel,
 .guide-bookings-panel {
     width: 100%;
     box-sizing: border-box;
-    overflow: visible;
+    overflow: visible !important;
 }
 .guide-bookings-wrap {
     width: 100%;
-    overflow-x: hidden !important;
-    overflow-y: visible;
+    overflow: visible !important;
     box-sizing: border-box;
 }
 .guide-bookings-table {
@@ -5499,6 +5498,18 @@ a.stat-clickable:focus-visible {
     margin: 0;
     vertical-align: middle;
     box-sizing: border-box;
+    overflow: visible !important;
+}
+.guide-bookings-table tr.is-menu-open {
+    position: relative;
+    z-index: 60;
+}
+.guide-bookings-table tr.is-menu-open td {
+    position: relative;
+    overflow: visible !important;
+}
+.guide-bookings-table td.col-actions {
+    overflow: visible !important;
 }
 .guide-bookings-table th {
     font-size: 0.74rem;

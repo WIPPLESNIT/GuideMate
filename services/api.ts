@@ -444,6 +444,8 @@ export const apiSocialLogin = (payload: {
   provider: 'google' | 'facebook';
   subject?: string;
   token?: string;
+  name?: string;
+  email?: string;
 }) => api<{ token: string; user: ApiUser }>('/api/auth/social', { method: 'POST', body: payload });
 
 export const apiForgotPassword = (email: string) =>
@@ -822,6 +824,7 @@ export type ApiVoucher = {
   discount_percent: number | null;
   discount_amount: number | null;
   expires: string;
+  redeemed?: boolean;
   used: boolean;
 };
 
@@ -831,6 +834,12 @@ export const validateVoucher = (code: string, subtotal: number) =>
   api<{ valid: boolean; discount: number; id: number | null; message: string }>('/api/vouchers/validate', {
     method: 'POST',
     body: { code, subtotal },
+  });
+
+export const redeemVoucher = (code: string) =>
+  api<{ success: boolean; message?: string; error?: string; vouchers?: ApiVoucher[] }>('/api/vouchers/redeem', {
+    method: 'POST',
+    body: { code },
   });
 
 export type FeedbackCategory = 'general' | 'bug' | 'feature' | 'praise';

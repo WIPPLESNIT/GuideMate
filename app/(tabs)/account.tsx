@@ -142,7 +142,6 @@ export default function AccountScreen() {
 
   const menu: MenuRow[] = [
     { icon: 'compass', label: t('explore'), color: '#FF8C00', bg: '#FFF2E6', onPress: () => router.push('/things-to-do') },
-    { icon: 'cube', label: 'Package Builder', color: '#8B5CF6', bg: '#EDE9FE', onPress: () => router.push('/package/create') },
     { icon: 'calendar', label: t('bookings'), color: '#3B82F6', bg: '#E6F0FA', onPress: () => requireLogin(() => router.push('/(tabs)/trips')) },
     { icon: 'heart', label: t('saved'), color: '#EF4444', bg: '#FEE2E2', onPress: () => requireLogin(() => router.push('/(tabs)/wishlist')) },
     { icon: 'chatbubbles', label: 'Messages', color: '#6366F1', bg: '#E7E9FE', onPress: () => requireLogin(() => router.push('/messages')) },

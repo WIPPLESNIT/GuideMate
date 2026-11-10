@@ -34,6 +34,7 @@ export default function RegisterScreen() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Dynamic colors mapping based on system device theme
   const theme = {
@@ -482,6 +483,53 @@ const styles = StyleSheet.create({
   },
   loginLink: {
     fontSize: 13,
+    fontWeight: '700',
+  },
+  successOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    zIndex: 999,
+  },
+  successModal: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  successIconCircle: {
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  successButton: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '700',
   },
 });

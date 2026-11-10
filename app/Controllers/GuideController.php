@@ -98,6 +98,15 @@ final class GuideController extends Controller
 
         Listing::syncImages($listingId, $photos);
 
+        if ($this->isJson()) {
+            $this->json([
+                'success' => true,
+                'message' => 'Listing submitted! It will appear publicly once an admin approves it.',
+                'listing' => Listing::find($listingId),
+            ]);
+            return;
+        }
+
         flash('success', 'Listing submitted! It will appear publicly once an admin approves it.');
         redirect('/dashboard/listings');
     }
@@ -147,10 +156,6 @@ final class GuideController extends Controller
         $listing = $this->ownedListing((int) $id);
         $data = $this->validateListing();
         if ($data === []) {
-            if ($this->isJson()) {
-                $this->json(['error' => 'Please fill in all required fields.', 'errors' => errors()], 422);
-                return;
-            }
             return;
         }
 
@@ -182,13 +187,13 @@ final class GuideController extends Controller
         if ($this->isJson()) {
             $this->json([
                 'success' => true,
-                'message' => 'Listing updated.',
+                'message' => 'Listing updated successfully.',
                 'listing' => Listing::find((int) $listing['id']),
             ]);
             return;
         }
 
-        flash('success', 'Listing updated.');
+        flash('success', 'Listing updated successfully.');
         redirect('/dashboard/listings');
     }
 
@@ -673,8 +678,12 @@ final class GuideController extends Controller
             $errors['capacity'] = 'Please enter a valid capacity / slots (at least 1).';
         }
         $cover = trim((string) $this->input('cover_image', ''));
-        if ($cover !== '' && !filter_var($cover, FILTER_VALIDATE_URL)) {
-            $errors['cover_image'] = 'Cover image must be a valid URL (or left blank).';
+        if ($cover !== '') {
+            $isLocal = str_starts_with($cover, 'uploads/') || str_starts_with($cover, '/uploads/') || str_contains($cover, 'uploads/') || str_starts_with($cover, 'assets/') || str_starts_with($cover, 'img/');
+            $isData = str_starts_with($cover, 'data:image/');
+            if (!$isLocal && !$isData && !filter_var($cover, FILTER_VALIDATE_URL)) {
+                $errors['cover_image'] = 'Cover image must be a valid URL or uploaded image.';
+            }
         }
 
         if ($errors !== []) {
@@ -686,9 +695,7 @@ final class GuideController extends Controller
                 ], 422);
                 return [];
             }
-            // New listings use the pop-up modal on the My Listings page, so send
-            // errors there; edits still go back to the full edit page.
-            $back = $this->input('listing_id') ? '/dashboard/listings/' . $this->input('listing_id') . '/edit' : '/dashboard/listings';
+            $back = '/dashboard/listings';
             flash_keep_old($errors, $_POST, $back);
         }
 
@@ -815,9 +822,11 @@ final class GuideController extends Controller
         try {
             return Upload::store($_FILES['cover_file'], 'listings/' . Auth::id(), ['jpg', 'jpeg', 'png', 'webp']);
         } catch (RuntimeException $e) {
-            $back = $this->input('listing_id')
-                ? '/dashboard/listings/' . $this->input('listing_id') . '/edit'
-                : '/dashboard/listings';
+            if ($this->isJson()) {
+                $this->json(['success' => false, 'error' => $e->getMessage()], 422);
+                exit;
+            }
+            $back = '/dashboard/listings';
             flash_keep_old(['cover_file' => $e->getMessage()], $_POST, $back);
         }
         return null;
@@ -934,7 +943,7 @@ final class GuideController extends Controller
         $hotels = [];
         try {
             $hotels = \App\Core\Database::all("
-                SELECT l.id, l.user_id, l.title, l.area, l.cover_image, l.summary, l.check_in_time, l.check_out_time,
+                SELECT l.id, l.user_id, l.title, l.area, l.address, l.cover_image, l.summary, l.description,
                        u.name as partner_name,
                        (SELECT COUNT(*) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL)) as available_room_count,
                        (SELECT MIN(hr.price_per_night) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL) AND hr.price_per_night > 0) as min_price
@@ -942,6 +951,7 @@ final class GuideController extends Controller
                 JOIN categories c ON c.id = l.category_id
                 JOIN users u ON u.id = l.user_id
                 WHERE l.status = 'approved' AND c.slug = 'hotels'
+                HAVING available_room_count > 0
                 ORDER BY l.title ASC
             ");
         } catch (\Throwable $e) {
@@ -952,12 +962,13 @@ final class GuideController extends Controller
         try {
             $hotelRooms = \App\Core\Database::all("
                 SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.room_size, hr.amenities, hr.image as room_image, hr.description as room_description,
-                       l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover, l.check_in_time, l.check_out_time,
+                       l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
                        u.name as partner_name
                 FROM hotel_rooms hr
                 JOIN listings l ON l.id = hr.listing_id
+                JOIN categories c ON c.id = l.category_id
                 JOIN users u ON u.id = l.user_id
-                WHERE l.status = 'approved'
+                WHERE l.status = 'approved' AND c.slug = 'hotels'
                   AND hr.status = 'available'
                   AND (hr.available_units > 0 OR hr.available_units IS NULL)
                 ORDER BY hr.price_per_night ASC
@@ -1074,7 +1085,7 @@ final class GuideController extends Controller
         $hotels = [];
         try {
             $hotels = \App\Core\Database::all("
-                SELECT l.id, l.user_id, l.title, l.area, l.cover_image, l.summary, l.check_in_time, l.check_out_time,
+                SELECT l.id, l.user_id, l.title, l.area, l.address, l.cover_image, l.summary, l.description,
                        u.name as partner_name,
                        (SELECT COUNT(*) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL)) as available_room_count,
                        (SELECT MIN(hr.price_per_night) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL) AND hr.price_per_night > 0) as min_price
@@ -1082,6 +1093,7 @@ final class GuideController extends Controller
                 JOIN categories c ON c.id = l.category_id
                 JOIN users u ON u.id = l.user_id
                 WHERE l.status = 'approved' AND c.slug = 'hotels'
+                HAVING available_room_count > 0
                 ORDER BY l.title ASC
             ");
         } catch (\Throwable $e) {
@@ -1092,12 +1104,13 @@ final class GuideController extends Controller
         try {
             $hotelRooms = \App\Core\Database::all("
                 SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.room_size, hr.amenities, hr.image as room_image, hr.description as room_description,
-                       l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover, l.check_in_time, l.check_out_time,
+                       l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
                        u.name as partner_name
                 FROM hotel_rooms hr
                 JOIN listings l ON l.id = hr.listing_id
+                JOIN categories c ON c.id = l.category_id
                 JOIN users u ON u.id = l.user_id
-                WHERE l.status = 'approved'
+                WHERE l.status = 'approved' AND c.slug = 'hotels'
                   AND hr.status = 'available'
                   AND (hr.available_units > 0 OR hr.available_units IS NULL)
                 ORDER BY hr.price_per_night ASC
@@ -1236,8 +1249,9 @@ final class GuideController extends Controller
         $defaultInclusions = implode("\n", $cleanIncLines);
 
         $serviceIds = null;
-        if (preg_match('/<!--\s*PACKAGE_SERVICES:\s*(\{.*?\})\s*-->/s', $includedText . "\n" . $rawDesc, $jm)) {
-            $serviceIds = json_decode($jm[1], true);
+        if (preg_match_all('/<!--\s*PACKAGE_SERVICES:\s*(\{.*?\})\s*-->/s', $includedText . "\n" . $rawDesc, $jm) && !empty($jm[1])) {
+            $lastJson = end($jm[1]);
+            $serviceIds = json_decode($lastJson, true);
         }
 
         $selectedActivityIds = is_array($serviceIds) && !empty($serviceIds['activity_ids'])
@@ -1249,6 +1263,36 @@ final class GuideController extends Controller
         $selectedVehicleId = is_array($serviceIds) && isset($serviceIds['vehicle_id'])
             ? (int) $serviceIds['vehicle_id']
             : 0;
+
+        // DB record fallback for vehicle if not present in comment metadata
+        if (empty($selectedVehicleId) && !empty($package['id'])) {
+            try {
+                $psVeh = \App\Core\Database::first("SELECT vehicle_id FROM package_services WHERE package_id = ? AND service_type = 'vehicle' LIMIT 1", [(int) $package['id']]);
+                if ($psVeh && !empty($psVeh['vehicle_id'])) {
+                    $selectedVehicleId = (int) $psVeh['vehicle_id'];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // DB record fallback for hotel room
+        if (empty($selectedHotelRoomId) && !empty($package['id'])) {
+            try {
+                $psHot = \App\Core\Database::first("SELECT hotel_room_id FROM package_services WHERE package_id = ? AND service_type = 'hotel' LIMIT 1", [(int) $package['id']]);
+                if ($psHot && !empty($psHot['hotel_room_id'])) {
+                    $selectedHotelRoomId = (int) $psHot['hotel_room_id'];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // DB record fallback for activities
+        if (empty($selectedActivityIds) && !empty($package['id'])) {
+            try {
+                $psActs = \App\Core\Database::all("SELECT listing_id FROM package_services WHERE package_id = ? AND service_type IN ('activity', 'attraction')", [(int) $package['id']]);
+                if (!empty($psActs)) {
+                    $selectedActivityIds = array_map('intval', array_column($psActs, 'listing_id'));
+                }
+            } catch (\Throwable $e) {}
+        }
 
         // Fallback for activities by title if IDs not in metadata
         if (empty($selectedActivityIds) && preg_match('/Activities:\s*(.*)$/m', $includedText, $am)) {
@@ -1312,7 +1356,7 @@ final class GuideController extends Controller
             try {
                 $hRoomRow = \App\Core\Database::first("
                     SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.room_size, hr.amenities, hr.image as room_image, hr.description as room_description,
-                           l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover, l.check_in_time, l.check_out_time,
+                           l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
                            u.name as partner_name
                     FROM hotel_rooms hr
                     JOIN listings l ON l.id = hr.listing_id
@@ -1325,8 +1369,8 @@ final class GuideController extends Controller
                     $selectedHotelName = (string) $hRoomRow['hotel_name'];
                     $selectedHotelRoom = (string) $hRoomRow['room_name'];
                     $selectedHotelAmenities = json_decode((string) ($hRoomRow['amenities'] ?? '[]'), true) ?: ['Free High-Speed Wi-Fi', 'Swimming Pool Access', 'Complimentary Daily Breakfast'];
-                    $selectedHotelCheckin = (string) ($hRoomRow['check_in_time'] ?? '14:00:00');
-                    $selectedHotelCheckout = (string) ($hRoomRow['check_out_time'] ?? '12:00:00');
+                    $selectedHotelCheckin = '14:00:00';
+                    $selectedHotelCheckout = '12:00:00';
                     if (!in_array($selectedHotelRoomId, array_column($hotelRooms, 'id'), true)) {
                         $hotelRooms[] = $hRoomRow;
                     }
@@ -1338,8 +1382,8 @@ final class GuideController extends Controller
                             'area' => $hRoomRow['hotel_area'],
                             'cover_image' => $hRoomRow['hotel_cover'],
                             'summary' => '',
-                            'check_in_time' => $hRoomRow['check_in_time'],
-                            'check_out_time' => $hRoomRow['check_out_time'],
+                            'check_in_time' => '14:00:00',
+                            'check_out_time' => '12:00:00',
                             'partner_name' => $hRoomRow['partner_name'],
                         ];
                     }
@@ -1542,6 +1586,17 @@ final class GuideController extends Controller
             try {
                 $guideVehicleIdDoc = Upload::store($_FILES['guide_vehicle_id_doc'], 'guide-docs/' . Auth::id(), ['jpg', 'jpeg', 'png', 'pdf']);
             } catch (\Throwable $e) {}
+        }
+        if ($guideVehicleIdDoc === null && $vehicleId > 0) {
+            $existingDoc = trim((string) $this->input('existing_guide_vehicle_id_doc', ''));
+            if ($existingDoc !== '') {
+                $guideVehicleIdDoc = $existingDoc;
+            } else {
+                $prevDoc = \App\Core\Database::first("SELECT guide_id_doc FROM package_services WHERE package_id = ? AND service_type = 'vehicle' LIMIT 1", [(int) $package['id']]);
+                if ($prevDoc && !empty($prevDoc['guide_id_doc'])) {
+                    $guideVehicleIdDoc = (string) $prevDoc['guide_id_doc'];
+                }
+            }
         }
 
         $includedLines = [];
@@ -1750,6 +1805,17 @@ final class GuideController extends Controller
             try {
                 $guideVehicleIdDoc = Upload::store($_FILES['guide_vehicle_id_doc'], 'guide-docs/' . Auth::id(), ['jpg', 'jpeg', 'png', 'pdf']);
             } catch (\Throwable $e) {}
+        }
+        if ($guideVehicleIdDoc === null && $vehicleId > 0) {
+            $existingDoc = trim((string) $this->input('existing_guide_vehicle_id_doc', ''));
+            if ($existingDoc !== '') {
+                $guideVehicleIdDoc = $existingDoc;
+            } else {
+                $prevDoc = \App\Core\Database::first("SELECT guide_id_doc FROM package_services WHERE package_id = ? AND service_type = 'vehicle' LIMIT 1", [(int) $package['id']]);
+                if ($prevDoc && !empty($prevDoc['guide_id_doc'])) {
+                    $guideVehicleIdDoc = (string) $prevDoc['guide_id_doc'];
+                }
+            }
         }
 
         $includedLines = [];

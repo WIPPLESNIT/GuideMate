@@ -1409,6 +1409,35 @@ final class ApiController extends Controller
         $this->json($check);
     }
 
+    /** POST /api/vouchers/redeem — redeem a voucher to user account. */
+    public function redeemVoucher(): void
+    {
+        $userId = ApiAuth::id();
+        if ($userId === null) {
+            $this->json(['error' => 'Sign in to redeem a voucher.'], 401);
+            return;
+        }
+
+        $body = $this->jsonBody();
+        $code = strtoupper(trim((string) ($body['code'] ?? '')));
+        if ($code === '') {
+            $this->json(['error' => 'Enter a voucher code.'], 422);
+            return;
+        }
+
+        $res = PromoCode::redeemByUser($userId, $code);
+        if (!$res['success']) {
+            $this->json(['error' => $res['error'] ?? 'Could not redeem voucher.'], 422);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'message' => $res['message'] ?? 'Voucher redeemed successfully!',
+            'vouchers' => PromoCode::catalogForUser($userId),
+        ]);
+    }
+
     public function createBooking(): void
     {
         $userId = ApiAuth::id();
@@ -3941,6 +3970,9 @@ final class ApiController extends Controller
             $voucherCheck = PromoCode::validate($voucherCode, $packageBasePrice, $userId);
             if (!empty($voucherCheck['valid'])) {
                 $voucherDiscount = (float) ($voucherCheck['discount'] ?? 0);
+            } else {
+                $this->json(['error' => $voucherCheck['message'] ?? 'Invalid voucher code.'], 422);
+                return;
             }
         }
 
@@ -4027,6 +4059,13 @@ final class ApiController extends Controller
                         ]);
                     }
                 } catch (\Throwable) {}
+            }
+
+            if ($voucherCode !== '') {
+                PromoCode::markRedemptionUsed($userId, $voucherCode, (int) $bookingId);
+                if (!empty($voucherCheck['id'])) {
+                    PromoCode::incrementUse((int) $voucherCheck['id']);
+                }
             }
 
             $this->json([
@@ -4160,19 +4199,7 @@ final class ApiController extends Controller
      */
     private function getPackagesCatalog(): array
     {
-        $dbPackages = $this->getDatabasePackages();
-        $staticPackages = $this->getStaticPackages();
-
-        $seen = [];
-        $merged = [];
-        foreach (array_merge($dbPackages, $staticPackages) as $pkg) {
-            $key = (string) $pkg['id'];
-            if (!isset($seen[$key])) {
-                $seen[$key] = true;
-                $merged[] = $pkg;
-            }
-        }
-        return $merged;
+        return $this->getDatabasePackages();
     }
 
     /**
@@ -4245,27 +4272,52 @@ final class ApiController extends Controller
         $days = (int) $inspected['duration_days'];
         $nights = (int) $inspected['duration_nights'];
 
-        $cover = !empty($row['cover_image'])
-            ? (string) $row['cover_image']
-            : 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=1200';
-
-        $gallery = [];
+        $rawCover = !empty($row['cover_image']) ? (string) $row['cover_image'] : '';
+        $rawGallery = [];
         try {
-            $rawGallery = \App\Models\Listing::gallery((int) $row['id']);
-            if (is_array($rawGallery)) {
-                foreach ($rawGallery as $g) {
+            $galleryRows = \App\Models\Listing::gallery((int) $row['id']);
+            if (is_array($galleryRows)) {
+                foreach ($galleryRows as $g) {
                     $imgPath = is_array($g) ? ($g['image_path'] ?? '') : (string) $g;
-                    if ($imgPath !== '') {
-                        $gallery[] = $imgPath;
+                    if ($imgPath !== '' && !in_array($imgPath, $rawGallery, true)) {
+                        $rawGallery[] = $imgPath;
                     }
                 }
             }
-        } catch (\Throwable $e) {
-            $gallery = [];
+        } catch (\Throwable $e) {}
+
+        $allPhotos = [];
+        if ($rawCover !== '') {
+            $allPhotos[] = $rawCover;
         }
-        if (empty($gallery)) {
+        foreach ($rawGallery as $p) {
+            if (!in_array($p, $allPhotos, true)) {
+                $allPhotos[] = $p;
+            }
+        }
+        $allPhotos = array_values(array_slice($allPhotos, 0, 4));
+        if ($allPhotos === []) {
+            $cover = 'uploads/places/kawasan.jpg';
             $gallery = [$cover];
+        } else {
+            $cover = $allPhotos[0];
+            $gallery = $allPhotos;
         }
+
+        // Pure database rating strictly from genuine reviews
+        $pkgRating = 0.0;
+        $pkgReviewCount = 0;
+        try {
+            $revStats = \App\Core\Database::first("
+                SELECT COALESCE(AVG(rating), 0) AS avg_rating, COUNT(id) AS review_count
+                FROM reviews
+                WHERE listing_id = ?
+            ", [(int) $row['id']]);
+            if ($revStats && (int) ($revStats['review_count'] ?? 0) > 0) {
+                $pkgRating = round((float) $revStats['avg_rating'], 1);
+                $pkgReviewCount = (int) $revStats['review_count'];
+            }
+        } catch (\Throwable $e) {}
 
         // Build flat inclusions array matching the customer app reference screen
         $inclusions = [];
@@ -4409,8 +4461,9 @@ final class ApiController extends Controller
             'featured' => !empty($row['is_featured']),
             'coverImage' => $cover,
             'gallery' => $gallery,
-            'rating' => (float) $inspected['rating'],
-            'reviewCount' => (int) $inspected['review_count'],
+            'rating' => $pkgRating,
+            'reviewCount' => $pkgReviewCount,
+            'rating_label' => $pkgReviewCount > 0 ? number_format($pkgRating, 1) : 'No Reviews Yet',
             'maxGroupSize' => max(2, (int) ($row['capacity'] ?? 6)),
             'meetingPoint' => (string) $inspected['meeting_point'],
             'tags' => !empty($inspected['tags']) ? $inspected['tags'] : ['guide 1', 'guide 2', 'guide 3'],

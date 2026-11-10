@@ -87,6 +87,8 @@
     }
 
     function positionResMenu(trigger, menu) {
+        menu.style.position = 'fixed';
+        menu.style.zIndex = '99999';
         var btnRect = trigger.getBoundingClientRect();
         var menuWidth = menu.offsetWidth || 180;
 

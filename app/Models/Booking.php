@@ -189,8 +189,15 @@ final class Booking
              LEFT JOIN categories c ON c.id = l.category_id
              LEFT JOIN users u ON u.id = l.user_id
              LEFT JOIN hotel_rooms hr ON hr.id = b.room_id
-             WHERE b.user_id = ? ORDER BY b.created_at DESC',
-            [$userId]
+             WHERE b.user_id = ?
+               AND (b.notes NOT LIKE ? OR b.notes IS NULL)
+               AND NOT EXISTS (
+                   SELECT 1 FROM package_booking_items pbi
+                   WHERE pbi.sub_booking_id = b.id
+                     AND pbi.sub_booking_id != pbi.parent_booking_id
+               )
+             ORDER BY b.created_at DESC',
+            [$userId, '%package_sub_booking%']
         );
     }
 

@@ -1577,3 +1577,770 @@ Body:
 Your Travel Package 'test package title' has been marked as Completed by your tour guide host. Thank you for traveling with GuideMate! You may now leave a review to share your travel experience.
 
 ----------------------------------------
+[2026-11-09 15:15:11] LOCAL MAIL
+To: junrilubas@gmail.com
+Subject: Reset your GuideMate password
+Body:
+Hello,
+
+We received a request to reset the password for your GuideMate account.
+
+Click the link below to set a new password:
+http://192.168.1.8/GuideMate/public/reset-password/29b39e47afd4b773dfe99b751826fb61463d297cb959acb16e277974d120507a
+
+IMPORTANT:
+- This link is valid for 30 minutes.
+- This link is single-use and cannot be reused once your password is changed.
+
+If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
+
+— The GuideMate Team
+http://192.168.1.8/GuideMate/public/
+
+[HTML Version Attached]
+----------------------------------------
+[2026-11-09 15:43:16] LOCAL MAIL
+To: junrilubas@gmail.com
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Moalboal Sardine Run and Marine Sanctuary Snorkeling Tour on 2026-11-12 was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.8/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-09 15:43:16] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation â€” Moalboal Sardine Run and Marine Sanctuary Snorkeling Tour
+Body:
+Je Ung booked "Moalboal Sardine Run and Marine Sanctuary Snorkeling Tour" and payment was received.
+
+Date: 2026-11-12
+Guests: 2
+Amount paid: PHP 1,900.00
+Payment: InstaPay QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-09 15:43:16] LOCAL MAIL
+To: johnlloyd@gmail.com
+Subject: New booking awaiting your confirmation â€” Moalboal Sardine Run and Marine Sanctuary Snorkeling Tour
+Body:
+Je Ung booked "Moalboal Sardine Run and Marine Sanctuary Snorkeling Tour" and payment was received.
+
+Date: 2026-11-12
+Guests: 2
+Amount paid: PHP 1,900.00
+Payment: InstaPay QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-09 17:18:10] LOCAL MAIL
+To: google_66e65e3043136c8d4762@social.guidemate.local
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Kawasan Falls Canyoneering Adventure on 2026-11-16 was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.8/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-09 17:18:10] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation â€” Kawasan Falls Canyoneering Adventure
+Body:
+Google User booked "Kawasan Falls Canyoneering Adventure" and payment was received.
+
+Date: 2026-11-16
+Guests: 1
+Amount paid: PHP 2,100.00
+Payment: GCash / e-Wallet QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-09 17:18:10] LOCAL MAIL
+To: johnlloyd@gmail.com
+Subject: New booking awaiting your confirmation â€” Kawasan Falls Canyoneering Adventure
+Body:
+Google User booked "Kawasan Falls Canyoneering Adventure" and payment was received.
+
+Date: 2026-11-16
+Guests: 1
+Amount paid: PHP 2,100.00
+Payment: GCash / e-Wallet QR
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-09 19:39:27] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Bluewater Maribago Beach Resort on 2 nights (2026-11-10 to 2026-11-12) was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.8/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-09 19:39:27] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation â€” Bluewater Maribago Beach Resort
+Body:
+Sample Account booked "Bluewater Maribago Beach Resort" and payment was received.
+
+Date: 2026-11-10
+Guests: 1
+Amount paid: PHP 3,000.00
+Payment: GCash / e-Wallet QR (Room Deposit)
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-09 19:39:27] LOCAL MAIL
+To: stepjane@gmail.com
+Subject: New booking awaiting your confirmation â€” Bluewater Maribago Beach Resort
+Body:
+Sample Account booked "Bluewater Maribago Beach Resort" and payment was received.
+
+Date: 2026-11-10
+Guests: 1
+Amount paid: PHP 3,000.00
+Payment: GCash / e-Wallet QR (Room Deposit)
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-09 19:42:13] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Payment received — waiting for rental confirmation
+Body:
+Your payment for 2022 Honda Click 125i V2 Automatic (pickup 2026-11-11) was received.
+
+The rental partner still needs to confirm this reservation. You will get another message once they accept it.
+
+----------------------------------------
+[2026-11-09 19:42:13] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: Confirm this rental â€” 2022 Honda Click 125i V2 Automatic
+Body:
+Sample Account reserved "2022 Honda Click 125i V2 Automatic" and payment was received.
+
+Pickup: 2026-11-11
+Amount paid: PHP 1,000.00
+
+This reservation is NOT confirmed yet. Open your dashboard â†’ Rental requests and confirm or decline it.
+/GuideMate/public/dashboard/rentals
+
+----------------------------------------
+[2026-11-09 19:42:13] LOCAL MAIL
+To: janethmauir@gmail.com
+Subject: Confirm this rental â€” 2022 Honda Click 125i V2 Automatic
+Body:
+Sample Account reserved "2022 Honda Click 125i V2 Automatic" and payment was received.
+
+Pickup: 2026-11-11
+Amount paid: PHP 1,000.00
+
+This reservation is NOT confirmed yet. Open your dashboard â†’ Rental requests and confirm or decline it.
+/GuideMate/public/dashboard/rentals
+
+----------------------------------------
+[2026-11-09 19:42:13] LOCAL MAIL
+To: migyong@sample.com
+Subject: Confirm this rental â€” 2022 Honda Click 125i V2 Automatic
+Body:
+Sample Account reserved "2022 Honda Click 125i V2 Automatic" and payment was received.
+
+Pickup: 2026-11-11
+Amount paid: PHP 1,000.00
+
+This reservation is NOT confirmed yet. Open your dashboard â†’ Rental requests and confirm or decline it.
+/GuideMate/public/dashboard/rentals
+
+----------------------------------------
+[2026-11-09 19:42:28] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Rental confirmed — 2022 Honda Click 125i V2 Automatic
+Body:
+Your reservation for 2022 Honda Click 125i V2 Automatic (pickup 2026-11-11) has been confirmed by the rental partner.
+
+They will contact you to arrange delivery.
+
+----------------------------------------
+[2026-11-09 20:05:32] LOCAL MAIL
+To: jelliandelgado@gmail.com
+Subject: Reset your GuideMate password
+Body:
+Hello,
+
+We received a request to reset the password for your GuideMate account.
+
+Click the link below to set a new password:
+http://localhost/GuideMate/public/reset-password/c9e7dc254385ff32946df3190a562ed5dacbf485a3c62c3364578114b5c00264
+
+IMPORTANT:
+- This link is valid for 30 minutes.
+- This link is single-use and cannot be reused once your password is changed.
+
+If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
+
+— The GuideMate Team
+http://localhost/GuideMate/public/
+
+[HTML Version Attached]
+----------------------------------------
+[2026-11-09 20:07:27] LOCAL MAIL
+To: jellianbartido@gmail.com
+Subject: Reset your GuideMate password
+Body:
+Hello,
+
+We received a request to reset the password for your GuideMate account.
+
+Click the link below to set a new password:
+http://localhost/GuideMate/public/reset-password/a5548dc55ff385f718d8914f1a52fdedffd790d86b393b76e3f91b569b13c787
+
+IMPORTANT:
+- This link is valid for 30 minutes.
+- This link is single-use and cannot be reused once your password is changed.
+
+If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
+
+— The GuideMate Team
+http://localhost/GuideMate/public/
+
+[HTML Version Attached]
+----------------------------------------
+[2026-11-09 20:09:05] LOCAL MAIL
+To: jellianbartido@gmail.com
+Subject: Reset your GuideMate password
+Body:
+Hello,
+
+We received a request to reset the password for your GuideMate account.
+
+Click the link below to set a new password:
+http://localhost/GuideMate/public/reset-password/8e5d263b8519a3d69429a009ab1d7198eee97fb62e93e30fb047bb7d68751bfb
+
+IMPORTANT:
+- This link is valid for 30 minutes.
+- This link is single-use and cannot be reused once your password is changed.
+
+If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
+
+— The GuideMate Team
+http://localhost/GuideMate/public/
+
+[HTML Version Attached]
+----------------------------------------
+[2026-11-10 12:41:36] LOCAL MAIL
+To: stepjane@gmail.com
+Subject: Travel Package Inclusion Request — test for hotel
+Body:
+Hello Stephanie Jane,
+
+A licensed tour guide has requested to bundle your service into a new GuideMate Travel Package.
+
+PACKAGE DETAILS:
+• Travel Package: test for hotel
+• Guide Host: Marc Repuesto (guide.moalboal@guidemate.local)
+• Duration: 2 Days / 1 Nights
+
+YOUR SERVICE REQUESTED:
+• Service Type: Hotel Accommodation
+• Listing / Unit: Deluxe Garden Bungalow (Bluewater Maribago Beach Resort)
+• Agreed Rate: ₱7,500.00 / night
+
+Planned Schedule Overview:
+  • Day 1: Day 1: tes dat
+  • Day 2: Day 2: test day 2
+
+ACTION REQUIRED:
+Please review how your service will be utilized in this package and respond with your decision (Agree or Reject):
+http://localhost/GuideMate/public/dashboard/package-requests
+
+— The GuideMate Partner Team
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-10 12:41:36] LOCAL MAIL
+To: migyong@sample.com
+Subject: Travel Package Inclusion Request — test for hotel
+Body:
+Hello Miguel Yongzon,
+
+A licensed tour guide has requested to bundle your service into a new GuideMate Travel Package.
+
+PACKAGE DETAILS:
+• Travel Package: test for hotel
+• Guide Host: Marc Repuesto (guide.moalboal@guidemate.local)
+• Duration: 2 Days / 1 Nights
+
+YOUR SERVICE REQUESTED:
+• Service Type: Vehicle Rental
+• Listing / Unit: Honda Click 125i V2 (Scooter)
+• Agreed Rate: ₱1,000.00 / day
+
+Planned Schedule Overview:
+  • Day 1: Day 1: tes dat
+  • Day 2: Day 2: test day 2
+
+ACTION REQUIRED:
+Please review how your service will be utilized in this package and respond with your decision (Agree or Reject):
+http://localhost/GuideMate/public/dashboard/package-requests
+
+— The GuideMate Partner Team
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-10 12:42:07] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Service Partner Agreed to Package — test for hotel
+Body:
+Hello Marc Repuesto,
+
+Service partner Stephanie Jane has responded to your inclusion request for "test for hotel".
+
+• Service: Hotel
+• Decision: AGREED
+• Overall Package Approval Status: Pending (Waiting for other providers)
+
+You can track and manage your travel packages here:
+http://localhost/GuideMate/public/dashboard/listings
+
+— The GuideMate Partner Team
+
+----------------------------------------
+[2026-11-10 12:43:04] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Service Partner Agreed to Package — test for hotel
+Body:
+Hello Marc Repuesto,
+
+Service partner Miguel Yongzon has responded to your inclusion request for "test for hotel".
+
+• Service: Vehicle
+• Decision: AGREED
+• Overall Package Approval Status: Agreed (All providers have approved)
+
+You can track and manage your travel packages here:
+http://localhost/GuideMate/public/dashboard/listings
+
+— The GuideMate Partner Team
+
+----------------------------------------
+[2026-11-10 12:43:29] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Listing approved — test for hotel
+Body:
+Great news! Your guide listing for test for hotel has been approved by the administrator and is now published and visible to travelers.
+
+----------------------------------------
+[2026-11-10 12:48:04] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: New Package Booking: test for hotel (#GM-PKG-20261110-1C09A5)
+Body:
+A tourist has booked your Travel Package 'test for hotel'. Travel Date: 2026-11-11. Package Reference: GM-PKG-20261110-1C09A5. Allocated Share: ₱5,998.00. Please review and confirm this booking in your Bookings dashboard.
+
+----------------------------------------
+[2026-11-10 12:49:54] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Rental confirmed — 2022 Honda Click 125i V2 Automatic
+Body:
+Your reservation for 2022 Honda Click 125i V2 Automatic (pickup 2026-11-11) has been confirmed by the rental partner.
+
+They will contact you to arrange delivery.
+
+----------------------------------------
+[2026-11-10 12:51:28] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Booking confirmed — test for hotel
+Body:
+Your booking for test for hotel on 2026-11-11 is confirmed.
+
+View bookings: http://localhost/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-10 12:55:10] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test for hotel (#GM-PKG-20261110-1C09A5)
+Body:
+Great news! All participating providers for your Travel Package 'test for hotel' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-1C09A5. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 12:56:18] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test for hotel (#GM-PKG-20261110-1C09A5)
+Body:
+Great news! All participating providers for your Travel Package 'test for hotel' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-1C09A5. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 12:57:38] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test for hotel (#GM-PKG-20261110-1C09A5)
+Body:
+Great news! All participating providers for your Travel Package 'test for hotel' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-1C09A5. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 12:59:55] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test for hotel (#GM-PKG-20261110-1C09A5)
+Body:
+Great news! All participating providers for your Travel Package 'test for hotel' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-1C09A5. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:00:06] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test for hotel (#GM-PKG-20261110-1C09A5)
+Body:
+Great news! All participating providers for your Travel Package 'test for hotel' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-1C09A5. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:01:15] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test for hotel (#GM-PKG-20261110-1C09A5)
+Body:
+Great news! All participating providers for your Travel Package 'test for hotel' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-1C09A5. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:01:23] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test for hotel (#GM-PKG-20261110-1C09A5)
+Body:
+Great news! All participating providers for your Travel Package 'test for hotel' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-1C09A5. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:40:26] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Kawasan Falls Canyoneering Adventure (#GM-PKG-TEST-1c1b3d)
+Body:
+Great news! All participating providers for your Travel Package 'Kawasan Falls Canyoneering Adventure' have confirmed your reservation. Package Booking Reference: GM-PKG-TEST-1c1b3d. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:40:26] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Kawasan Falls Canyoneering Adventure (#GM-PKG-TEST-1c1b3d)
+Body:
+Great news! All participating providers for your Travel Package 'Kawasan Falls Canyoneering Adventure' have confirmed your reservation. Package Booking Reference: GM-PKG-TEST-1c1b3d. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:40:26] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Bluewater Maribago Beach Resort (#GM-PKG-HOTEL-5a836d)
+Body:
+Great news! All participating providers for your Travel Package 'Bluewater Maribago Beach Resort' have confirmed your reservation. Package Booking Reference: GM-PKG-HOTEL-5a836d. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:41:48] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Kawasan Falls Canyoneering Adventure (#GM-PKG-TEST-a09bfb)
+Body:
+Great news! All participating providers for your Travel Package 'Kawasan Falls Canyoneering Adventure' have confirmed your reservation. Package Booking Reference: GM-PKG-TEST-a09bfb. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:41:48] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Kawasan Falls Canyoneering Adventure (#GM-PKG-TEST-a09bfb)
+Body:
+Great news! All participating providers for your Travel Package 'Kawasan Falls Canyoneering Adventure' have confirmed your reservation. Package Booking Reference: GM-PKG-TEST-a09bfb. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:41:48] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Bluewater Maribago Beach Resort (#GM-PKG-HOTEL-f77027)
+Body:
+Great news! All participating providers for your Travel Package 'Bluewater Maribago Beach Resort' have confirmed your reservation. Package Booking Reference: GM-PKG-HOTEL-f77027. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:42:24] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Kawasan Falls Canyoneering Adventure (#GM-PKG-TEST-a5613c)
+Body:
+Great news! All participating providers for your Travel Package 'Kawasan Falls Canyoneering Adventure' have confirmed your reservation. Package Booking Reference: GM-PKG-TEST-a5613c. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:42:24] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Kawasan Falls Canyoneering Adventure (#GM-PKG-TEST-a5613c)
+Body:
+Great news! All participating providers for your Travel Package 'Kawasan Falls Canyoneering Adventure' have confirmed your reservation. Package Booking Reference: GM-PKG-TEST-a5613c. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 13:42:24] LOCAL MAIL
+To: jalelmauc@gmail.com
+Subject: Package Confirmed: Bluewater Maribago Beach Resort (#GM-PKG-HOTEL-f32800)
+Body:
+Great news! All participating providers for your Travel Package 'Bluewater Maribago Beach Resort' have confirmed your reservation. Package Booking Reference: GM-PKG-HOTEL-f32800. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 14:02:31] LOCAL MAIL
+To: stepjane@gmail.com
+Subject: Travel Package Inclusion Request — test package title
+Body:
+Hello Stephanie Jane,
+
+A licensed tour guide has requested to bundle your service into a new GuideMate Travel Package.
+
+PACKAGE DETAILS:
+• Travel Package: test package title
+• Guide Host: Marc Repuesto (guide.moalboal@guidemate.local)
+• Duration: 2 Days / 1 Nights
+
+YOUR SERVICE REQUESTED:
+• Service Type: Hotel Accommodation
+• Listing / Unit: Deluxe Garden Bungalow (Bluewater Maribago Beach Resort)
+• Agreed Rate: ₱7,500.00 / night
+
+Planned Schedule Overview:
+  • Day 1: Day 1: test day
+  • Day 2: Day 2: day test 2
+
+ACTION REQUIRED:
+Please review how your service will be utilized in this package and respond with your decision (Agree or Reject):
+http://localhost/GuideMate/public/dashboard/package-requests
+
+— The GuideMate Partner Team
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-10 14:02:31] LOCAL MAIL
+To: migyong@sample.com
+Subject: Travel Package Inclusion Request — test package title
+Body:
+Hello Miguel Yongzon,
+
+A licensed tour guide has requested to bundle your service into a new GuideMate Travel Package.
+
+PACKAGE DETAILS:
+• Travel Package: test package title
+• Guide Host: Marc Repuesto (guide.moalboal@guidemate.local)
+• Duration: 2 Days / 1 Nights
+
+YOUR SERVICE REQUESTED:
+• Service Type: Vehicle Rental
+• Listing / Unit: Honda Click 125i V2 (Scooter)
+• Agreed Rate: ₱1,000.00 / day
+
+Planned Schedule Overview:
+  • Day 1: Day 1: test day
+  • Day 2: Day 2: day test 2
+
+ACTION REQUIRED:
+Please review how your service will be utilized in this package and respond with your decision (Agree or Reject):
+http://localhost/GuideMate/public/dashboard/package-requests
+
+— The GuideMate Partner Team
+http://localhost/GuideMate/public/
+
+----------------------------------------
+[2026-11-10 14:02:45] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Service Partner Agreed to Package — test package title
+Body:
+Hello Marc Repuesto,
+
+Service partner Miguel Yongzon has responded to your inclusion request for "test package title".
+
+• Service: Vehicle
+• Decision: AGREED
+• Overall Package Approval Status: Pending (Waiting for other providers)
+
+You can track and manage your travel packages here:
+http://localhost/GuideMate/public/dashboard/listings
+
+— The GuideMate Partner Team
+
+----------------------------------------
+[2026-11-10 14:03:01] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Service Partner Agreed to Package — test package title
+Body:
+Hello Marc Repuesto,
+
+Service partner Stephanie Jane has responded to your inclusion request for "test package title".
+
+• Service: Hotel
+• Decision: AGREED
+• Overall Package Approval Status: Agreed (All providers have approved)
+
+You can track and manage your travel packages here:
+http://localhost/GuideMate/public/dashboard/listings
+
+— The GuideMate Partner Team
+
+----------------------------------------
+[2026-11-10 14:03:30] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: Listing approved — test package title
+Body:
+Great news! Your guide listing for test package title has been approved by the administrator and is now published and visible to travelers.
+
+----------------------------------------
+[2026-11-10 14:04:19] LOCAL MAIL
+To: guide.moalboal@guidemate.local
+Subject: New Package Booking: test package title (#GM-PKG-20261110-CCC375)
+Body:
+A tourist has booked your Travel Package 'test package title'. Travel Date: 2026-11-12. Package Reference: GM-PKG-20261110-CCC375. Allocated Share: ₱4,664.00. Please review and confirm this booking in your Bookings dashboard.
+
+----------------------------------------
+[2026-11-10 14:05:33] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Rental confirmed — 2022 Honda Click 125i V2 Automatic
+Body:
+Your reservation for 2022 Honda Click 125i V2 Automatic (pickup 2026-11-12) has been confirmed by the rental partner.
+
+They will contact you to arrange delivery.
+
+----------------------------------------
+[2026-11-10 14:06:09] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test package title (#GM-PKG-20261110-CCC375)
+Body:
+Great news! All participating providers for your Travel Package 'test package title' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-CCC375. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 14:06:09] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Booking confirmed — test package title
+Body:
+Your booking for test package title on 2026-11-12 is confirmed.
+
+View bookings: http://localhost/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-10 14:06:34] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test package title (#GM-PKG-20261110-CCC375)
+Body:
+Great news! All participating providers for your Travel Package 'test package title' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-CCC375. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 14:07:20] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test package title (#GM-PKG-20261110-CCC375)
+Body:
+Great news! All participating providers for your Travel Package 'test package title' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-CCC375. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 14:07:44] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test package title (#GM-PKG-20261110-CCC375)
+Body:
+Great news! All participating providers for your Travel Package 'test package title' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-CCC375. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 14:10:15] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Package Confirmed: test package title (#GM-PKG-20261110-CCC375)
+Body:
+Great news! All participating providers for your Travel Package 'test package title' have confirmed your reservation. Package Booking Reference: GM-PKG-20261110-CCC375. Your trip is fully confirmed!
+
+----------------------------------------
+[2026-11-10 14:10:49] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Trip Completed: test package title (#GM-PKG-20261110-CCC375)
+Body:
+Your Travel Package 'test package title' has been marked as Completed by your tour guide host. Thank you for traveling with GuideMate! You may now leave a review to share your travel experience.
+
+----------------------------------------
+[2026-11-10 14:24:20] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Payment received — waiting for rental confirmation
+Body:
+Your payment for 2022 Honda Click 125i V2 Automatic (pickup 2026-11-11) was received.
+
+The rental partner still needs to confirm this reservation. You will get another message once they accept it.
+
+----------------------------------------
+[2026-11-10 14:24:20] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: Confirm this rental â€” 2022 Honda Click 125i V2 Automatic
+Body:
+Sample Account reserved "2022 Honda Click 125i V2 Automatic" and payment was received.
+
+Pickup: 2026-11-11
+Amount paid: PHP 1,000.00
+
+This reservation is NOT confirmed yet. Open your dashboard â†’ Rental requests and confirm or decline it.
+/GuideMate/public/dashboard/rentals
+
+----------------------------------------
+[2026-11-10 14:24:20] LOCAL MAIL
+To: janethmauir@gmail.com
+Subject: Confirm this rental â€” 2022 Honda Click 125i V2 Automatic
+Body:
+Sample Account reserved "2022 Honda Click 125i V2 Automatic" and payment was received.
+
+Pickup: 2026-11-11
+Amount paid: PHP 1,000.00
+
+This reservation is NOT confirmed yet. Open your dashboard â†’ Rental requests and confirm or decline it.
+/GuideMate/public/dashboard/rentals
+
+----------------------------------------
+[2026-11-10 14:24:20] LOCAL MAIL
+To: migyong@sample.com
+Subject: Confirm this rental â€” 2022 Honda Click 125i V2 Automatic
+Body:
+Sample Account reserved "2022 Honda Click 125i V2 Automatic" and payment was received.
+
+Pickup: 2026-11-11
+Amount paid: PHP 1,000.00
+
+This reservation is NOT confirmed yet. Open your dashboard â†’ Rental requests and confirm or decline it.
+/GuideMate/public/dashboard/rentals
+
+----------------------------------------
+[2026-11-10 14:27:39] LOCAL MAIL
+To: samacc@gamail.com
+Subject: Payment received — waiting for confirmation
+Body:
+Your payment for Bluewater Maribago Beach Resort on 1 nights (2026-11-11 to 2026-11-12) was received.
+
+The partner still needs to confirm this booking. You will get another message once they accept it.
+
+Track it here: http://192.168.1.39/GuideMate/public/bookings
+
+----------------------------------------
+[2026-11-10 14:27:39] LOCAL MAIL
+To: fbaquerosa@gmail.com
+Subject: New booking awaiting your confirmation â€” Bluewater Maribago Beach Resort
+Body:
+Sample Account booked "Bluewater Maribago Beach Resort" and payment was received.
+
+Date: 2026-11-11
+Guests: 1
+Amount paid: PHP 1,500.00
+Payment: GCash / e-Wallet QR (Room Deposit)
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------
+[2026-11-10 14:27:39] LOCAL MAIL
+To: stepjane@gmail.com
+Subject: New booking awaiting your confirmation â€” Bluewater Maribago Beach Resort
+Body:
+Sample Account booked "Bluewater Maribago Beach Resort" and payment was received.
+
+Date: 2026-11-11
+Guests: 1
+Amount paid: PHP 1,500.00
+Payment: GCash / e-Wallet QR (Room Deposit)
+
+This booking is NOT confirmed yet. Open your dashboard â†’ Bookings and confirm or decline it.
+/GuideMate/public/dashboard/bookings
+
+----------------------------------------

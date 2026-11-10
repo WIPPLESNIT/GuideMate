@@ -38,6 +38,7 @@ $router->get('/api/trip-map', [ApiController::class, 'tripMap']);
 $router->get('/api/maps', [ApiController::class, 'mapsConfig']);
 $router->get('/api/vouchers', [ApiController::class, 'vouchers']);
 $router->post('/api/vouchers/validate', [ApiController::class, 'validateVoucher']);
+$router->post('/api/vouchers/redeem', [ApiController::class, 'redeemVoucher']);
 
 $router->get('/api/favorites', [ApiController::class, 'favorites']);
 $router->post('/api/favorites/toggle', [ApiController::class, 'toggleFavorite']);

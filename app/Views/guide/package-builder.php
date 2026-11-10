@@ -456,7 +456,14 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                     <div class="pkg-card-body" style="padding:1rem;">
                                         <div class="pkg-card-location" style="font-size:0.8rem;color:#64748b;margin-bottom:4px;">📍 <?= e($hArea) ?></div>
                                         <h4 class="pkg-card-title" style="margin:0 0 4px 0;font-size:1.05rem;font-weight:700;color:#0f172a;line-height:1.3;"><?= e($hTitle) ?></h4>
-                                        <div style="font-size:0.75rem;color:#047857;font-weight:600;margin-bottom:8px;">🏨 Partner: <?= e($hPartner) ?></div>
+                                        <div style="font-size:0.75rem;color:#047857;font-weight:600;margin-bottom:6px;">🏨 Partner: <?= e($hPartner) ?></div>
+                                        <?php
+                                        $hDesc = !empty($h['summary']) ? (string)$h['summary'] : (!empty($h['description']) ? (string)$h['description'] : '');
+                                        if ($hDesc !== ''): ?>
+                                            <p style="font-size:0.78rem;color:#64748b;margin:0 0 8px 0;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;" title="<?= e($hDesc) ?>">
+                                                <?= e($hDesc) ?>
+                                            </p>
+                                        <?php endif; ?>
                                         <div style="display:flex;align-items:center;justify-content:space-between;padding-top:0.5rem;border-top:1px solid #f1f5f9;font-size:0.8rem;">
                                             <span style="color:#64748b;"><?= $hRoomCount ?> room<?= $hRoomCount !== 1 ? 's' : '' ?> available</span>
                                             <span style="font-weight:700;color:#059669;"><?= $hMinPrice > 0 ? ('From ' . money($hMinPrice) . ' / nt') : 'Rates on rooms' ?></span>
@@ -550,11 +557,41 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                                     <?= e($hBed) ?> • Daily Breakfast Included
                                                 </div>
                                             </div>
-                                            <div style="display:flex;flex-wrap:wrap;gap:0.25rem;">
-                                                <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Wi-Fi</span>
-                                                <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Pool</span>
-                                                <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Aircon</span>
-                                            </div>
+                                            <?php
+                                            $rDesc = !empty($r['room_description']) ? (string)$r['room_description'] : (!empty($r['description']) ? (string)$r['description'] : '');
+                                            if ($rDesc !== ''): ?>
+                                                <div style="font-size:0.75rem;color:#64748b;margin:4px 0 6px 0;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;" title="<?= e($rDesc) ?>">
+                                                    <?= e($rDesc) ?>
+                                                </div>
+                                            <?php endif; ?>
+                                            <?php
+                                            $amenitiesArr = [];
+                                            if (!empty($r['amenities'])) {
+                                                if (is_array($r['amenities'])) {
+                                                    $amenitiesArr = $r['amenities'];
+                                                } elseif (is_string($r['amenities'])) {
+                                                    $decoded = json_decode($r['amenities'], true);
+                                                    if (is_array($decoded)) {
+                                                        $amenitiesArr = $decoded;
+                                                    } else {
+                                                        $amenitiesArr = array_filter(array_map('trim', explode(',', $r['amenities'])));
+                                                    }
+                                                }
+                                            }
+                                            ?>
+                                            <?php if (!empty($amenitiesArr)): ?>
+                                                <div style="display:flex;flex-wrap:wrap;gap:0.25rem;">
+                                                    <?php foreach (array_slice($amenitiesArr, 0, 3) as $am): ?>
+                                                        <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ <?= e($am) ?></span>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php else: ?>
+                                                <div style="display:flex;flex-wrap:wrap;gap:0.25rem;">
+                                                    <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Wi-Fi</span>
+                                                    <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Pool</span>
+                                                    <span class="pkg-perk-pill" style="font-size:0.7rem;padding:2px 6px;">✓ Aircon</span>
+                                                </div>
+                                            <?php endif; ?>
                                         </div>
                                     </label>
                                 <?php endforeach; ?>
@@ -595,7 +632,7 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                 $vSpecsJson = is_string($vSpecs) ? $vSpecs : json_encode($vSpecs);
                                 $vHandover = (string) ($v['handover_time'] ?? '13:00:00');
                                 $vReturn = (string) ($v['return_time'] ?? '12:00:00');
-                                $isSelectedVehicle = false;
+                                $isSelectedVehicle = (!empty($selectedVehicleId) && (int) $selectedVehicleId === $vId);
                             ?>
                                 <label class="pkg-card-radio <?= $isSelectedVehicle ? 'selected' : '' ?>" id="vehicleCard_<?= $vId ?>">
                                     <input type="radio" name="selected_vehicle_id" value="<?= $vId ?>"
@@ -634,8 +671,9 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                 </label>
                             <?php endforeach; ?>
 
+                            <?php $isNoVehicleSelected = empty($selectedVehicleId) || (int) $selectedVehicleId <= 0; ?>
                             <!-- Option for no vehicle -->
-                            <label class="pkg-card-radio" id="vehicleCard_none">
+                            <label class="pkg-card-radio <?= $isNoVehicleSelected ? 'selected' : '' ?>" id="vehicleCard_none">
                                 <input type="radio" name="selected_vehicle_id" value="none"
                                        data-vehicle-model="none"
                                        data-vehicle-type="none"
@@ -644,6 +682,7 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                        data-location=""
                                        data-handover-time="N/A"
                                        data-return-time="N/A"
+                                       <?= $isNoVehicleSelected ? 'checked' : '' ?>
                                        onchange="selectVehicle(this)"
                                        style="position:absolute;top:0.75rem;right:0.75rem;z-index:2;width:18px;height:18px;">
                                 <div style="height:160px;background:#f8fafc;border-radius:12px 12px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;border-bottom:1px solid #e2e8f0;">
@@ -1013,6 +1052,16 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                                 <strong id="sim_guide_margin" style="font-size:1.25rem;display:block;margin-top:2px;color:#047857;">₱0.00</strong>
                             </div>
 
+                            <div style="background:#f1f5f9;padding:0.85rem;border-radius:12px;border:1px solid #cbd5e1;">
+                                <span style="font-size:0.75rem;color:#475569;display:block;font-weight:700;">📊 Subtotal Before Discount</span>
+                                <strong id="sim_subtotal_before_discount" style="font-size:1.25rem;display:block;margin-top:2px;color:#0f172a;">₱0.00</strong>
+                            </div>
+
+                            <div style="background:#ecfdf5;padding:0.85rem;border-radius:12px;border:1px solid #6ee7b7;">
+                                <span style="font-size:0.75rem;color:#047857;display:block;font-weight:700;">🏷️ Bundle Discount (10% off)</span>
+                                <strong id="sim_package_discount" style="font-size:1.25rem;display:block;margin-top:2px;color:#059669;">-₱0.00</strong>
+                            </div>
+
                             <div style="background:#ffffff;padding:0.85rem;border-radius:12px;border:1px solid #e2e8f0;">
                                 <span style="font-size:0.75rem;color:#64748b;display:block;">🛡️ GuideMate Fee (8%)</span>
                                 <strong id="sim_platform_fee" style="font-size:1.25rem;display:block;margin-top:2px;color:#0f172a;">₱0.00</strong>
@@ -1022,7 +1071,7 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                         <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px dashed #cbd5e1;padding-top:1.15rem;padding-bottom:0.35rem;flex-wrap:gap:1rem;">
                             <div>
                                 <span style="font-size:1.05rem;color:#0f172a;text-transform:uppercase;font-weight:800;letter-spacing:0.04em;">
-                                    💰 Calculated Total Package Price
+                                    💰 Final Discounted Package Price
                                 </span>
                                 <small style="display:block;color:#64748b;font-size:0.8rem;margin-top:2px;">Published price per traveler in customer package listing</small>
                             </div>
@@ -1037,6 +1086,8 @@ $hostToursCount = (int) ($hostStats['completed'] ?? 0);
                     <input type="hidden" id="calc_attraction_fee" name="calc_attraction_fee" value="0">
                     <input type="hidden" id="calc_hotel_fee" name="calc_hotel_fee" value="0">
                     <input type="hidden" id="calc_rental_fee" name="calc_rental_fee" value="0">
+                    <input type="hidden" id="calc_subtotal_before_discount" name="calc_subtotal_before_discount" value="0">
+                    <input type="hidden" id="calc_discount" name="calc_discount" value="0">
                     <input type="hidden" id="calc_platform_fee" name="calc_platform_fee" value="0">
                     <input type="hidden" id="final_price_per_pax" name="final_price_per_pax" value="<?= $defaultPrice ?>">
                     <input type="hidden" id="total_package_price" name="total_package_price" value="<?= $defaultPrice ?>">
@@ -2679,7 +2730,7 @@ function calculateFinancials() {
 
     selectedActivities.forEach(act => {
         const rate = parseFloat(act.rate) || 0;
-        if (act.category.toLowerCase().includes('attraction')) {
+        if (act.category && act.category.toLowerCase().includes('attraction')) {
             totalAttractionsRate += rate;
         } else {
             totalThingsToDoRate += rate;
@@ -2687,15 +2738,24 @@ function calculateFinancials() {
     });
 
     // 2. Hotel Net Rate: roomRate * nights (Do not divide by 2)
-    const hotelTotal = (selectedHotelName !== 'None') ? (selectedHotelRate * nights) : 0;
+    const hotelTotal = (selectedHotelName !== 'None' && selectedHotelName !== '') ? (selectedHotelRate * nights) : 0;
 
     // 3. Rental Net Rate: dailyRate * days (Do not divide by 2)
-    const vehicleTotal = (selectedVehicleModel !== 'None') ? (selectedVehicleDailyRate * days) : 0;
+    const vehicleTotal = (selectedVehicleModel !== 'None' && selectedVehicleModel !== '') ? (selectedVehicleDailyRate * days) : 0;
 
-    // 4. Subtotal & Platform Fee
-    const subtotal = totalThingsToDoRate + totalAttractionsRate + hotelTotal + vehicleTotal + guideMargin;
-    const platformFee = Math.round(subtotal * 0.08);
-    const calculatedTotal = Math.round(subtotal + platformFee);
+    // 4. Subtotal Before Discount
+    const subtotalBeforeDiscount = Math.round(totalThingsToDoRate + totalAttractionsRate + hotelTotal + vehicleTotal + guideMargin);
+
+    // 5. Package Bundle Discount
+    // Apply 10% bundle discount on the selected bundled services subtotal (Things to Do, Attractions, Hotel, Vehicle)
+    const bundledServicesTotal = totalThingsToDoRate + totalAttractionsRate + hotelTotal + vehicleTotal;
+    const discountRate = (bundledServicesTotal > 0) ? 0.10 : 0.0;
+    const packageDiscount = Math.round(bundledServicesTotal * discountRate);
+
+    // 6. Net After Discount & Platform Fee (8%)
+    const subtotalAfterDiscount = Math.max(0, subtotalBeforeDiscount - packageDiscount);
+    const platformFee = Math.round(subtotalAfterDiscount * 0.08);
+    const calculatedTotal = Math.max(0, subtotalAfterDiscount + platformFee);
 
     // Update Simulator Labels
     const actEl = document.getElementById('sim_activity_fee');
@@ -2703,6 +2763,8 @@ function calculateFinancials() {
     const hotEl = document.getElementById('sim_hotel_fee');
     const renEl = document.getElementById('sim_rental_fee');
     const marEl = document.getElementById('sim_guide_margin');
+    const subEl = document.getElementById('sim_subtotal_before_discount');
+    const disEl = document.getElementById('sim_package_discount');
     const plaEl = document.getElementById('sim_platform_fee');
     const totEl = document.getElementById('sim_final_total');
     const marVal = document.getElementById('guide_margin_val');
@@ -2713,6 +2775,8 @@ function calculateFinancials() {
     if (hotEl) hotEl.innerText = '₱' + hotelTotal.toLocaleString('en-US', { minimumFractionDigits: 2 });
     if (renEl) renEl.innerText = '₱' + vehicleTotal.toLocaleString('en-US', { minimumFractionDigits: 2 });
     if (marEl) marEl.innerText = '₱' + guideMargin.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    if (subEl) subEl.innerText = '₱' + subtotalBeforeDiscount.toLocaleString('en-US', { minimumFractionDigits: 2 });
+    if (disEl) disEl.innerText = '-₱' + packageDiscount.toLocaleString('en-US', { minimumFractionDigits: 2 });
     if (plaEl) plaEl.innerText = '₱' + platformFee.toLocaleString('en-US', { minimumFractionDigits: 2 });
     if (marVal) marVal.innerText = '₱' + guideMargin.toLocaleString('en-US');
 
@@ -2721,6 +2785,8 @@ function calculateFinancials() {
     const cAtt = document.getElementById('calc_attraction_fee');
     const cHot = document.getElementById('calc_hotel_fee');
     const cRen = document.getElementById('calc_rental_fee');
+    const cSub = document.getElementById('calc_subtotal_before_discount');
+    const cDis = document.getElementById('calc_discount');
     const cPla = document.getElementById('calc_platform_fee');
     const cFin = document.getElementById('final_price_per_pax');
 
@@ -2728,6 +2794,8 @@ function calculateFinancials() {
     if (cAtt) cAtt.value = totalAttractionsRate;
     if (cHot) cHot.value = hotelTotal;
     if (cRen) cRen.value = vehicleTotal;
+    if (cSub) cSub.value = subtotalBeforeDiscount;
+    if (cDis) cDis.value = packageDiscount;
     if (cPla) cPla.value = platformFee;
 
     // Always update total package input so input and simulation stay completely consistent
@@ -2739,6 +2807,13 @@ function calculateFinancials() {
 // Initial render on page load
 document.addEventListener('DOMContentLoaded', () => {
     updateDescCount();
+
+    // Preserve previously selected vehicle on page load
+    const checkedVeh = document.querySelector('input[name="selected_vehicle_id"]:checked');
+    if (checkedVeh && typeof selectVehicle === 'function') {
+        selectVehicle(checkedVeh);
+    }
+
     updateStep2Counters();
     renderStep3Details();
     updateItineraryDays();
