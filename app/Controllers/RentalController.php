@@ -429,6 +429,70 @@ final class RentalController extends Controller
         redirect('/dashboard/rentals');
     }
 
+    public function deleteRequest(string $id): void
+    {
+        $this->verifyCsrf();
+        Auth::refreshUser();
+        $user = Auth::user();
+        $userId = (int) ($user['id'] ?? 0);
+        $reqId = (int) $id;
+        $req = RentalRequest::find($reqId);
+
+        $isJson = $this->isJson() 
+            || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+            || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        if ($req === null) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Rental request not found.'], 404);
+                return;
+            }
+            flash('error', 'Rental request not found.');
+            redirect('/dashboard/rentals');
+            return;
+        }
+
+        $vehicle = \App\Core\Database::first('SELECT user_id FROM vehicles WHERE id = ?', [(int) $req['vehicle_id']]);
+        $isOwner = ($vehicle && (int) $vehicle['user_id'] === $userId);
+        $isAdmin = in_array($user['role'] ?? '', ['admin'], true);
+
+        if (!$isOwner && !$isAdmin) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Unauthorized.'], 403);
+                return;
+            }
+            flash('error', 'You are not authorized to delete this rental request.');
+            redirect('/dashboard/rentals');
+            return;
+        }
+
+        $status = strtolower(trim((string) ($req['status'] ?? '')));
+        $paymentStatus = strtolower(trim((string) ($req['payment_status'] ?? '')));
+        $reportStatus = strtolower(trim((string) ($req['report_status'] ?? '')));
+        $isCompleted = ($status === 'completed');
+        $isRefunded = in_array('refunded', [$status, $paymentStatus, $reportStatus], true);
+
+        if (!$isCompleted && !$isRefunded) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Only completed or refunded rental requests can be deleted.'], 400);
+                return;
+            }
+            flash('error', 'Only completed or refunded rental requests can be deleted.');
+            redirect('/dashboard/rentals');
+            return;
+        }
+
+        RentalRequest::delete($reqId);
+
+        if ($isJson) {
+            $this->json(['success' => true, 'message' => 'Rental request deleted successfully.', 'id' => $reqId]);
+            return;
+        }
+
+        flash('success', 'Rental request deleted successfully.');
+        redirect('/dashboard/rentals');
+    }
+
     /**
      * Refund a paid reservation (resolves any open problem report).
      */

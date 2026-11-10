@@ -283,8 +283,8 @@ final class AdminGuideListingReviewAndLiveListingsTest
         $this->assert(isset($counts['things-to-do']), 'countLiveByCategory includes "things-to-do" key');
         $this->assert(isset($counts['hotels']), 'countLiveByCategory includes "hotels" key');
         $this->assert(
-            $counts['all'] === ($counts['attractions'] + $counts['things-to-do'] + $counts['hotels']),
-            "Total live count ({$counts['all']}) equals sum of categories (" . ($counts['attractions'] + $counts['things-to-do'] + $counts['hotels']) . ")"
+            $counts['all'] === ($counts['attractions'] + $counts['things-to-do'] + $counts['hotels'] + ($counts['packages'] ?? 0)),
+            "Total live count ({$counts['all']}) equals sum of categories (" . ($counts['attractions'] + $counts['things-to-do'] + $counts['hotels'] + ($counts['packages'] ?? 0)) . ")"
         );
 
         // 2. allLiveForAdmin retrieval

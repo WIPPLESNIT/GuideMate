@@ -185,6 +185,17 @@ final class PromoCode
             return ['success' => false, 'error' => 'Invalid voucher code.'];
         }
 
+        $today = date('Y-m-d');
+        if (!empty($promo['valid_until']) && $today > (string) $promo['valid_until']) {
+            return ['success' => false, 'error' => 'This voucher has expired.'];
+        }
+        if (!empty($promo['valid_from']) && $today < (string) $promo['valid_from']) {
+            return ['success' => false, 'error' => 'This voucher is not active yet.'];
+        }
+        if ($promo['max_uses'] !== null && (int) $promo['uses_count'] >= (int) $promo['max_uses']) {
+            return ['success' => false, 'error' => 'This voucher has reached its redemption limit.'];
+        }
+
         $existing = Database::first(
             'SELECT id, booking_id FROM voucher_redemptions WHERE user_id = ? AND code = ? LIMIT 1',
             [$userId, $normalized]

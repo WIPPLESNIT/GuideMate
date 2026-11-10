@@ -27,6 +27,7 @@ final class AdminController extends Controller
     public function index(): void
     {
         Booking::reconcileOrphanRefunds();
+        $complaints = Dispute::all();
         $this->view('dashboard/admin', [
             'title' => 'Admin Dashboard',
             'stats' => [
@@ -39,6 +40,8 @@ final class AdminController extends Controller
                 'openDisputes' => Dispute::countOpen(),
                 'revenue' => Payment::totalRevenue(),
             ],
+            'complaints' => $complaints,
+            'disputes' => $complaints,
             'pending' => Listing::pending(),
             'pendingGuides' => User::providers('pending'),
             'recentReviews' => Review::recent(6),
@@ -162,18 +165,52 @@ final class AdminController extends Controller
         ], 'admin');
     }
 
-    public function guideListings(): void
+    public function listingReview(): void
     {
+        $tab = strtolower(trim((string) $this->input('tab', 'guides')));
+        if (!in_array($tab, ['guides', 'hotels', 'vehicles'], true)) {
+            $tab = 'guides';
+        }
+
+        $pendingGuideListings = Listing::pendingGuideListingsCount();
+        $pendingHotels = Listing::pendingHotelsCount();
+        $pendingVehicles = Vehicle::pendingCount();
+
         $status = (string) $this->input('status', 'all');
         $category = (string) $this->input('category', 'all');
+        $type = (string) $this->input('type', 'all');
 
-        $this->view('admin/guide-listings', [
-            'title' => 'Guide Listings Review',
-            'listings' => Listing::allGuideListingsForAdmin($status, $category),
+        $viewData = [
+            'currentTab' => $tab,
+            'pendingGuideListings' => $pendingGuideListings,
+            'pendingHotels' => $pendingHotels,
+            'pendingVehicles' => $pendingVehicles,
             'status' => $status,
             'category' => $category,
-            'pendingCount' => Listing::pendingGuideListingsCount(),
-        ], 'admin');
+            'type' => $type,
+        ];
+
+        if ($tab === 'hotels') {
+            $viewData['title'] = 'Hotel Listings Review';
+            $viewData['hotels'] = Listing::allHotelsForAdmin('all');
+            $viewData['pendingCount'] = $pendingHotels;
+        } elseif ($tab === 'vehicles') {
+            $viewData['title'] = 'Vehicle Listings Review';
+            $viewData['vehicles'] = Vehicle::allForAdmin('all');
+            $viewData['pendingCount'] = $pendingVehicles;
+        } else {
+            $viewData['title'] = 'Guide Listings Review';
+            $viewData['listings'] = Listing::allGuideListingsForAdmin($status, $category);
+            $viewData['pendingCount'] = $pendingGuideListings;
+        }
+
+        $this->view('admin/listing-review', $viewData, 'admin');
+    }
+
+    public function guideListings(): void
+    {
+        $_GET['tab'] = 'guides';
+        $this->listingReview();
     }
 
     public function showGuideListing(string $id): void
@@ -847,13 +884,8 @@ final class AdminController extends Controller
 
     public function hotels(): void
     {
-        $status = (string) $this->input('status', 'all');
-        $this->view('admin/hotels', [
-            'title' => 'Hotel Listings Review',
-            'hotels' => Listing::allHotelsForAdmin('all'),
-            'status' => $status,
-            'pendingCount' => Listing::pendingHotelsCount(),
-        ], 'admin');
+        $_GET['tab'] = 'hotels';
+        $this->listingReview();
     }
 
     public function showHotel(string $id): void
@@ -984,15 +1016,8 @@ final class AdminController extends Controller
 
     public function vehicles(): void
     {
-        $status = (string) $this->input('status', 'all');
-        $type = (string) $this->input('type', 'all');
-        $this->view('admin/vehicles', [
-            'title' => 'Vehicle Listings Review',
-            'vehicles' => Vehicle::allForAdmin('all'),
-            'status' => $status,
-            'type' => $type,
-            'pendingCount' => Vehicle::pendingCount(),
-        ], 'admin');
+        $_GET['tab'] = 'vehicles';
+        $this->listingReview();
     }
 
     public function showVehicle(string $id): void
@@ -1181,6 +1206,10 @@ final class AdminController extends Controller
         }
 
         if ($errors !== []) {
+            if ($this->isJson() || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+                $this->json(['success' => false, 'errors' => $errors, 'message' => reset($errors)], 422);
+                return;
+            }
             flash_keep_old($errors, [], '/admin/users/create');
         }
 
@@ -1202,6 +1231,22 @@ final class AdminController extends Controller
             'role' => $role,
             'is_active' => $isActive,
         ]);
+
+        if ($this->isJson() || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+            $this->json([
+                'success' => true,
+                'message' => "User '{$name}' created successfully.",
+                'user' => [
+                    'id' => $userId,
+                    'name' => $name,
+                    'email' => $email,
+                    'role' => $role,
+                    'phone' => $phone,
+                    'is_active' => $isActive,
+                ],
+            ]);
+            return;
+        }
 
         flash('success', "User '{$name}' created successfully.");
         redirect('/admin/users');
@@ -1232,8 +1277,16 @@ final class AdminController extends Controller
     public function updateUser(string $id): void
     {
         $this->verifyCsrf();
+        $isJson = $this->isJson() 
+            || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+            || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
         $user = User::find((int) $id);
         if ($user === null) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'User not found.'], 404);
+                return;
+            }
             abort(404, 'User not found.');
         }
 
@@ -1275,6 +1328,10 @@ final class AdminController extends Controller
         }
 
         if ($errors !== []) {
+            if ($isJson) {
+                $this->json(['success' => false, 'errors' => $errors, 'error' => reset($errors)], 422);
+                return;
+            }
             flash_keep_old($errors, [], '/admin/users/' . $id . '/edit');
         }
 
@@ -1313,6 +1370,24 @@ final class AdminController extends Controller
             'is_active' => $isActive,
             'guide_status' => $updateData['guide_status'] ?? null,
         ]);
+
+        if ($isJson) {
+            $this->json([
+                'success' => true,
+                'message' => "User '{$name}' updated successfully.",
+                'user' => [
+                    'id' => (int) $id,
+                    'name' => $name,
+                    'email' => $email,
+                    'role' => $role,
+                    'is_active' => $isActive,
+                    'phone' => $phone,
+                    'location' => $location,
+                    'bio' => $bio,
+                ]
+            ]);
+            return;
+        }
 
         flash('success', "User '{$name}' updated successfully.");
         redirect('/admin/users');
@@ -1440,14 +1515,20 @@ final class AdminController extends Controller
             AuditLog::recordAction('dispute.refund', 'dispute', $disputeId);
             flash('success', 'Refund processed and dispute resolved.');
         } elseif ($action === 'warning') {
-            $warningNote = $note !== '' ? $note : 'Warning issued after dispute #' . $disputeId . '.';
+            $info = Dispute::providerAccountInfo($dispute);
+            $providerTitle = $info['provider_title'];
+            $warningNote = $note !== '' ? $note : "Warning issued to {$providerTitle} after dispute #{$disputeId}.";
             Dispute::resolve($disputeId, 'resolved_warning', $warningNote);
-            // Keep booking as disputed so the guide cannot mark it complete again;
+            // Keep booking as disputed so the provider cannot mark it complete again;
             // the tourist has already used their one report for this booking.
             User::warnGuide($guideId, $warningNote);
             $this->notifyGuideWarning($guideId, $warningNote);
-            AuditLog::recordAction('dispute.warning', 'dispute', $disputeId);
-            flash('success', 'Guide warned. They were notified by message and booking actions are restricted until you clear the warning.');
+            AuditLog::recordAction('dispute.warning', 'dispute', $disputeId, [
+                'provider_id' => $guideId,
+                'provider_role' => $info['type'],
+                'note' => $warningNote,
+            ]);
+            flash('success', "{$providerTitle} warned. They were notified by message and actions are restricted until you clear the warning.");
         } elseif ($action === 'reject') {
             if ($dispute['booking_status'] === 'disputed') {
                 Booking::updateStatus($bookingId, 'confirmed');

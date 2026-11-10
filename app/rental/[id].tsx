@@ -150,6 +150,13 @@ export default function VehicleDetailsScreen() {
   }, [vehicle]);
 
   const openBookingModal = () => {
+    if (!vehicle?.is_available) {
+      Alert.alert(
+        'Unit Currently Rented',
+        'This vehicle unit currently has an active rental request and cannot be reserved until completed.'
+      );
+      return;
+    }
     setPickupDate('');
     setPickupTime('');
     setRentalDays(1);
@@ -436,10 +443,35 @@ export default function VehicleDetailsScreen() {
                 </Text>
                 <Text style={[styles.priceUnit, { color: isDark ? colors.textMute : '#8E99A8' }]}> per day</Text>
               </View>
-              <View style={[styles.availBadge, { backgroundColor: isDark ? '#064E3B' : '#DCFCE7' }]}>
-                <View style={styles.availDot} />
-                <Text style={[styles.availText, { color: isDark ? '#34D399' : '#15803D' }]}>
-                  {vehicle.is_available ? 'Available for Rent' : 'Reserved'}
+              <View
+                style={[
+                  styles.availBadge,
+                  {
+                    backgroundColor: vehicle.is_available
+                      ? (isDark ? '#064E3B' : '#DCFCE7')
+                      : (isDark ? '#7F1D1D' : '#FEE2E2'),
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.availDot,
+                    {
+                      backgroundColor: vehicle.is_available ? '#10B981' : '#EF4444',
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.availText,
+                    {
+                      color: vehicle.is_available
+                        ? (isDark ? '#34D399' : '#15803D')
+                        : (isDark ? '#F87171' : '#B91C1C'),
+                    },
+                  ]}
+                >
+                  {vehicle.is_available ? 'Available for Rent' : 'Currently Rented'}
                 </Text>
               </View>
             </View>
@@ -606,11 +638,17 @@ export default function VehicleDetailsScreen() {
           </View>
 
           <TouchableOpacity
-            style={styles.rentUnitBtn}
+            style={[
+              styles.rentUnitBtn,
+              !vehicle?.is_available && { backgroundColor: isDark ? '#334155' : '#94A3B8' },
+            ]}
+            disabled={!vehicle?.is_available}
             activeOpacity={0.88}
             onPress={openBookingModal}
           >
-            <Text style={styles.rentUnitBtnText}>Rent Unit</Text>
+            <Text style={styles.rentUnitBtnText}>
+              {vehicle?.is_available ? 'Rent Unit' : 'Currently Rented'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

@@ -340,6 +340,8 @@ final class RentalRequest
                     $vRating = $pStats['rating'];
                 }
 
+                $hasActive = self::hasActiveRental((string) $v['id']);
+
                 return [
                     'id' => (string) $v['id'],
                     'slug' => (string) $v['slug'],
@@ -358,7 +360,8 @@ final class RentalRequest
                     'address' => (string) ($v['address'] ?? ''),
                     'description' => (string) ($v['description'] ?? ''),
                     'status' => (string) ($v['status'] ?? 'approved'),
-                    'is_available' => (bool) ($v['is_available'] ?? true),
+                    'is_available' => ((bool) ($v['is_available'] ?? true)) && !$hasActive,
+                    'has_active_rental' => $hasActive,
                     'rating' => (float) $vRating,
                     'image' => $mainImg,
                     'images' => $images,
@@ -367,5 +370,29 @@ final class RentalRequest
         }
 
         return [];
+    }
+
+    public static function delete(int $id): bool
+    {
+        return Database::run('DELETE FROM rental_requests WHERE id = ?', [$id])->rowCount() > 0;
+    }
+
+    /**
+     * Check if a vehicle unit already has an active rental request (pending, approved, or contacted).
+     */
+    public static function hasActiveRental(string|int $vehicleId): bool
+    {
+        try {
+            $row = Database::first("
+                SELECT id FROM rental_requests
+                WHERE vehicle_id = ?
+                  AND status IN ('pending', 'approved', 'contacted')
+                LIMIT 1
+            ", [(string) $vehicleId]);
+
+            return $row !== null;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

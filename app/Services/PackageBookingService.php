@@ -685,7 +685,7 @@ final class PackageBookingService
     {
         self::ensureTables();
 
-        // If completed, finalize the entire package booking as completed
+        // If completed, update the guide's package component status and re-evaluate overall consensus
         if ($status === 'completed') {
             $booking = Database::first("SELECT id, package_booking_ref FROM bookings WHERE id = ?", [$bookingId]);
             $pkgRef = !empty($booking['package_booking_ref']) ? (string) $booking['package_booking_ref'] : null;
@@ -698,7 +698,13 @@ final class PackageBookingService
             }
 
             if ($pkgRef) {
-                self::completePackageBooking($pkgRef, $bookingId, $userId);
+                Database::run("
+                    UPDATE package_booking_items
+                    SET status = 'completed', responded_at = NOW()
+                    WHERE package_booking_ref = ? AND service_type = 'guide'
+                ", [$pkgRef]);
+                // Re-evaluate consensus: overall package only becomes completed if all providers have completed!
+                self::synchronizeOverallPackageStatus($pkgRef, 'guide', 'completed');
             }
             return;
         }
@@ -921,17 +927,25 @@ final class PackageBookingService
 
         $hasRejection = false;
         $hasPending = false;
-        $allConfirmed = true;
+        $allConfirmedOrCompleted = count($items) > 0;
+        $allCompleted = count($items) > 0;
         $rejectingItem = null;
 
         foreach ($items as $it) {
-            if ($it['status'] === 'cancelled') {
+            $st = (string) ($it['status'] ?? 'pending');
+            if ($st === 'cancelled') {
                 $hasRejection = true;
-                $allConfirmed = false;
+                $allConfirmedOrCompleted = false;
+                $allCompleted = false;
                 $rejectingItem = $it;
-            } elseif ($it['status'] === 'pending') {
+            } elseif ($st === 'pending') {
                 $hasPending = true;
-                $allConfirmed = false;
+                $allConfirmedOrCompleted = false;
+                $allCompleted = false;
+            } elseif ($st === 'confirmed') {
+                $allCompleted = false;
+            } elseif ($st === 'completed') {
+                // Individual component completed
             }
         }
 
@@ -940,20 +954,29 @@ final class PackageBookingService
             // Rule: If ANY provider cancels, overall package is cancelled and payment is refunded
             $overallStatus = 'cancelled';
             self::cascadeCancellation($pkgRef, $parentBookingId, $rejectingItem, $reason);
-        } elseif ($allConfirmed) {
-            // Rule: All required providers have confirmed -> package is fully Confirmed
+        } elseif ($allCompleted) {
+            // Rule: Overall package status should ONLY become Completed when ALL required providers have completed their respective services
+            $overallStatus = 'completed';
+            self::completePackageBooking($pkgRef, $parentBookingId, 0);
+        } elseif ($allConfirmedOrCompleted) {
+            // Rule: All required providers have confirmed (or some completed), but not all completed yet -> Package is Confirmed
             $overallStatus = 'confirmed';
             self::finalizeConfirmation($pkgRef, $parentBookingId, $items);
+            Database::run("
+                UPDATE bookings
+                SET package_overall_status = 'confirmed', status = 'confirmed'
+                WHERE package_booking_ref = ? AND status NOT IN ('completed', 'cancelled', 'refunded')
+            ", [$pkgRef]);
         } else {
-            // Rule: Some confirmed, some pending -> partially confirmed
-            $hasAnyConfirmed = false;
+            // Rule: Some confirmed/completed, some pending -> partially confirmed
+            $hasAnyConfirmedOrCompleted = false;
             foreach ($items as $it) {
-                if ($it['status'] === 'confirmed') {
-                    $hasAnyConfirmed = true;
+                if ($it['status'] === 'confirmed' || $it['status'] === 'completed') {
+                    $hasAnyConfirmedOrCompleted = true;
                     break;
                 }
             }
-            $overallStatus = $hasAnyConfirmed ? 'partially_confirmed' : 'pending';
+            $overallStatus = $hasAnyConfirmedOrCompleted ? 'partially_confirmed' : 'pending';
             Database::run("
                 UPDATE bookings
                 SET package_overall_status = ?, status = 'pending'
@@ -1178,14 +1201,54 @@ final class PackageBookingService
                     Database::run("UPDATE package_booking_items SET status = 'completed' WHERE id = ?", [$it['id']]);
                     $it['status'] = 'completed';
                 }
+            } elseif ($it['service_type'] === 'guide') {
+                $subStatus = (string) ($it['sub_booking_status'] ?? '');
+                if ($subStatus === 'completed' && $it['status'] !== 'completed') {
+                    Database::run("UPDATE package_booking_items SET status = 'completed' WHERE id = ?", [$it['id']]);
+                    $it['status'] = 'completed';
+                }
             }
         }
         unset($it);
 
+        $hasRejection = false;
+        $hasPending = false;
+        $allConfirmedOrCompleted = count($items) > 0;
+        $allCompleted = count($items) > 0;
+
+        foreach ($items as $it) {
+            $st = (string) ($it['status'] ?? 'pending');
+            if ($st === 'cancelled') {
+                $hasRejection = true;
+                $allConfirmedOrCompleted = false;
+                $allCompleted = false;
+            } elseif ($st === 'pending') {
+                $hasPending = true;
+                $allConfirmedOrCompleted = false;
+                $allCompleted = false;
+            } elseif ($st === 'confirmed') {
+                $allCompleted = false;
+            } elseif ($st === 'completed') {
+                // Completed item
+            }
+        }
+
         $parent = Database::first("SELECT * FROM bookings WHERE id = ?", [(int) $item['parent_booking_id']]);
-        $overallStatus = (string) ($parent['package_overall_status'] ?? $parent['status'] ?? 'pending');
-        if (($parent['status'] ?? '') === 'completed' || ($parent['package_overall_status'] ?? '') === 'completed') {
+        if ($hasRejection) {
+            $overallStatus = 'cancelled';
+        } elseif ($allCompleted) {
             $overallStatus = 'completed';
+        } elseif ($allConfirmedOrCompleted) {
+            $overallStatus = 'confirmed';
+        } else {
+            $hasAnyConfirmedOrCompleted = false;
+            foreach ($items as $it) {
+                if ($it['status'] === 'confirmed' || $it['status'] === 'completed') {
+                    $hasAnyConfirmedOrCompleted = true;
+                    break;
+                }
+            }
+            $overallStatus = $hasAnyConfirmedOrCompleted ? 'partially_confirmed' : 'pending';
         }
 
         return [

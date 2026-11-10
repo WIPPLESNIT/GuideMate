@@ -235,7 +235,9 @@ export default function ReportScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} activeOpacity={0.7} accessibilityLabel="Back">
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>Report a problem</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+          {existing ? 'Trip Report Details' : 'Report an issue'}
+        </Text>
         <View style={styles.iconBtn} />
       </View>
 
@@ -250,8 +252,15 @@ export default function ReportScreen() {
             <Ionicons name="shield-checkmark-outline" size={30} color={colors.primary} />
             <Text style={[styles.statusTitle, { color: colors.text }]}>Report submitted</Text>
             <Text style={[styles.statusBadge, { color: colors.primary }]}>{existing.status_label}</Text>
+            {existing.created_at ? (
+              <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4 }}>
+                Submitted: {new Date(existing.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            ) : null}
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <Text style={[styles.detailLabel, { color: colors.textSub }]}>Problem</Text>
+            <Text style={[styles.detailLabel, { color: colors.textSub }]}>Related Booking</Text>
+            <Text style={[styles.detailText, { color: colors.text, fontWeight: '700' }]}>{listingTitle}</Text>
+            <Text style={[styles.detailLabel, { color: colors.textSub, marginTop: 10 }]}>Problem</Text>
             <Text style={[styles.detailText, { color: colors.text }]}>{existing.problem_label}</Text>
             {existing.amount_requested ? (
               <>

@@ -18,6 +18,7 @@ type SaleVoucher = {
   description: string;
   minSpend: number;
   expires: string;
+  redeemed: boolean;
   used: boolean;
 };
 
@@ -28,6 +29,7 @@ function fromLocal(): SaleVoucher[] {
     description: promo.description,
     minSpend: promo.minSpend,
     expires: promo.expires,
+    redeemed: false,
     used: false,
   }));
 }
@@ -39,6 +41,7 @@ function fromApi(rows: ApiVoucher[]): SaleVoucher[] {
     description: promo.description,
     minSpend: promo.min_spend,
     expires: promo.expires,
+    redeemed: !!promo.redeemed,
     used: !!promo.used,
   }));
 }
@@ -49,6 +52,7 @@ export default function SaleScreen() {
   const { colors, isDark, radius, shadow, gradients } = useTheme();
   const [location, setLocation] = useState('Philippines');
   const [promos, setPromos] = useState<SaleVoucher[]>(fromLocal());
+  const [redeemingCode, setRedeemingCode] = useState<string | null>(null);
 
   const loadVouchers = useCallback(async () => {
     try {
@@ -71,25 +75,47 @@ export default function SaleScreen() {
 
   const redeem = async (promo: SaleVoucher) => {
     if (promo.used) {
-      Alert.alert('Already used', 'This voucher was already redeemed on your account. Each voucher can only be used once.');
+      Alert.alert('Already used', 'This voucher was already used on a completed booking.');
+      return;
+    }
+    if (promo.redeemed) {
+      Alert.alert('Already redeemed', `This voucher has already been claimed on your account. You can apply code ${promo.code} at checkout.`);
       return;
     }
     const session = await getSession();
     if (!session) {
-      Alert.alert('Sign in required', 'Sign in so this voucher can be saved to your account and used once at checkout.', [
+      Alert.alert('Sign in required', 'Please sign in to claim this voucher to your account.', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Sign in', onPress: () => router.push('/(auth)/login') },
       ]);
       return;
     }
-    Alert.alert(
-      'Voucher ready',
-      `Use code ${promo.code} at checkout. It can only be redeemed once on this account.`,
-      [
-        { text: 'Browse deals', onPress: () => router.push('/things-to-do') },
-        { text: 'Got it', style: 'cancel' },
-      ]
-    );
+
+    setRedeemingCode(promo.code);
+    try {
+      const res = await redeemVoucher(promo.code);
+      if (res.success) {
+        setPromos((prev) =>
+          prev.map((p) => (p.code === promo.code ? { ...p, redeemed: true } : p))
+        );
+        Alert.alert(
+          'Voucher Redeemed!',
+          `Code ${promo.code} has been added to your account. Use it at checkout to enjoy your discount!`,
+          [
+            { text: 'Browse deals', onPress: () => router.push('/things-to-do') },
+            { text: 'OK', style: 'cancel' },
+          ]
+        );
+        void loadVouchers();
+      } else {
+        Alert.alert('Redemption Failed', res.error || 'Could not redeem voucher.');
+      }
+    } catch (e: any) {
+      const msg = e?.message || 'Could not redeem voucher. Please try again.';
+      Alert.alert('Redemption Failed', msg);
+    } finally {
+      setRedeemingCode(null);
+    }
   };
 
   const visible = location === 'Philippines' ? promos : [];
@@ -134,37 +160,52 @@ export default function SaleScreen() {
             key={promo.code}
             style={[
               styles.promoCard,
-              { backgroundColor: colors.card, borderColor: colors.border, opacity: promo.used ? 0.72 : 1 },
+              { backgroundColor: colors.card, borderColor: promo.redeemed ? '#10B981' : colors.border, opacity: promo.used ? 0.72 : 1 },
               shadow.sm,
             ]}
           >
-            <View style={[styles.promoBadge, { backgroundColor: isDark ? colors.cardAlt : '#FFF1EC' }]}>
-              <Text style={[styles.promoBadgeText, { color: promo.used ? colors.textMute : colors.accent }]}>{promo.label}</Text>
+            <View style={[styles.promoBadge, { backgroundColor: promo.redeemed ? (isDark ? '#064E3B' : '#DCFCE7') : (isDark ? colors.cardAlt : '#FFF1EC') }]}>
+              <Text style={[styles.promoBadgeText, { color: promo.used ? colors.textMute : promo.redeemed ? '#10B981' : colors.accent }]}>{promo.label}</Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.promoDesc, { color: colors.text }]}>{promo.description}</Text>
               <Text style={[styles.promoMeta, { color: colors.textSub }]}>{formatVoucherMinimum(promo.minSpend)}</Text>
               <View style={styles.promoCodeRow}>
-                <View style={[styles.codePill, { backgroundColor: colors.chipBg, borderColor: colors.border }]}>
-                  <Ionicons name="pricetag" size={11} color={promo.used ? colors.textMute : colors.primary} />
+                <View style={[styles.codePill, { backgroundColor: colors.chipBg, borderColor: promo.redeemed ? '#10B981' : colors.border }]}>
+                  <Ionicons name="pricetag" size={11} color={promo.used ? colors.textMute : promo.redeemed ? '#10B981' : colors.primary} />
                   <Text style={[styles.codeText, { color: colors.text }]}>{promo.code}</Text>
                 </View>
                 <Text style={[styles.expires, { color: colors.textMute }]}>
-                  {promo.used ? 'Already used' : promo.expires}
+                  {promo.used ? 'Already used' : promo.redeemed ? 'Claimed on account' : promo.expires}
                 </Text>
               </View>
             </View>
             <TouchableOpacity
               style={[
                 styles.redeemBtn,
-                { backgroundColor: promo.used ? colors.border : colors.primary, borderRadius: radius.pill },
+                {
+                  backgroundColor: promo.used
+                    ? colors.border
+                    : promo.redeemed
+                    ? (isDark ? '#064E3B44' : '#DCFCE7')
+                    : colors.primary,
+                  borderColor: promo.redeemed ? '#10B981' : 'transparent',
+                  borderWidth: promo.redeemed ? 1 : 0,
+                  borderRadius: radius.pill,
+                },
               ]}
-              activeOpacity={promo.used ? 1 : 0.85}
+              activeOpacity={promo.used || promo.redeemed ? 1 : 0.85}
               onPress={() => redeem(promo)}
-              disabled={promo.used}
+              disabled={promo.used || promo.redeemed || redeemingCode === promo.code}
             >
-              <Text style={[styles.redeemText, promo.used && { color: colors.textMute }]}>
-                {promo.used ? 'Used' : 'Redeem'}
+              <Text
+                style={[
+                  styles.redeemText,
+                  promo.used && { color: colors.textMute },
+                  promo.redeemed && { color: isDark ? '#34D399' : '#059669', fontWeight: '800' },
+                ]}
+              >
+                {promo.used ? 'Used' : promo.redeemed ? 'Redeemed' : 'Redeem'}
               </Text>
             </TouchableOpacity>
           </View>

@@ -209,11 +209,12 @@ final class Booking
     public static function navigableForCustomer(int $userId): array
     {
         $rows = Database::all(
-            'SELECT b.id, b.booking_date, b.booking_time, b.booking_end_time, b.status, b.guests, b.listing_id,
+            'SELECT b.id, b.booking_date, b.booking_time, b.booking_end_time, b.status, b.guests, b.listing_id, b.notes,
                     l.title AS listing_title, l.slug AS listing_slug, l.area, l.address,
-                    l.latitude, l.longitude
+                    l.latitude, l.longitude, c.slug AS category_slug
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
+             LEFT JOIN categories c ON c.id = l.category_id
              WHERE b.user_id = ?
              ORDER BY b.booking_date ASC, b.id ASC',
             [$userId]
@@ -223,11 +224,14 @@ final class Booking
         foreach ($rows as $row) {
             $coords = Geo::forListing($row);
             if ($coords === null) {
-                continue;
+                $row['latitude'] = (float) (!empty($row['latitude']) ? $row['latitude'] : 10.3157);
+                $row['longitude'] = (float) (!empty($row['longitude']) ? $row['longitude'] : 123.8854);
+                $row['approximate'] = true;
+            } else {
+                $row['latitude'] = $coords['latitude'];
+                $row['longitude'] = $coords['longitude'];
+                $row['approximate'] = $coords['approximate'];
             }
-            $row['latitude'] = $coords['latitude'];
-            $row['longitude'] = $coords['longitude'];
-            $row['approximate'] = $coords['approximate'];
             $out[] = $row;
         }
         return $out;
@@ -239,11 +243,12 @@ final class Booking
     public static function navigableForCustomerById(int $userId, int $bookingId): ?array
     {
         $row = Database::first(
-            'SELECT b.id, b.booking_date, b.booking_time, b.booking_end_time, b.status, b.guests, b.listing_id,
+            'SELECT b.id, b.booking_date, b.booking_time, b.booking_end_time, b.status, b.guests, b.listing_id, b.notes,
                     l.title AS listing_title, l.slug AS listing_slug, l.area, l.address,
-                    l.latitude, l.longitude
+                    l.latitude, l.longitude, c.slug AS category_slug
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
+             LEFT JOIN categories c ON c.id = l.category_id
              WHERE b.user_id = ? AND b.id = ?',
             [$userId, $bookingId]
         );
@@ -252,11 +257,14 @@ final class Booking
         }
         $coords = Geo::forListing($row);
         if ($coords === null) {
-            return null;
+            $row['latitude'] = (float) (!empty($row['latitude']) ? $row['latitude'] : 10.3157);
+            $row['longitude'] = (float) (!empty($row['longitude']) ? $row['longitude'] : 123.8854);
+            $row['approximate'] = true;
+        } else {
+            $row['latitude'] = $coords['latitude'];
+            $row['longitude'] = $coords['longitude'];
+            $row['approximate'] = $coords['approximate'];
         }
-        $row['latitude'] = $coords['latitude'];
-        $row['longitude'] = $coords['longitude'];
-        $row['approximate'] = $coords['approximate'];
         return $row;
     }
 
@@ -913,5 +921,15 @@ final class Booking
             'completed' => $completed,
             'conversion' => $bookings > 0 ? round($completed / $bookings * 100, 1) : 0.0,
         ];
+    }
+
+    public static function delete(int $id): bool
+    {
+        try {
+            Database::run('UPDATE reviews SET booking_id = NULL WHERE booking_id = ?', [$id]);
+        } catch (\Throwable $e) {
+            // Ignore if reviews table or column differs
+        }
+        return Database::run('DELETE FROM bookings WHERE id = ?', [$id])->rowCount() > 0;
     }
 }

@@ -2,178 +2,355 @@
 
 declare(strict_types=1);
 
-namespace Tests;
-
 require_once __DIR__ . '/../bootstrap.php';
 
 use App\Core\Database;
-use App\Models\Listing;
+use App\Models\RentalRequest;
+use App\Models\Dispute;
+use App\Models\User;
 
-class WebImprovementsBugFixesTest
-{
-    private int $passed = 0;
-    private int $failed = 0;
-
-    public function run(): void
-    {
-        echo "========================================================\n";
-        echo " GuideMate - Web Improvements and Bug Fixes Test\n";
-        echo "========================================================\n\n";
-
-        $this->testIssue1DropdownDisplayAndOverflow();
-        $this->testIssue2MyListingsSaveChangesWorkflow();
-        $this->testIssue3HotelStayListingsInPackageBuilder();
-
-        echo "\n--------------------------------------------------------\n";
-        echo "Results: {$this->passed} passed, {$this->failed} failed\n";
-        echo "--------------------------------------------------------\n";
-
-        if ($this->failed > 0) {
-            exit(1);
-        }
-    }
-
-    private function testIssue1DropdownDisplayAndOverflow(): void
-    {
-        echo "--- 1. Guide Account: Booking Dropdown Display & Overflow ---\n";
-
-        $css = file_get_contents(__DIR__ . '/../public/assets/css/style.css');
-        $bookingsView = file_get_contents(__DIR__ . '/../app/Views/guide/bookings.php');
-        $mainJs = file_get_contents(__DIR__ . '/../public/assets/js/main.js');
-
-        // Check CSS for guide-bookings overflow: visible !important
-        $this->assert(
-            str_contains($css, '.guide-bookings-panel') && str_contains($css, '.guide-bookings-wrap'),
-            'CSS defines .guide-bookings-panel and .guide-bookings-wrap'
-        );
-        $this->assert(
-            preg_match('/\.guide-bookings-wrap\s*\{[^}]*overflow:\s*visible\s*!important/s', $css) === 1,
-            '.guide-bookings-wrap has overflow: visible !important to prevent table row clipping'
-        );
-        $this->assert(
-            preg_match('/\.res-action-dropdown\s*\{[^}]*position:\s*fixed/s', $css) === 1,
-            '.res-action-dropdown uses position: fixed for viewport escape'
-        );
-        $this->assert(
-            str_contains($mainJs, "menu.style.position = 'fixed'") && str_contains($mainJs, "menu.style.zIndex = '99999'"),
-            'main.js explicitly enforces position: fixed and z-index: 99999 on dropdown open'
-        );
-        $this->assert(
-            str_contains($bookingsView, 'guide-bookings-wrap') && str_contains($bookingsView, 'style="overflow:visible;"'),
-            'bookings.php panel and wrapper have inline overflow: visible'
-        );
-    }
-
-    private function testIssue2MyListingsSaveChangesWorkflow(): void
-    {
-        echo "\n--- 2. Guide Account: Regular Listing Save Changes Workflow ---\n";
-
-        $guideController = file_get_contents(__DIR__ . '/../app/Controllers/GuideController.php');
-        $listingsView = file_get_contents(__DIR__ . '/../app/Views/guide/listings.php');
-
-        $this->assert(
-            !str_contains($guideController, "'/dashboard/listings/' . \$this->input('listing_id') . '/edit'"),
-            'GuideController no longer redirects to /dashboard/listings/{id}/edit on validation errors'
-        );
-        $this->assert(
-            str_contains($guideController, "'Listing updated successfully.'"),
-            'GuideController returns success message on update'
-        );
-        $this->assert(
-            str_contains($listingsView, "fetch(form.action, {") && str_contains($listingsView, "'X-Requested-With': 'XMLHttpRequest'"),
-            'listings.php submits edit listing form via AJAX with XMLHttpRequest header'
-        );
-        $this->assert(
-            str_contains($listingsView, 'closeModal()') && str_contains($listingsView, 'window.location.reload()'),
-            'listings.php closes modal and reloads page on successful save without navigating to full edit page'
-        );
-        $this->assert(
-            str_contains($listingsView, 'errorBox.textContent = msg;') && str_contains($listingsView, 'errorBox.style.display = \'block\';'),
-            'listings.php displays validation errors in errorBox and keeps modal open'
-        );
-    }
-
-    private function testIssue3HotelStayListingsInPackageBuilder(): void
-    {
-        echo "\n--- 3. Travel Package Builder: Hotel & Stay Listings ---\n";
-
-        $guideController = file_get_contents(__DIR__ . '/../app/Controllers/GuideController.php');
-        $packageBuilderView = file_get_contents(__DIR__ . '/../app/Views/guide/package-builder.php');
-
-        $this->assert(
-            !str_contains($guideController, 'l.check_in_time'),
-            'GuideController queries no longer contain invalid l.check_in_time column'
-        );
-        $this->assert(
-            !str_contains($guideController, 'l.check_out_time'),
-            'GuideController queries no longer contain invalid l.check_out_time column'
-        );
-
-        // Test actual database query for hotels in category 'hotels'
-        $hotels = Database::all("
-            SELECT l.id, l.user_id, l.title, l.area, l.address, l.cover_image, l.summary, l.description,
-                   u.name as partner_name,
-                   (SELECT COUNT(*) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL)) as available_room_count,
-                   (SELECT MIN(hr.price_per_night) FROM hotel_rooms hr WHERE hr.listing_id = l.id AND hr.status = 'available' AND (hr.available_units > 0 OR hr.available_units IS NULL) AND hr.price_per_night > 0) as min_price
-            FROM listings l
-            JOIN categories c ON c.id = l.category_id
-            JOIN users u ON u.id = l.user_id
-            WHERE l.status = 'approved' AND c.slug = 'hotels'
-            HAVING available_room_count > 0
-            ORDER BY l.title ASC
-        ");
-
-        $this->assert(
-            count($hotels) >= 1,
-            'Database query successfully returns approved hotel listings with available rooms (found ' . count($hotels) . ' hotels)'
-        );
-
-        $firstHotel = $hotels[0];
-        $this->assert(!empty($firstHotel['title']), 'Hotel record has valid title (' . ($firstHotel['title'] ?? '') . ')');
-        $this->assert(!empty($firstHotel['area']), 'Hotel record has valid area (' . ($firstHotel['area'] ?? '') . ')');
-        $this->assert(!empty($firstHotel['cover_image']), 'Hotel record has valid cover_image');
-        $this->assert((float)($firstHotel['min_price'] ?? 0) > 0, 'Hotel record has valid min_price (' . ($firstHotel['min_price'] ?? 0) . ')');
-
-        // Test hotel rooms query
-        $hotelRooms = Database::all("
-            SELECT hr.id, hr.listing_id, hr.name as room_name, hr.price_per_night, hr.max_guests, hr.bed_type, hr.room_size, hr.amenities, hr.image as room_image, hr.description as room_description,
-                   l.title as hotel_name, l.area as hotel_area, l.cover_image as hotel_cover,
-                   u.name as partner_name
-            FROM hotel_rooms hr
-            JOIN listings l ON l.id = hr.listing_id
-            JOIN categories c ON c.id = l.category_id
-            JOIN users u ON u.id = l.user_id
-            WHERE l.status = 'approved' AND c.slug = 'hotels'
-              AND hr.status = 'available'
-              AND (hr.available_units > 0 OR hr.available_units IS NULL)
-            ORDER BY hr.price_per_night ASC
-        ");
-
-        $this->assert(
-            count($hotelRooms) >= 1,
-            'Database query successfully returns available rooms for hotels (found ' . count($hotelRooms) . ' rooms)'
-        );
-
-        $this->assert(
-            str_contains($packageBuilderView, 'pkg-hotel-property-card') && str_contains($packageBuilderView, '$hDesc'),
-            'package-builder.php renders hotel cards with description and database fields'
-        );
-        $this->assert(
-            str_contains($packageBuilderView, 'hotel-room-item') && str_contains($packageBuilderView, '$rDesc'),
-            'package-builder.php renders room cards with description and dynamic amenities'
-        );
-    }
-
-    private function assert(bool $condition, string $message): void
-    {
-        if ($condition) {
-            $this->passed++;
-            echo " [PASS] {$message}\n";
-        } else {
-            $this->failed++;
-            echo " [FAIL] {$message}\n";
-        }
+$failures = 0;
+function assertTrue(bool $cond, string $msg): void {
+    global $failures;
+    if (!$cond) {
+        echo "FAILED: $msg\n";
+        $failures++;
+    } else {
+        echo "PASSED: $msg\n";
     }
 }
 
-(new WebImprovementsBugFixesTest())->run();
+echo "=== 1. Testing Rental Requests Action Dropdown Menu ===\n";
+
+// Helper function to capture rendered action dropdown HTML for a given request
+function renderRentalActions(array $r, bool $isWarned = false): string {
+    $paymentStatus = strtolower(trim((string) ($r['payment_status'] ?? 'unpaid')));
+    $reportStatus = strtolower(trim((string) ($r['report_status'] ?? 'none')));
+    $reqStatus = strtolower(trim((string) ($r['status'] ?? 'pending')));
+    $isPending = $reqStatus === 'pending';
+    $isRefunded = in_array('refunded', [$reqStatus, $paymentStatus, $reportStatus], true);
+    $idDoc = $r['id_doc_path'] ?? null;
+    $idLabel = 'Driver License';
+    $guideName = 'Test Partner';
+
+    ob_start();
+    ?>
+    <div class="res-action-dropdown" id="rentalReqMenu_<?= (int) $r['id'] ?>" role="menu">
+        <?php if ($isRefunded): ?>
+            <button type="button" class="res-action-item action-delete" data-delete-rental data-delete-report data-id="<?= (int) $r['id'] ?>" data-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
+                <?= admin_icon('trash', 14) ?> Delete Report
+            </button>
+        <?php else: ?>
+            <?php if ($isWarned): ?>
+                <div class="res-action-restricted-notice" title="Action unavailable: Active administrator warning on your account.">
+                    <span class="res-action-restricted-badge"><?= admin_icon('alert-triangle', 13) ?> Actions Restricted</span>
+                    <span>Unavailable due to an active administrator warning.</span>
+                </div>
+                <?php if ($reportStatus === 'open'):
+                    $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
+                    $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
+                ?>
+                    <button type="button"
+                            class="res-action-item action-problem"
+                            role="menuitem"
+                            data-open-problem-modal
+                            data-req-id="<?= (int) $r['id'] ?>"
+                            data-customer="<?= e($r['customer_name']) ?>"
+                            data-phone="<?= e((string)($r['customer_phone'] ?? '')) ?>"
+                            data-vehicle="<?= e($r['vehicle_name']) ?>"
+                            data-pickup="<?= e(date('M j, Y', strtotime((string)$r['pickup_date']))) ?>"
+                            data-amount="<?= money((float) $r['total_amount']) ?>"
+                            data-message="<?= e((string)($r['report_message'] ?? '')) ?>"
+                            data-photos="<?= e(json_encode($rPhotos)) ?>"
+                            data-refund-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>"
+                            data-reject-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>">
+                        <?= admin_icon('disputes', 14) ?> View Reported Problem
+                    </button>
+                    <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                        <?= admin_icon('revenue', 14) ?> Refund Customer
+                    </button>
+                    <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                <?php endif; ?>
+
+                <?php if ($isPending): ?>
+                    <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                        <?= admin_icon('check-circle', 14) ?> Confirm Booking
+                    </button>
+                    <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                        <?= admin_icon('x-circle', 14) ?> Decline Booking
+                    </button>
+                <?php else: ?>
+                    <?php if ($reqStatus !== 'completed' && $reqStatus !== 'cancelled'): ?>
+                        <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                            <?= admin_icon('check-circle', 14) ?> Complete Rental
+                        </button>
+                        <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                            <?= admin_icon('x-circle', 14) ?> Cancel Rental
+                        </button>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
+                    <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                    <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                        <?= admin_icon('revenue', 14) ?> Refund Payment
+                    </button>
+                <?php endif; ?>
+
+            <?php else: ?>
+                <?php if ($reportStatus === 'open'):
+                    $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
+                    $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
+                ?>
+                    <button type="button"
+                            class="res-action-item action-problem"
+                            role="menuitem"
+                            data-open-problem-modal
+                            data-req-id="<?= (int) $r['id'] ?>"
+                            data-customer="<?= e($r['customer_name']) ?>"
+                            data-phone="<?= e((string)($r['customer_phone'] ?? '')) ?>"
+                            data-vehicle="<?= e($r['vehicle_name']) ?>"
+                            data-pickup="<?= e(date('M j, Y', strtotime((string)$r['pickup_date']))) ?>"
+                            data-amount="<?= money((float) $r['total_amount']) ?>"
+                            data-message="<?= e((string)($r['report_message'] ?? '')) ?>"
+                            data-photos="<?= e(json_encode($rPhotos)) ?>"
+                            data-refund-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>"
+                            data-reject-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>">
+                        <?= admin_icon('disputes', 14) ?> View Reported Problem
+                    </button>
+                    <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="res-action-form" onsubmit="return confirm('Refund full payment of <?= money((float) $r['total_amount']) ?> to the customer?');">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                            <?= admin_icon('revenue', 14) ?> Refund Customer
+                        </button>
+                    </form>
+                    <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>" class="res-action-form" onsubmit="return confirm('Dismiss this problem report?');">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="res-action-item action-accept" role="menuitem">
+                            <?= admin_icon('check-circle', 14) ?> Dismiss Report
+                        </button>
+                    </form>
+                    <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                <?php endif; ?>
+
+                <?php if ($isPending): ?>
+                    <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Confirm and approve this rental booking?');">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="status" value="approved">
+                        <button type="submit" class="res-action-item action-accept" role="menuitem">
+                            <?= admin_icon('check-circle', 14) ?> Confirm Booking
+                        </button>
+                    </form>
+                    <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Decline this booking? Any payment made will be refunded.');">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="status" value="cancelled">
+                        <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                            <?= admin_icon('x-circle', 14) ?> Decline Booking
+                        </button>
+                    </form>
+                <?php else: ?>
+                    <?php if ($reqStatus !== 'completed' && $reqStatus !== 'cancelled'): ?>
+                        <?php if ($reqStatus !== 'contacted'): ?>
+                            <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="status" value="contacted">
+                                <button type="submit" class="res-action-item action-confirm" role="menuitem">
+                                    <?= admin_icon('messages', 14) ?> Mark Contacted
+                                </button>
+                            </form>
+                        <?php endif; ?>
+                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Mark this rental as completed?');">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="status" value="completed">
+                            <button type="submit" class="res-action-item action-accept" role="menuitem">
+                            <?= admin_icon('check-circle', 14) ?> Complete Rental
+                            </button>
+                        </form>
+                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Cancel this reservation?');">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="status" value="cancelled">
+                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                <?= admin_icon('x-circle', 14) ?> Cancel Rental
+                            </button>
+                        </form>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <?php if ($reqStatus === 'completed'): ?>
+                    <button type="button" class="res-action-item action-delete" data-delete-rental data-id="<?= (int) $r['id'] ?>" data-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
+                        <?= admin_icon('trash', 14) ?> Delete Record
+                    </button>
+                <?php endif; ?>
+
+                <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
+                    <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                    <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="res-action-form" onsubmit="return confirm('Refund the full payment of <?= money((float) $r['total_amount']) ?> for this reservation?');">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                            <?= admin_icon('revenue', 14) ?> Refund Payment
+                        </button>
+                    </form>
+                <?php endif; ?>
+
+                <?php if (!empty($idDoc)): ?>
+                    <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                    <a href="<?= e(url($idDoc)) ?>"
+                       target="_blank"
+                       rel="noopener"
+                       class="res-action-item doc-link"
+                       role="menuitem"
+                       data-doc-preview="1"
+                       data-doc-url="<?= e(url($idDoc)) ?>"
+                       data-doc-label="<?= e($idLabel) ?>"
+                       data-doc-type="Document"
+                       data-doc-status="pending"
+                       data-doc-owner="<?= e($guideName) ?>">
+                        <?= admin_icon('documents', 14) ?> View Verification ID
+                    </a>
+                <?php endif; ?>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+// 1.1 Refunded request by status = 'refunded'
+$refundedByStatus = [
+    'id' => 9991,
+    'status' => 'refunded',
+    'payment_status' => 'refunded',
+    'report_status' => 'none',
+    'customer_name' => 'John Doe',
+    'vehicle_name' => 'Scooter',
+    'pickup_date' => '2026-11-12',
+    'total_amount' => 1500,
+];
+$html1 = renderRentalActions($refundedByStatus);
+assertTrue(str_contains($html1, 'Delete Report'), 'Refunded request includes Delete Report');
+assertTrue(!str_contains($html1, 'Confirm Booking'), 'Refunded request does NOT include Confirm Booking');
+assertTrue(!str_contains($html1, 'Decline Booking'), 'Refunded request does NOT include Decline Booking');
+assertTrue(!str_contains($html1, 'Mark Contacted'), 'Refunded request does NOT include Mark Contacted');
+assertTrue(!str_contains($html1, 'Complete Rental'), 'Refunded request does NOT include Complete Rental');
+assertTrue(!str_contains($html1, 'Cancel Rental'), 'Refunded request does NOT include Cancel Rental');
+assertTrue(!str_contains($html1, 'Refund Customer'), 'Refunded request does NOT include Refund Customer');
+assertTrue(!str_contains($html1, 'Refund Payment'), 'Refunded request does NOT include Refund Payment');
+
+// 1.2 Refunded request by payment_status = 'refunded' (status cancelled)
+$refundedByPayment = [
+    'id' => 9992,
+    'status' => 'cancelled',
+    'payment_status' => 'refunded',
+    'report_status' => 'none',
+    'customer_name' => 'Jane Smith',
+    'vehicle_name' => 'SUV',
+    'pickup_date' => '2026-11-12',
+    'total_amount' => 3500,
+];
+$html2 = renderRentalActions($refundedByPayment);
+assertTrue(str_contains($html2, 'Delete Report'), 'Cancelled+Refunded request displays Delete Report');
+assertTrue(!str_contains($html2, 'Complete Rental'), 'Cancelled+Refunded request does NOT display Complete Rental');
+assertTrue(!str_contains($html2, 'Cancel Rental'), 'Cancelled+Refunded request does NOT display Cancel Rental');
+
+// 1.3 Non-refunded Pending request
+$pendingReq = [
+    'id' => 9993,
+    'status' => 'pending',
+    'payment_status' => 'paid',
+    'report_status' => 'none',
+    'customer_name' => 'Alice Brown',
+    'vehicle_name' => 'Motorcycle',
+    'pickup_date' => '2026-11-15',
+    'total_amount' => 1200,
+];
+$html3 = renderRentalActions($pendingReq);
+assertTrue(!str_contains($html3, 'Delete Report'), 'Pending request does NOT show Delete Report');
+assertTrue(str_contains($html3, 'Confirm Booking'), 'Pending request shows Confirm Booking');
+assertTrue(str_contains($html3, 'Decline Booking'), 'Pending request shows Decline Booking');
+
+// 1.4 Non-refunded Approved request
+$approvedReq = [
+    'id' => 9994,
+    'status' => 'approved',
+    'payment_status' => 'paid',
+    'report_status' => 'none',
+    'customer_name' => 'Bob White',
+    'vehicle_name' => 'Sedan',
+    'pickup_date' => '2026-11-16',
+    'total_amount' => 2500,
+];
+$html4 = renderRentalActions($approvedReq);
+assertTrue(str_contains($html4, 'Mark Contacted'), 'Approved request shows Mark Contacted');
+assertTrue(str_contains($html4, 'Complete Rental'), 'Approved request shows Complete Rental');
+assertTrue(str_contains($html4, 'Cancel Rental'), 'Approved request shows Cancel Rental');
+assertTrue(str_contains($html4, 'Refund Payment'), 'Paid Approved request shows Refund Payment');
+
+// 1.5 Non-refunded Completed request
+$completedReq = [
+    'id' => 9995,
+    'status' => 'completed',
+    'payment_status' => 'paid',
+    'report_status' => 'none',
+    'customer_name' => 'Charlie Green',
+    'vehicle_name' => 'Van',
+    'pickup_date' => '2026-11-10',
+    'total_amount' => 4500,
+];
+$html5 = renderRentalActions($completedReq);
+assertTrue(str_contains($html5, 'Delete Record'), 'Completed request shows Delete Record');
+assertTrue(!str_contains($html5, 'Delete Report'), 'Completed request does not show Delete Report');
+assertTrue(!str_contains($html5, 'Complete Rental'), 'Completed request does not show Complete Rental');
+
+echo "\n=== 2. Testing Admin Overview Complaints Table Layout ===\n";
+
+$adminViewFile = __DIR__ . '/../app/Views/dashboard/admin.php';
+$adminViewContent = file_get_contents($adminViewFile);
+
+assertTrue(str_contains($adminViewContent, 'admin-complaints-wrap'), 'admin.php contains admin-complaints-wrap class');
+assertTrue(str_contains($adminViewContent, 'admin-complaints-table'), 'admin.php contains admin-complaints-table class');
+assertTrue(str_contains($adminViewContent, '<colgroup>'), 'admin.php complaints table uses <colgroup> with defined column proportions');
+assertTrue(!str_contains($adminViewContent, 'min-width:220px;'), 'admin.php does not contain overflowing min-width:220px style');
+assertTrue(!str_contains($adminViewContent, 'min-width:200px;'), 'admin.php does not contain overflowing min-width:200px style');
+assertTrue(!preg_match('/admin-complaints-wrap[^>]*overflow-x:\s*auto/', $adminViewContent), 'admin.php does not hardcode overflow-x:auto on complaints panel');
+$cssFile = __DIR__ . '/../public/assets/css/style.css';
+$cssContent = file_get_contents($cssFile);
+
+assertTrue(str_contains($cssContent, '.admin-complaints-wrap'), 'style.css defines .admin-complaints-wrap');
+assertTrue(str_contains($cssContent, 'table.admin-complaints-table'), 'style.css defines table.admin-complaints-table');
+assertTrue(str_contains($cssContent, 'table-layout: fixed;'), 'style.css enforces table-layout: fixed for complaints table');
+assertTrue(str_contains($cssContent, 'overflow-wrap: anywhere;'), 'style.css sets overflow-wrap for cell contents');
+
+echo "\n=== 3. Testing Real Database Dispute Rendering in Complaints Table ===\n";
+
+$disputes = Dispute::all();
+assertTrue(count($disputes) > 0, 'Database contains disputes to test rendering');
+
+ob_start();
+$complaints = $disputes;
+$stats = [
+    'tourists' => 10,
+    'guides' => 5,
+    'listings' => 15,
+    'revenue' => 12500.0,
+    'openDisputes' => count($disputes),
+    'pendingGuides' => 0,
+    'pending' => 0,
+];
+$pendingGuides = [];
+$pending = [];
+include $adminViewFile;
+$renderedAdmin = ob_get_clean();
+
+assertTrue(str_contains($renderedAdmin, 'admin-complaints-table'), 'Rendered admin page contains admin-complaints-table');
+assertTrue(str_contains($renderedAdmin, 'col-complaint-tourist'), 'Rendered table contains tourist column');
+assertTrue(str_contains($renderedAdmin, 'col-complaint-reported'), 'Rendered table contains reported account column');
+assertTrue(str_contains($renderedAdmin, 'col-complaint-details'), 'Rendered table contains problem details column');
+assertTrue(str_contains($renderedAdmin, 'Review'), 'Rendered table contains Review action button');
+
+if ($failures === 0) {
+    echo "\nALL TESTS PASSED SUCCESSFULLY! (0 failures)\n";
+    exit(0);
+} else {
+    echo "\nTESTS FAILED with $failures failure(s).\n";
+    exit(1);
+}

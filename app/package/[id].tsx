@@ -36,6 +36,13 @@ const QR_INSTAPAY = require('../../assets/images/payment/qr-instapay.png');
 
 type BookingStep = 'form' | 'method' | 'qr' | 'card' | 'confirmed';
 
+function formatReviewDate(value?: string): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 export default function PackageDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -76,6 +83,7 @@ export default function PackageDetailScreen() {
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; label: string; discount: number } | null>(null);
   const [voucherError, setVoucherError] = useState('');
   const [isValidatingVoucher, setIsValidatingVoucher] = useState(false);
+  const [reviewsOpen, setReviewsOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -197,14 +205,8 @@ export default function PackageDetailScreen() {
   }, [heroSliderWidth]);
 
   const handleShowRating = useCallback(() => {
-    if (!packageData) return;
-    const ratingNum = packageData.rating > 0 ? packageData.rating.toFixed(1) : '5.0';
-    const reviewsNum = packageData.reviewCount > 0 ? packageData.reviewCount : 0;
-    Alert.alert(
-      'Ratings & Reviews',
-      `★ ${ratingNum} Rating (${reviewsNum} ${reviewsNum === 1 ? 'verified review' : 'verified reviews'})\n\nTraveler satisfaction rating for ${packageData.title}.`
-    );
-  }, [packageData]);
+    setReviewsOpen(true);
+  }, []);
 
   const handleMessageGuide = () => {
     if (!packageData) return;
@@ -1870,6 +1872,100 @@ export default function PackageDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ========================================================================= */}
+      {/* REVIEWS MODAL                                                             */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={reviewsOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReviewsOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              {
+                backgroundColor: colors.card,
+                paddingBottom: Math.max(insets.bottom, 20),
+                maxHeight: '85%',
+              },
+            ]}
+          >
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Reviews{packageData && packageData.reviewCount > 0 ? ` (${packageData.reviewCount})` : ''}
+              </Text>
+              <TouchableOpacity onPress={() => setReviewsOpen(false)} style={styles.modalCloseBtn} accessibilityLabel="Close reviews">
+                <Ionicons name="close" size={24} color={colors.textSub} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 }}>
+              {packageData && packageData.rating > 0 && packageData.reviewCount > 0 ? (
+                <View style={styles.reviewSummary}>
+                  <Ionicons name="star" size={22} color="#F6B100" />
+                  <Text style={[styles.reviewSummaryScore, { color: colors.text }]}>
+                    {packageData.rating.toFixed(1)}
+                  </Text>
+                  <Text style={[styles.reviewSummaryCount, { color: colors.textSub }]}>
+                    · {packageData.reviewCount} {packageData.reviewCount === 1 ? 'verified review' : 'verified reviews'}
+                  </Text>
+                </View>
+              ) : null}
+
+              <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+                {!packageData?.reviews || packageData.reviews.length === 0 ? (
+                  <View style={styles.reviewEmpty}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={36} color={colors.textSub} />
+                    <Text style={[styles.reviewEmptyText, { color: colors.textSub }]}>
+                      No reviews yet. Be the first traveler to rate this travel package!
+                    </Text>
+                  </View>
+                ) : (
+                  packageData.reviews.map((r) => (
+                    <View key={r.id} style={[styles.reviewItem, { borderColor: colors.border }]}>
+                      <View style={styles.reviewItemHead}>
+                        <View style={[styles.reviewAvatar, { backgroundColor: colors.chipBg }]}>
+                          <Text style={[styles.reviewAvatarText, { color: colors.primary }]}>
+                            {(r.userName || 'T').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.reviewName, { color: colors.text }]} numberOfLines={1}>
+                            {r.userName || 'Traveler'}
+                          </Text>
+                          <View style={styles.reviewStars}>
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <Ionicons
+                                key={n}
+                                name={n <= r.rating ? 'star' : 'star-outline'}
+                                size={13}
+                                color="#F6B100"
+                              />
+                            ))}
+                          </View>
+                        </View>
+                        {r.createdAt ? (
+                          <Text style={[styles.reviewDate, { color: colors.textSub }]}>
+                            {formatReviewDate(r.createdAt)}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {r.comment ? (
+                        <Text style={[styles.reviewComment, { color: colors.textSub }]}>
+                          {r.comment}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2424,4 +2520,17 @@ const styles = StyleSheet.create({
   },
   receiptLabel: { fontSize: 12 },
   receiptVal: { fontSize: 13, fontWeight: '600', maxWidth: '65%' },
+  reviewSummary: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  reviewSummaryScore: { fontSize: 22, fontWeight: '800' },
+  reviewSummaryCount: { fontSize: 14, fontWeight: '600' },
+  reviewEmpty: { alignItems: 'center', paddingVertical: 34, paddingHorizontal: 20, gap: 12 },
+  reviewEmptyText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  reviewItem: { paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth },
+  reviewItemHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  reviewAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  reviewAvatarText: { fontSize: 16, fontWeight: '800' },
+  reviewName: { fontSize: 14, fontWeight: '700' },
+  reviewStars: { flexDirection: 'row', gap: 1, marginTop: 3 },
+  reviewDate: { fontSize: 12 },
+  reviewComment: { fontSize: 14, lineHeight: 21, marginTop: 10 },
 });

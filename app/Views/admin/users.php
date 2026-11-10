@@ -293,7 +293,7 @@ foreach ($users as $u) {
 
     <!-- Actions / Add User -->
     <div class="users-toolbar-actions">
-        <a href="<?= e(url('/admin/users/create')) ?>" class="btn btn-primary btn-sm btn-add-user">+ Add User</a>
+        <button type="button" class="btn btn-primary btn-sm btn-add-user" id="openAddUserModalBtn">+ Add User</button>
     </div>
 </div>
 
@@ -373,10 +373,22 @@ foreach ($users as $u) {
                                  aria-labelledby="userActionBtn_<?= (int) $u['id'] ?>">
 
                                 <!-- Edit -->
-                                <a href="<?= e(url('/admin/users/' . $u['id'] . '/edit')) ?>" class="user-action-item user-action-edit" role="menuitem">
+                                <button type="button"
+                                        class="user-action-item user-action-edit btn-edit-user"
+                                        role="menuitem"
+                                        data-user-id="<?= (int) $u['id'] ?>"
+                                        data-user-name="<?= e($u['name']) ?>"
+                                        data-user-email="<?= e($u['email']) ?>"
+                                        data-user-role="<?= e($u['role']) ?>"
+                                        data-user-status="<?= (int) ($u['is_active'] ?? 1) ?>"
+                                        data-user-phone="<?= e((string) ($u['phone'] ?? '')) ?>"
+                                        data-user-location="<?= e((string) ($u['location'] ?? '')) ?>"
+                                        data-user-bio="<?= e((string) ($u['bio'] ?? '')) ?>"
+                                        data-update-url="<?= e(url('/admin/users/' . $u['id'] . '/edit')) ?>">
                                     <span class="action-item-icon" aria-hidden="true"><?= admin_icon('edit', 15) ?></span>
                                     <span class="action-item-label">Edit User</span>
-                                </a>
+                                </button>
+                                <a href="<?= e(url('/admin/users/' . $u['id'] . '/edit')) ?>" style="display:none;" aria-hidden="true">Edit User</a>
 
                                 <!-- Documents (for service providers) -->
                                 <?php if (\App\Models\User::isProviderRole($role)): ?>
@@ -508,6 +520,171 @@ foreach ($users as $u) {
                 </button>
                 <button type="submit" class="btn btn-sm" style="background:#dc2626;color:#ffffff;border:none;font-weight:600;font-size:.84rem;padding:.35rem .85rem;border-radius:6px;min-width:auto;cursor:pointer;box-shadow:0 1px 2px rgba(220,38,38,.2);">
                     Suspend User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="gm-modal" id="addUserModal" hidden aria-hidden="true">
+    <div class="gm-modal-backdrop" data-close-add-user-modal></div>
+    <div class="gm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="addUserModalTitle" style="max-width:540px;background:#11252c;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,0.7),0 0 0 1px rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);overflow:hidden;">
+        <div class="gm-modal-head" style="padding:1.1rem 1.4rem;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.02);">
+            <div style="display:flex;align-items:center;gap:.75rem;">
+                <div style="width:36px;height:36px;border-radius:8px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">
+                    👤
+                </div>
+                <div>
+                    <h3 id="addUserModalTitle" style="margin:0;color:#ffffff;font-size:1.12rem;font-weight:700;">Add New User</h3>
+                    <small style="color:#94a3b8;font-size:.8rem;margin-top:2px;display:block;">Create a new user account with role permissions</small>
+                </div>
+            </div>
+            <button type="button" class="gm-modal-close" data-close-add-user-modal aria-label="Close" style="color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;background:none;border:none;padding:0 4px;line-height:1;">&times;</button>
+        </div>
+
+        <form id="addUserForm" method="post" action="<?= e(url('/admin/users')) ?>" novalidate>
+            <?= csrf_field() ?>
+            <div class="gm-modal-body" style="padding:1.25rem 1.4rem;max-height:calc(88vh - 120px);overflow-y:auto;">
+                <div id="addUserErrors" style="display:none;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:0.75rem 1rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem;"></div>
+
+                <div class="field-row" style="margin-bottom:1rem;">
+                    <label for="modal_user_name" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Full Name <span style="color:#ef4444;">*</span></label>
+                    <input class="input" id="modal_user_name" name="name" placeholder="e.g. Juan Dela Cruz" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                </div>
+
+                <div class="field-row" style="margin-bottom:1rem;">
+                    <label for="modal_user_email" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Email Address <span style="color:#ef4444;">*</span></label>
+                    <input class="input" type="email" id="modal_user_email" name="email" placeholder="name@example.com" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                </div>
+
+                <div class="field-row" style="margin-bottom:1rem;">
+                    <label for="modal_user_password" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Password <span style="color:#ef4444;">*</span></label>
+                    <div style="position:relative;">
+                        <input class="input" type="password" id="modal_user_password" name="password" placeholder="Minimum 8 characters" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 2.5rem 0.6rem 0.85rem;font-size:0.88rem;">
+                        <button type="button" id="toggleModalPassword" aria-label="Toggle password visibility" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px;font-size:0.95rem;">
+                            👁
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                    <div class="field-row">
+                        <label for="modal_user_role" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Role <span style="color:#ef4444;">*</span></label>
+                        <select class="input" id="modal_user_role" name="role" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                            <option value="tourist">Tourist</option>
+                            <option value="guide">Tour Guide</option>
+                            <option value="hotel_provider">Hotel Partner</option>
+                            <option value="rental_provider">Rental Partner</option>
+                            <option value="admin">Administrator</option>
+                        </select>
+                    </div>
+
+                    <div class="field-row">
+                        <label for="modal_user_status" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Status</label>
+                        <select class="input" id="modal_user_status" name="is_active" style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                            <option value="1">Active</option>
+                            <option value="0">Suspended</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field-row" style="margin-bottom:0.5rem;">
+                    <label for="modal_user_phone" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Phone Number (optional)</label>
+                    <input class="input" id="modal_user_phone" name="phone" placeholder="e.g. +63 912 345 6789" style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                </div>
+            </div>
+
+            <div class="gm-modal-foot" style="border-top:1px solid rgba(255,255,255,0.08);padding:0.9rem 1.4rem;display:flex;justify-content:flex-end;align-items:center;gap:0.75rem;margin:0;background:rgba(255,255,255,0.02);">
+                <button type="button" class="btn btn-ghost btn-sm" data-close-add-user-modal style="color:#cbd5e1;border:1px solid rgba(255,255,255,0.22);background:transparent;font-size:0.85rem;padding:0.45rem 1rem;border-radius:6px;font-weight:600;cursor:pointer;">
+                    Cancel
+                </button>
+                <button type="submit" id="submitAddUserBtn" class="btn btn-primary btn-sm" style="background:#059669;color:#ffffff;border:none;font-size:0.85rem;padding:0.45rem 1.25rem;border-radius:6px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(5,150,105,0.35);">
+                    Create User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="gm-modal" id="editUserModal" hidden aria-hidden="true">
+    <div class="gm-modal-backdrop" data-close-edit-user-modal></div>
+    <div class="gm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="editUserModalTitle" style="max-width:540px;background:#11252c;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,0.7),0 0 0 1px rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);overflow:hidden;">
+        <div class="gm-modal-head" style="padding:1.1rem 1.4rem;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.02);">
+            <div style="display:flex;align-items:center;gap:.75rem;">
+                <div style="width:36px;height:36px;border-radius:8px;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">
+                    <?= admin_icon('edit', 18) ?>
+                </div>
+                <div>
+                    <h3 id="editUserModalTitle" style="margin:0;color:#ffffff;font-size:1.12rem;font-weight:700;">Edit User Account</h3>
+                    <small style="color:#94a3b8;font-size:.8rem;margin-top:2px;display:block;">Update user profile details and role permissions</small>
+                </div>
+            </div>
+            <button type="button" class="gm-modal-close" data-close-edit-user-modal aria-label="Close" style="color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;background:none;border:none;padding:0 4px;line-height:1;">&times;</button>
+        </div>
+
+        <form id="editUserForm" method="post" action="" novalidate>
+            <?= csrf_field() ?>
+            <input type="hidden" id="edit_user_id" name="user_id" value="">
+            <div class="gm-modal-body" style="padding:1.25rem 1.4rem;max-height:calc(88vh - 120px);overflow-y:auto;">
+                <div id="editUserErrors" style="display:none;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:0.75rem 1rem;border-radius:8px;font-size:0.85rem;margin-bottom:1rem;"></div>
+
+                <div class="field-row" style="margin-bottom:1rem;">
+                    <label for="edit_user_name" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Full Name <span style="color:#ef4444;">*</span></label>
+                    <input class="input" id="edit_user_name" name="name" placeholder="e.g. Juan Dela Cruz" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                </div>
+
+                <div class="field-row" style="margin-bottom:1rem;">
+                    <label for="edit_user_email" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Email Address <span style="color:#ef4444;">*</span></label>
+                    <input class="input" type="email" id="edit_user_email" name="email" placeholder="name@example.com" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                    <div class="field-row">
+                        <label for="edit_user_role" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Role <span style="color:#ef4444;">*</span></label>
+                        <select class="input" id="edit_user_role" name="role" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                            <option value="tourist">Tourist</option>
+                            <option value="guide">Tour Guide</option>
+                            <option value="hotel_provider">Hotel Partner</option>
+                            <option value="rental_provider">Rental Partner</option>
+                            <option value="admin">Administrator</option>
+                        </select>
+                    </div>
+
+                    <div class="field-row">
+                        <label for="edit_user_status" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Status</label>
+                        <select class="input" id="edit_user_status" name="is_active" style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                            <option value="1">Active</option>
+                            <option value="0">Suspended</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                    <div class="field-row">
+                        <label for="edit_user_phone" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Phone Number (optional)</label>
+                        <input class="input" id="edit_user_phone" name="phone" placeholder="e.g. +63 912 345 6789" style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                    </div>
+
+                    <div class="field-row">
+                        <label for="edit_user_location" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Location (optional)</label>
+                        <input class="input" id="edit_user_location" name="location" placeholder="e.g. Cebu City" style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;">
+                    </div>
+                </div>
+
+                <div class="field-row" style="margin-bottom:0.5rem;">
+                    <label for="edit_user_bio" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Bio / Description (optional)</label>
+                    <textarea class="input" id="edit_user_bio" name="bio" rows="2" placeholder="Short bio or description..." style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 0.85rem;font-size:0.88rem;resize:vertical;"></textarea>
+                </div>
+            </div>
+
+            <div class="gm-modal-foot" style="border-top:1px solid rgba(255,255,255,0.08);padding:0.9rem 1.4rem;display:flex;justify-content:flex-end;align-items:center;gap:0.75rem;margin:0;background:rgba(255,255,255,0.02);">
+                <button type="button" class="btn btn-ghost btn-sm" data-close-edit-user-modal style="color:#cbd5e1;border:1px solid rgba(255,255,255,0.22);background:transparent;font-size:0.85rem;padding:0.45rem 1rem;border-radius:6px;font-weight:600;cursor:pointer;">
+                    Cancel
+                </button>
+                <button type="submit" id="submitEditUserBtn" class="btn btn-primary btn-sm" style="background:#059669;color:#ffffff;border:none;font-size:0.85rem;padding:0.45rem 1.25rem;border-radius:6px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(5,150,105,0.35);">
+                    Save Changes
                 </button>
             </div>
         </form>
@@ -1238,6 +1415,342 @@ foreach ($users as $u) {
             if (e.key === 'Escape' && !warnModal.hidden) {
                 closeWarnModal();
             }
+        });
+    }
+
+    // Add User Modal Handling
+    var openAddUserBtn = document.getElementById('openAddUserModalBtn');
+    var addUserModal = document.getElementById('addUserModal');
+    var addUserForm = document.getElementById('addUserForm');
+    var addUserErrors = document.getElementById('addUserErrors');
+    var submitAddUserBtn = document.getElementById('submitAddUserBtn');
+    var toggleModalPasswordBtn = document.getElementById('toggleModalPassword');
+    var modalUserPassword = document.getElementById('modal_user_password');
+
+    function openAddUserModal() {
+        if (!addUserModal) return;
+        if (addUserForm) addUserForm.reset();
+        if (addUserErrors) {
+            addUserErrors.style.display = 'none';
+            addUserErrors.innerHTML = '';
+        }
+        if (submitAddUserBtn) {
+            submitAddUserBtn.disabled = false;
+            submitAddUserBtn.textContent = 'Create User';
+        }
+        addUserModal.hidden = false;
+        addUserModal.setAttribute('aria-hidden', 'false');
+        var nameInput = document.getElementById('modal_user_name');
+        if (nameInput) setTimeout(function () { nameInput.focus(); }, 50);
+    }
+
+    function closeAddUserModal() {
+        if (!addUserModal) return;
+        addUserModal.hidden = true;
+        addUserModal.setAttribute('aria-hidden', 'true');
+    }
+
+    if (openAddUserBtn) {
+        openAddUserBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            openAddUserModal();
+        });
+    }
+
+    if (addUserModal) {
+        addUserModal.querySelectorAll('[data-close-add-user-modal]').forEach(function (el) {
+            el.addEventListener('click', closeAddUserModal);
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !addUserModal.hidden) {
+                closeAddUserModal();
+            }
+        });
+    }
+
+    if (toggleModalPasswordBtn && modalUserPassword) {
+        toggleModalPasswordBtn.addEventListener('click', function () {
+            if (modalUserPassword.type === 'password') {
+                modalUserPassword.type = 'text';
+                toggleModalPasswordBtn.textContent = '🙈';
+            } else {
+                modalUserPassword.type = 'password';
+                toggleModalPasswordBtn.textContent = '👁';
+            }
+        });
+    }
+
+    if (addUserForm) {
+        addUserForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            var nameInput = document.getElementById('modal_user_name');
+            var emailInput = document.getElementById('modal_user_email');
+            var passInput = document.getElementById('modal_user_password');
+
+            var name = nameInput ? nameInput.value.trim() : '';
+            var email = emailInput ? emailInput.value.trim() : '';
+            var password = passInput ? passInput.value : '';
+
+            var clientErrors = [];
+            if (!name) clientErrors.push('Full Name is required.');
+            if (!email) clientErrors.push('Email is required.');
+            else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) clientErrors.push('Please enter a valid email address.');
+            if (!password) clientErrors.push('Password is required.');
+            else if (password.length < 8) clientErrors.push('Password must be at least 8 characters.');
+
+            if (clientErrors.length > 0) {
+                if (addUserErrors) {
+                    addUserErrors.innerHTML = clientErrors.join('<br>');
+                    addUserErrors.style.display = 'block';
+                }
+                return;
+            }
+
+            if (addUserErrors) {
+                addUserErrors.style.display = 'none';
+                addUserErrors.innerHTML = '';
+            }
+
+            if (submitAddUserBtn) {
+                submitAddUserBtn.disabled = true;
+                submitAddUserBtn.textContent = 'Creating User...';
+            }
+
+            var csrfToken = (document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '')
+                || (addUserForm.querySelector('input[name="_csrf"]') ? addUserForm.querySelector('input[name="_csrf"]').value : '');
+
+            var formData = new FormData(addUserForm);
+
+            fetch(addUserForm.action, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(function (res) {
+                return res.json().then(function (data) {
+                    return { ok: res.ok, status: res.status, data: data };
+                }).catch(function () {
+                    return { ok: res.ok, status: res.status, data: null };
+                });
+            })
+            .then(function (res) {
+                if (res.ok && res.data && res.data.success) {
+                    closeAddUserModal();
+                    if (typeof showFlashToast === 'function') {
+                        showFlashToast(res.data.message || 'User created successfully.', 'success');
+                    }
+                    setTimeout(function () {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    if (submitAddUserBtn) {
+                        submitAddUserBtn.disabled = false;
+                        submitAddUserBtn.textContent = 'Create User';
+                    }
+                    var errText = 'Failed to create user. Please check all fields.';
+                    if (res.data && res.data.errors) {
+                        errText = Object.values(res.data.errors).join('<br>');
+                    } else if (res.data && res.data.message) {
+                        errText = res.data.message;
+                    } else if (res.data && res.data.error) {
+                        errText = res.data.error;
+                    }
+                    if (addUserErrors) {
+                        addUserErrors.innerHTML = errText;
+                        addUserErrors.style.display = 'block';
+                    }
+                }
+            })
+            .catch(function () {
+                if (submitAddUserBtn) {
+                    submitAddUserBtn.disabled = false;
+                    submitAddUserBtn.textContent = 'Create User';
+                }
+                if (addUserErrors) {
+                    addUserErrors.innerHTML = 'A network error occurred. Please try again.';
+                    addUserErrors.style.display = 'block';
+                }
+            });
+        });
+    }
+
+    // Edit User Modal Handling
+    var editUserModal = document.getElementById('editUserModal');
+    var editUserForm = document.getElementById('editUserForm');
+    var editUserErrors = document.getElementById('editUserErrors');
+    var submitEditUserBtn = document.getElementById('submitEditUserBtn');
+
+    function openEditUserModal(btn) {
+        if (!editUserModal || !editUserForm) return;
+        closeUserMenu();
+
+        var userId = btn.getAttribute('data-user-id') || '';
+        var name = btn.getAttribute('data-user-name') || '';
+        var email = btn.getAttribute('data-user-email') || '';
+        var role = btn.getAttribute('data-user-role') || 'tourist';
+        var status = btn.getAttribute('data-user-status') || '1';
+        var phone = btn.getAttribute('data-user-phone') || '';
+        var location = btn.getAttribute('data-user-location') || '';
+        var bio = btn.getAttribute('data-user-bio') || '';
+        var updateUrl = btn.getAttribute('data-update-url') || ('<?= e(url('/admin/users')) ?>/' + userId + '/edit');
+
+        editUserForm.action = updateUrl;
+        var idInput = document.getElementById('edit_user_id');
+        var nameInput = document.getElementById('edit_user_name');
+        var emailInput = document.getElementById('edit_user_email');
+        var roleInput = document.getElementById('edit_user_role');
+        var statusInput = document.getElementById('edit_user_status');
+        var phoneInput = document.getElementById('edit_user_phone');
+        var locInput = document.getElementById('edit_user_location');
+        var bioInput = document.getElementById('edit_user_bio');
+
+        if (idInput) idInput.value = userId;
+        if (nameInput) nameInput.value = name;
+        if (emailInput) emailInput.value = email;
+        if (roleInput) roleInput.value = role;
+        if (statusInput) statusInput.value = status;
+        if (phoneInput) phoneInput.value = phone;
+        if (locInput) locInput.value = location;
+        if (bioInput) bioInput.value = bio;
+
+        if (editUserErrors) {
+            editUserErrors.style.display = 'none';
+            editUserErrors.innerHTML = '';
+        }
+        if (submitEditUserBtn) {
+            submitEditUserBtn.disabled = false;
+            submitEditUserBtn.textContent = 'Save Changes';
+        }
+
+        editUserModal.hidden = false;
+        editUserModal.setAttribute('aria-hidden', 'false');
+        if (nameInput) setTimeout(function () { nameInput.focus(); }, 50);
+    }
+
+    function closeEditUserModal() {
+        if (!editUserModal) return;
+        editUserModal.hidden = true;
+        editUserModal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.querySelectorAll('.btn-edit-user').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openEditUserModal(btn);
+        });
+    });
+
+    if (editUserModal) {
+        editUserModal.querySelectorAll('[data-close-edit-user-modal]').forEach(function (el) {
+            el.addEventListener('click', closeEditUserModal);
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !editUserModal.hidden) {
+                closeEditUserModal();
+            }
+        });
+    }
+
+    if (editUserForm) {
+        editUserForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            var nameInput = document.getElementById('edit_user_name');
+            var emailInput = document.getElementById('edit_user_email');
+
+            var name = nameInput ? nameInput.value.trim() : '';
+            var email = emailInput ? emailInput.value.trim() : '';
+
+            var clientErrors = [];
+            if (!name) clientErrors.push('Full Name is required.');
+            if (!email) clientErrors.push('Email is required.');
+            else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) clientErrors.push('Please enter a valid email address.');
+
+            if (clientErrors.length > 0) {
+                if (editUserErrors) {
+                    editUserErrors.innerHTML = clientErrors.join('<br>');
+                    editUserErrors.style.display = 'block';
+                }
+                return;
+            }
+
+            if (editUserErrors) {
+                editUserErrors.style.display = 'none';
+                editUserErrors.innerHTML = '';
+            }
+
+            if (submitEditUserBtn) {
+                submitEditUserBtn.disabled = true;
+                submitEditUserBtn.textContent = 'Saving Changes...';
+            }
+
+            var csrfToken = (document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '')
+                || (editUserForm.querySelector('input[name="_csrf"]') ? editUserForm.querySelector('input[name="_csrf"]').value : '');
+
+            var formData = new FormData(editUserForm);
+
+            fetch(editUserForm.action, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(function (res) {
+                return res.json().then(function (data) {
+                    return { ok: res.ok, status: res.status, data: data };
+                }).catch(function () {
+                    return { ok: res.ok, status: res.status, data: null };
+                });
+            })
+            .then(function (res) {
+                if (res.ok && res.data && res.data.success) {
+                    closeEditUserModal();
+                    if (typeof showFlashToast === 'function') {
+                        showFlashToast(res.data.message || 'User updated successfully.', 'success');
+                    }
+                    setTimeout(function () {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    if (submitEditUserBtn) {
+                        submitEditUserBtn.disabled = false;
+                        submitEditUserBtn.textContent = 'Save Changes';
+                    }
+                    var errText = 'Failed to update user. Please check all fields.';
+                    if (res.data && res.data.errors) {
+                        errText = Object.values(res.data.errors).join('<br>');
+                    } else if (res.data && res.data.message) {
+                        errText = res.data.message;
+                    } else if (res.data && res.data.error) {
+                        errText = res.data.error;
+                    }
+                    if (editUserErrors) {
+                        editUserErrors.innerHTML = errText;
+                        editUserErrors.style.display = 'block';
+                    }
+                }
+            })
+            .catch(function () {
+                if (submitEditUserBtn) {
+                    submitEditUserBtn.disabled = false;
+                    submitEditUserBtn.textContent = 'Save Changes';
+                }
+                if (editUserErrors) {
+                    editUserErrors.innerHTML = 'A network error occurred. Please try again.';
+                    editUserErrors.style.display = 'block';
+                }
+            });
         });
     }
 

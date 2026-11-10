@@ -172,6 +172,117 @@
         }
     });
 
+    // Delete completed booking, reservation, or rental request
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('[data-delete-booking], [data-delete-rental]') : null;
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        var isRental = btn.hasAttribute('data-delete-rental');
+        var isReport = btn.hasAttribute('data-delete-report') || (btn.textContent && btn.textContent.toLowerCase().includes('delete report'));
+        var confirmMsg = isReport
+            ? 'Are you sure you want to delete this report? This action cannot be undone.'
+            : ('Are you sure you want to delete this completed ' + (isRental ? 'rental request' : 'booking/reservation') + '? This action cannot be undone.');
+        if (!window.confirm(confirmMsg)) {
+            return;
+        }
+
+        var url = btn.getAttribute('data-url');
+        if (!url) return;
+
+        var csrfToken = (document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '')
+            || (document.querySelector('input[name="_csrf"]') ? document.querySelector('input[name="_csrf"]').value : '');
+
+        var tr = btn.closest('tr');
+        var origOpacity = tr ? tr.style.opacity : '';
+        if (tr) {
+            tr.style.transition = 'opacity 0.3s ease, background-color 0.3s ease';
+            tr.style.opacity = '0.5';
+        }
+
+        btn.disabled = true;
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ _csrf: csrfToken })
+        })
+        .then(function (res) {
+            return res.json().then(function (data) {
+                return { ok: res.ok, status: res.status, data: data };
+            }).catch(function () {
+                return { ok: res.ok, status: res.status, data: null };
+            });
+        })
+        .then(function (result) {
+            if (result.ok && result.data && result.data.success) {
+                if (typeof closeResMenu === 'function') {
+                    closeResMenu();
+                }
+                if (tr) {
+                    tr.style.opacity = '0';
+                    setTimeout(function () {
+                        var tbody = tr.parentElement;
+                        tr.remove();
+                        if (tbody && tbody.querySelectorAll('tr').length === 0) {
+                            var table = tbody.closest('table');
+                            if (table && table.parentElement) {
+                                table.parentElement.innerHTML = '<div class="empty-state" style="padding:3rem 1rem;"><div class="big">' + (isRental ? '🚗' : '📅') + '</div><p>No records remaining.</p></div>';
+                            }
+                        }
+                    }, 300);
+                }
+                showFlashToast(result.data.message || 'Record deleted successfully.', 'success');
+            } else {
+                if (tr) {
+                    tr.style.opacity = origOpacity;
+                }
+                btn.disabled = false;
+                var errMsg = (result.data && result.data.error) ? result.data.error : 'Failed to delete record. Please try again.';
+                showFlashToast(errMsg, 'error');
+            }
+        })
+        .catch(function () {
+            if (tr) {
+                tr.style.opacity = origOpacity;
+            }
+            btn.disabled = false;
+            showFlashToast('Network error. Please try again.', 'error');
+        });
+    });
+
+    function showFlashToast(msg, type) {
+        var cls = type === 'error' ? 'flash-error' : 'flash-success';
+        var container = document.querySelector('header');
+        var flash = document.createElement('div');
+        flash.className = 'flash ' + cls;
+        flash.id = 'gm-dynamic-toast';
+        flash.innerHTML = '<div class="container">' + msg + '<button class="flash-close">&times;</button></div>';
+        if (container && container.nextSibling) {
+            container.parentNode.insertBefore(flash, container.nextSibling);
+        } else {
+            document.body.insertBefore(flash, document.body.firstChild);
+        }
+        var closeBtn = flash.querySelector('.flash-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                flash.remove();
+            });
+        }
+        setTimeout(function () {
+            flash.style.transition = 'opacity .4s ease, transform .4s ease';
+            flash.style.opacity = '0';
+            flash.style.transform = 'translateY(-6px)';
+            setTimeout(function () { flash.remove(); }, 400);
+        }, 5000);
+    }
+
     // Dismiss flash messages & prevent duplicate display
     var seenFlashes = new Set();
     document.querySelectorAll('.flash').forEach(function (flash) {

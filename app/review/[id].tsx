@@ -28,7 +28,6 @@ export default function ReviewScreen() {
 
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [title, setTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -42,7 +41,7 @@ export default function ReviewScreen() {
     }
     setSubmitting(true);
     try {
-      await submitReview({ listing_id: listingId, rating, comment: comment.trim(), title: title.trim() });
+      await submitReview({ listing_id: listingId, rating, comment: comment.trim() });
       Alert.alert('Thank you!', 'Your review has been posted.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -87,16 +86,6 @@ export default function ReviewScreen() {
               </TouchableOpacity>
             ))}
           </View>
-
-          <Text style={[styles.label, { color: colors.textSub }]}>Title (optional)</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-            placeholder="e.g. Amazing island hopping tour"
-            placeholderTextColor={colors.textMute}
-            value={title}
-            onChangeText={setTitle}
-            maxLength={80}
-          />
 
           <Text style={[styles.label, { color: colors.textSub }]}>Your review</Text>
           <TextInput

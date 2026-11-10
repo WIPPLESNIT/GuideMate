@@ -385,6 +385,70 @@ final class GuideController extends Controller
         redirect('/dashboard/bookings');
     }
 
+    public function deleteBooking(string $id): void
+    {
+        $this->verifyCsrf();
+        Auth::refreshUser();
+        $user = Auth::user();
+        $userId = (int) ($user['id'] ?? 0);
+        $booking = Booking::find((int) $id);
+
+        $isJson = $this->isJson() 
+            || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+            || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        if ($booking === null) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Booking not found.'], 404);
+                return;
+            }
+            flash('error', 'Booking not found.');
+            redirect('/dashboard/bookings');
+            return;
+        }
+
+        $isGuideOwner = (int) ($booking['guide_id'] ?? 0) === $userId;
+        $isAdmin = in_array($user['role'] ?? '', ['admin'], true);
+        if (!$isGuideOwner && !$isAdmin) {
+            $listing = \App\Core\Database::first('SELECT user_id FROM listings WHERE id = ?', [(int) $booking['listing_id']]);
+            if (!$listing || (int) $listing['user_id'] !== $userId) {
+                if ($isJson) {
+                    $this->json(['success' => false, 'error' => 'You are not authorized to delete this booking.'], 403);
+                    return;
+                }
+                flash('error', 'You are not authorized to delete this booking.');
+                redirect('/dashboard/bookings');
+                return;
+            }
+        }
+
+        $status = (string) ($booking['status'] ?? '');
+        $overallPkgStatus = (string) ($booking['package_overall_status'] ?? '');
+        $hotelStatus = (string) ($booking['hotel_status'] ?? $status);
+        $paymentStage = (string) ($booking['payment_stage'] ?? '');
+
+        $isCompleted = ($status === 'completed' || $overallPkgStatus === 'completed' || $hotelStatus === 'completed' || $paymentStage === 'settled');
+
+        if (!$isCompleted) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Only completed records can be deleted.'], 400);
+                return;
+            }
+            flash('error', 'Only completed records can be deleted.');
+            redirect('/dashboard/bookings');
+            return;
+        }
+
+        Booking::delete((int) $booking['id']);
+
+        if ($isJson) {
+            $this->json(['success' => true, 'message' => 'Record deleted successfully.', 'id' => (int) $booking['id']]);
+            return;
+        }
+        flash('success', 'Booking record deleted successfully.');
+        redirect('/dashboard/bookings');
+    }
+
     public function showVerifyBooking(): void
     {
         $this->rejectHotelPaidTools();

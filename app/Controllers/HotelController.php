@@ -650,6 +650,68 @@ final class HotelController extends Controller
         redirect($redirectTo === '/dashboard/bookings' ? '/dashboard/bookings' : '/dashboard#reservations');
     }
 
+    public function deleteReservation(string $id): void
+    {
+        $this->verifyCsrf();
+        $this->ensureHotelPartner();
+        Auth::refreshUser();
+        $user = Auth::user();
+        $userId = (int) ($user['id'] ?? 0);
+        $bookingId = (int) $id;
+        $booking = Booking::find($bookingId);
+
+        $isJson = $this->isJson() 
+            || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+            || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        if ($booking === null) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Reservation not found.'], 404);
+                return;
+            }
+            flash('error', 'Reservation not found.');
+            redirect('/dashboard#reservations');
+            return;
+        }
+
+        $listing = Listing::find((int) $booking['listing_id']);
+        $isOwner = $listing !== null && (int) $listing['user_id'] === $userId;
+        $isAdmin = in_array($user['role'] ?? '', ['admin'], true);
+
+        if (!$isOwner && !$isAdmin) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Unauthorized.'], 403);
+                return;
+            }
+            abort(403, 'Unauthorized.');
+        }
+
+        $hotelStatus = (string) ($booking['hotel_status'] ?? $booking['status'] ?? '');
+        $status = (string) ($booking['status'] ?? '');
+        $paymentStage = (string) ($booking['payment_stage'] ?? '');
+
+        if ($hotelStatus !== 'completed' && $status !== 'completed' && $paymentStage !== 'settled') {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Only completed reservations can be deleted.'], 400);
+                return;
+            }
+            flash('error', 'Only completed reservations can be deleted.');
+            redirect('/dashboard#reservations');
+            return;
+        }
+
+        Booking::delete($bookingId);
+
+        if ($isJson) {
+            $this->json(['success' => true, 'message' => 'Reservation record deleted successfully.', 'id' => $bookingId]);
+            return;
+        }
+
+        $redirectTo = trim((string) $this->input('redirect_to', '/dashboard#reservations'));
+        flash('success', 'Reservation record deleted successfully.');
+        redirect($redirectTo === '/dashboard/bookings' ? '/dashboard/bookings' : '/dashboard#reservations');
+    }
+
     private function ensureHotelPartner(): void
     {
         $user = Auth::user();

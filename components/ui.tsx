@@ -181,12 +181,12 @@ export function RatingPill({
 }) {
   const { brand } = useTheme();
   const safeRating = typeof rating === "number" && !isNaN(rating) ? rating : 0;
+  const hasReviews = safeRating > 0 && (count === undefined || count > 0);
   return (
     <View style={[styles.ratingPill, compact && { paddingVertical: 2, paddingHorizontal: 6 }]}>
-      <Ionicons name="star" size={compact ? 10 : 12} color={brand.gold} />
+      <Ionicons name="star" size={compact ? 10 : 12} color={hasReviews ? brand.gold : '#94A3B8'} />
       <Text style={[styles.ratingText, compact && { fontSize: 10 }]}>
-        {safeRating > 0 ? safeRating.toFixed(1) : "0"}
-        {count ? ` (${count})` : ''}
+        {hasReviews ? `${safeRating.toFixed(1)}${count ? ` (${count})` : ''}` : "No Reviews Yet"}
       </Text>
     </View>
   );

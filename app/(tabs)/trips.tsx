@@ -95,13 +95,23 @@ const STATUS_LABEL: Record<string, string> = {
  * - Active or upcoming trips continue to appear in the non-history section.
  */
 function isTripHistory(b: ApiBooking): boolean {
+  const isPkg = Boolean(
+    b.is_package ||
+    b.category_slug === 'packages' ||
+    (typeof b.notes_raw === 'string' && (b.notes_raw.includes('"package_booking"') || b.notes_raw.includes('"type":"package_booking"'))) ||
+    (b.package_details && (b.package_details.type === 'package_booking' || b.package_details.package_title)) ||
+    (typeof b.listing_title === 'string' && b.listing_title.toLowerCase().includes('package'))
+  );
+
+  if (isPkg) {
+    const overall = (b.package_overall_status || b.status || '').toLowerCase();
+    return overall === 'completed' || overall === 'refunded' || overall === 'cancelled';
+  }
+
   if (b.status === 'completed' || b.status === 'refunded') {
     return true;
   }
   if (b.hotel_status === 'completed' || b.hotel_status === 'refunded') {
-    return true;
-  }
-  if (b.package_overall_status === 'completed' || b.package_overall_status === 'refunded') {
     return true;
   }
   return false;
@@ -163,7 +173,7 @@ export default function TripsScreen() {
 
     const refundAmount = booking.cancellation?.refund_amount || 0;
     const confirmMessage = refundAmount > 0
-      ? `Are you sure you want to cancel your booking for "${booking.listing_title}"?\n\nA full refund of ${formatPrice(refundAmount)} will be automatically initiated to your original payment method (1ΓÇô3 business days).`
+      ? `Are you sure you want to cancel your booking for "${booking.listing_title}"?\n\nA full refund of ${formatPrice(refundAmount)} will be automatically initiated to your original payment method (1–3 business days).`
       : `Are you sure you want to cancel your booking for "${booking.listing_title}"? No charges will be incurred.`;
 
     Alert.alert(
@@ -293,7 +303,7 @@ export default function TripsScreen() {
       setBookings(Array.isArray(bookingData?.bookings) ? bookingData.bookings : []);
     } catch (e) {
       if (isUnauthorized(e)) {
-        // Token expired/invalid ΓÇö clear it and show the friendly sign-in prompt.
+        // Token expired/invalid — clear it and show the friendly sign-in prompt.
         await clearSession();
         setLoggedIn(false);
       } else {
@@ -313,6 +323,15 @@ export default function TripsScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
+      const interval = setInterval(async () => {
+        try {
+          const bookingData = await getBookings().catch(() => null);
+          if (Array.isArray(bookingData?.bookings)) {
+            setBookings(bookingData.bookings);
+          }
+        } catch {}
+      }, 5000);
+      return () => clearInterval(interval);
     }, [load])
   );
 
@@ -440,7 +459,7 @@ export default function TripsScreen() {
           <View style={[styles.historyBanner, { backgroundColor: isDark ? '#064E3B22' : '#F0FDF4', borderColor: isDark ? '#05966955' : '#BBF7D0' }]}>
             <Ionicons name="checkmark-circle" size={15} color="#059669" />
             <Text style={[styles.historyBannerText, { color: isDark ? '#34D399' : '#166534' }]}>
-              {item.hotel_status === 'completed' || item.status === 'completed' ? 'Completed Hotel Stay ┬╖ In History' : `${item.status_label || 'Archived'} ┬╖ In History`}
+              {item.hotel_status === 'completed' || item.status === 'completed' ? 'Completed Hotel Stay · In History' : `${item.status_label || 'Archived'} · In History`}
             </Text>
           </View>
         ) : null}
@@ -450,7 +469,7 @@ export default function TripsScreen() {
           <View style={[styles.confirmBanner, { backgroundColor: isDark ? '#064E3B33' : '#ECFDF5', borderColor: isDark ? '#05966966' : '#A7F3D0' }]}>
             <Ionicons name="checkmark-circle" size={18} color="#059669" />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={[styles.confirmBannerTitle, { color: isDark ? '#34D399' : '#065F46' }]}>Reservation Confirmed ┬╖ Room Held</Text>
+              <Text style={[styles.confirmBannerTitle, { color: isDark ? '#34D399' : '#065F46' }]}>Reservation Confirmed · Room Held</Text>
               <Text style={[styles.confirmBannerSubtitle, { color: isDark ? '#A7F3D0' : '#047857' }]}>Your room is reserved and guaranteed for your stay.</Text>
             </View>
           </View>
@@ -458,7 +477,7 @@ export default function TripsScreen() {
           <View style={[styles.confirmBanner, { backgroundColor: isDark ? '#0F766E33' : '#F0FDFA', borderColor: isDark ? '#14B8A666' : '#99F6E4' }]}>
             <Ionicons name="shield-checkmark" size={18} color="#0D9488" />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={[styles.confirmBannerTitle, { color: isDark ? '#2DD4BF' : '#115E59' }]}>Deposit Paid ┬╖ Verification in Progress</Text>
+              <Text style={[styles.confirmBannerTitle, { color: isDark ? '#2DD4BF' : '#115E59' }]}>Deposit Paid · Verification in Progress</Text>
               <Text style={[styles.confirmBannerSubtitle, { color: isDark ? '#99F6E4' : '#0F766E' }]}>The hotel front desk is verifying your payment.</Text>
             </View>
           </View>
@@ -514,7 +533,7 @@ export default function TripsScreen() {
           <View style={[styles.priceCol, styles.priceColDivider, { borderColor: colors.border }]}>
             <Text style={[styles.priceColLabel, { color: colors.textMute }]}>Deposit Paid</Text>
             <Text style={[styles.priceColDeposit, { color: isCancelled ? (isDark ? '#60A5FA' : '#2563EB') : '#059669' }]}>
-              {isCancelled ? 'Refunded' : (deposit > 0 ? `Γ£ô ${formatPrice(deposit)}` : 'Γé▒0')}
+              {isCancelled ? 'Refunded' : (deposit > 0 ? `✓ ${formatPrice(deposit)}` : '₱0')}
             </Text>
           </View>
           <View style={styles.priceCol}>
@@ -597,22 +616,34 @@ export default function TripsScreen() {
           ) : null}
           {item.can_review ? (
             <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: colors.primary }]}
+              style={[
+                styles.actionBtn,
+                {
+                  borderColor: isDark ? '#EAB308' : '#D97706',
+                  backgroundColor: isDark ? '#713F1222' : '#FEFCE8',
+                },
+              ]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
             >
-              <Ionicons name="star-outline" size={14} color={colors.primary} />
-              <Text style={[styles.actionText, { color: colors.primary }]}>Rate stay</Text>
+              <Ionicons name="star-outline" size={14} color={isDark ? '#FACC15' : '#D97706'} />
+              <Text style={[styles.actionText, { color: isDark ? '#FACC15' : '#D97706', fontWeight: '700' }]}>Rate stay</Text>
             </TouchableOpacity>
           ) : null}
-          {item.dispute_status ? (
+          {item.dispute_status || item.dispute_id ? (
             <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: colors.textMute }]}
+              style={[
+                styles.actionBtn,
+                {
+                  borderColor: isDark ? '#475569' : '#94A3B8',
+                  backgroundColor: isDark ? '#33415525' : '#F1F5F9',
+                },
+              ]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title, is_hotel: '1' } })}
             >
-              <Ionicons name="flag" size={14} color={colors.textMute} />
-              <Text style={[styles.actionText, { color: colors.textMute }]}>View report</Text>
+              <Ionicons name="document-text" size={14} color={isDark ? '#94A3B8' : '#475569'} />
+              <Text style={[styles.actionText, { color: isDark ? '#94A3B8' : '#475569', fontWeight: '700' }]}>View Report</Text>
             </TouchableOpacity>
           ) : item.can_report ? (
             <TouchableOpacity
@@ -664,7 +695,7 @@ export default function TripsScreen() {
                 <Ionicons name="time-outline" size={13} color={colors.textSub} />
                 <Text style={[styles.metaText, { color: colors.textSub }]}>
                   {formatTime(item.booking_time)}
-                  {item.booking_end_time ? ` ΓÇô ${formatTime(item.booking_end_time)}` : ''}
+                  {item.booking_end_time ? ` – ${formatTime(item.booking_end_time)}` : ''}
                 </Text>
               </View>
             ) : null}
@@ -680,7 +711,7 @@ export default function TripsScreen() {
           <View style={[styles.historyBanner, { backgroundColor: item.status === 'refunded' ? (isDark ? '#1E3A8A22' : '#EFF6FF') : (isDark ? '#064E3B22' : '#F0FDF4'), borderColor: item.status === 'refunded' ? (isDark ? '#3B82F655' : '#BFDBFE') : (isDark ? '#05966955' : '#BBF7D0'), marginTop: 10 }]}>
             <Ionicons name={item.status === 'refunded' ? "refresh-circle" : "checkmark-circle"} size={14} color={item.status === 'refunded' ? "#2563EB" : "#059669"} />
             <Text style={[styles.historyBannerText, { color: item.status === 'refunded' ? (isDark ? '#93C5FD' : '#1D4ED8') : (isDark ? '#34D399' : '#166534') }]}>
-              {item.status === 'refunded' ? 'Refunded Tour ┬╖ In History' : 'Completed Experience ┬╖ In History'}
+              {item.status === 'refunded' ? 'Refunded Tour · In History' : 'Completed Experience · In History'}
             </Text>
           </View>
         ) : null}
@@ -713,23 +744,35 @@ export default function TripsScreen() {
 
           {item.can_review ? (
             <TouchableOpacity
-              style={[styles.attractionActionBtn, { borderColor: colors.primary, backgroundColor: isDark ? '#1E2330' : '#F8FAFC' }]}
+              style={[
+                styles.attractionActionBtn,
+                {
+                  borderColor: isDark ? '#EAB308' : '#D97706',
+                  backgroundColor: isDark ? '#713F1222' : '#FEFCE8',
+                },
+              ]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
             >
-              <Ionicons name="star-outline" size={15} color={colors.primary} />
-              <Text style={[styles.attractionActionText, { color: colors.primary }]}>Rate your guide</Text>
+              <Ionicons name="star-outline" size={15} color={isDark ? '#FACC15' : '#D97706'} />
+              <Text style={[styles.attractionActionText, { color: isDark ? '#FACC15' : '#D97706', fontWeight: '700' }]}>Rate your guide</Text>
             </TouchableOpacity>
           ) : null}
 
-          {item.dispute_status ? (
+          {item.dispute_status || item.dispute_id ? (
             <TouchableOpacity
-              style={[styles.attractionActionBtn, { borderColor: colors.textMute, backgroundColor: 'transparent' }]}
+              style={[
+                styles.attractionActionBtn,
+                {
+                  borderColor: isDark ? '#475569' : '#94A3B8',
+                  backgroundColor: isDark ? '#33415525' : '#F1F5F9',
+                },
+              ]}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } })}
             >
-              <Ionicons name="flag" size={15} color={colors.textMute} />
-              <Text style={[styles.attractionActionText, { color: colors.textMute }]}>View report</Text>
+              <Ionicons name="document-text" size={15} color={isDark ? '#94A3B8' : '#475569'} />
+              <Text style={[styles.attractionActionText, { color: isDark ? '#94A3B8' : '#475569', fontWeight: '700' }]}>View Report</Text>
             </TouchableOpacity>
           ) : item.can_report ? (
             <TouchableOpacity
@@ -738,7 +781,7 @@ export default function TripsScreen() {
               onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } })}
             >
               <Ionicons name="flag-outline" size={15} color="#EF4444" />
-              <Text style={[styles.attractionActionText, { color: '#EF4444' }]}>Report a problem</Text>
+              <Text style={[styles.attractionActionText, { color: '#EF4444' }]}>Report Issue</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -822,48 +865,63 @@ export default function TripsScreen() {
           </View>
         </View>
 
-        {/* Provider Confirmation Progress Strip */}
+        {/* Provider Services Status Breakdown */}
         {(() => {
           const guideItem = item.provider_statuses?.find((p: any) => p.service_type === 'guide');
-          const guideSt = guideItem?.status || (overallStatus === 'confirmed' && (!item.provider_statuses || item.provider_statuses.length === 0) ? 'confirmed' : 'pending');
+          const guideSt = guideItem?.status || (overallStatus === 'completed' ? 'completed' : (overallStatus === 'confirmed' && (!item.provider_statuses || item.provider_statuses.length === 0) ? 'confirmed' : 'pending'));
 
           const hotelItem = item.provider_statuses?.find((p: any) => p.service_type === 'hotel');
           const hasHotel = Boolean(hotelItem || details?.hotel_included || details?.accommodation);
-          const hotelSt = hotelItem?.status || 'pending';
+          const hotelSt = hotelItem?.status || (hasHotel && overallStatus === 'completed' ? 'completed' : 'pending');
 
           const vehicleItem = item.provider_statuses?.find((p: any) => p.service_type === 'vehicle');
           const hasVehicle = Boolean(vehicleItem || details?.rental_included || details?.rental);
-          const vehicleSt = vehicleItem?.status || 'pending';
+          const vehicleSt = vehicleItem?.status || (hasVehicle && overallStatus === 'completed' ? 'completed' : 'pending');
+
+          const getStatusBadge = (st: string) => {
+            if (st === 'completed') return { text: 'Completed', color: '#10B981', bg: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7' };
+            if (st === 'confirmed' || st === 'approved' || st === 'contacted' || st === 'checked_in') return { text: 'Confirmed', color: '#059669', bg: isDark ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5' };
+            if (st === 'cancelled' || st === 'rejected') return { text: 'Declined', color: '#DC2626', bg: isDark ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2' };
+            return { text: 'Pending', color: '#D97706', bg: isDark ? 'rgba(217, 119, 6, 0.2)' : '#FEF3C7' };
+          };
+
+          const guideBadge = getStatusBadge(guideSt);
+          const hotelBadge = getStatusBadge(hotelSt);
+          const vehicleBadge = getStatusBadge(vehicleSt);
 
           return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 7, marginHorizontal: 12, marginTop: 8, borderRadius: 8, backgroundColor: isDark ? '#1E2330' : '#F1F5F9' }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSub }}>Providers:</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ marginHorizontal: 12, marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: isDark ? '#1E2330' : '#F1F5F9' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSub, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Provider Services Status
+                </Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: overallStatus === 'completed' ? '#10B981' : '#059669' }}>
+                  {overallStatus === 'completed' ? 'All Services Done' : 'Live Sync'}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {/* Guide Provider */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: guideBadge.bg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 }}>
                   <Text style={{ fontSize: 11 }}>🧑‍💼</Text>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: guideSt === 'confirmed' ? '#059669' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '#DC2626' : '#D97706') }}>
-                    {guideSt === 'confirmed' ? '✓' : (guideSt === 'cancelled' || guideSt === 'rejected' ? '✕' : '⏳')}
-                  </Text>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }}>Guide:</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: guideBadge.color }}>{guideBadge.text}</Text>
                 </View>
 
                 {/* Hotel Provider (only rendered if included) */}
                 {hasHotel ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: hotelBadge.bg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 }}>
                     <Text style={{ fontSize: 11 }}>🏨</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: hotelSt === 'confirmed' ? '#059669' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '#DC2626' : '#D97706') }}>
-                      {hotelSt === 'confirmed' ? '✓' : (hotelSt === 'cancelled' || hotelSt === 'rejected' ? '✕' : '⏳')}
-                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }}>Hotel:</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: hotelBadge.color }}>{hotelBadge.text}</Text>
                   </View>
                 ) : null}
 
                 {/* Vehicle Provider (only rendered if included) */}
                 {hasVehicle ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: vehicleBadge.bg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 }}>
                     <Text style={{ fontSize: 11 }}>🛵</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: vehicleSt === 'confirmed' ? '#059669' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '#DC2626' : '#D97706') }}>
-                      {vehicleSt === 'confirmed' ? '✓' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' ? '✕' : '⏳')}
-                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }}>Vehicle:</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: vehicleBadge.color }}>{vehicleBadge.text}</Text>
                   </View>
                 ) : null}
               </View>
@@ -937,22 +995,47 @@ export default function TripsScreen() {
             <View style={styles.pkgActionRow}>
               {item.can_review || overallStatus === 'completed' ? (
                 <TouchableOpacity
-                  style={[styles.attractionActionBtn, { flex: 1, borderColor: colors.primary, paddingVertical: 9 }]}
+                  style={[
+                    styles.attractionActionBtn,
+                    {
+                      flex: 1,
+                      borderColor: isDark ? '#EAB308' : '#D97706',
+                      backgroundColor: isDark ? '#713F1222' : '#FEFCE8',
+                      paddingVertical: 9,
+                    },
+                  ]}
                   activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
                 >
-                  <Ionicons name="star-outline" size={14} color={colors.primary} />
-                  <Text style={[styles.attractionActionText, { color: colors.primary, fontSize: 12 }]}>Leave Review</Text>
+                  <Ionicons name="star-outline" size={14} color={isDark ? '#FACC15' : '#D97706'} />
+                  <Text style={[styles.attractionActionText, { color: isDark ? '#FACC15' : '#D97706', fontSize: 12, fontWeight: '700' }]}>Leave Review</Text>
                 </TouchableOpacity>
               ) : null}
-              {item.can_report || overallStatus === 'completed' ? (
+              {item.dispute_status || item.dispute_id ? (
+                <TouchableOpacity
+                  style={[
+                    styles.attractionActionBtn,
+                    {
+                      flex: 1,
+                      borderColor: isDark ? '#475569' : '#94A3B8',
+                      backgroundColor: isDark ? '#33415525' : '#F1F5F9',
+                      paddingVertical: 9,
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } })}
+                >
+                  <Ionicons name="document-text" size={14} color={isDark ? '#94A3B8' : '#475569'} />
+                  <Text style={[styles.attractionActionText, { color: isDark ? '#94A3B8' : '#475569', fontSize: 12, fontWeight: '700' }]}>View Report</Text>
+                </TouchableOpacity>
+              ) : item.can_report || overallStatus === 'completed' ? (
                 <TouchableOpacity
                   style={[styles.attractionActionBtn, { flex: 1, borderColor: '#EF4444', paddingVertical: 9 }]}
                   activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } })}
                 >
                   <Ionicons name="flag-outline" size={14} color="#EF4444" />
-                  <Text style={[styles.attractionActionText, { color: '#EF4444', fontSize: 12 }]}>Report an Issue</Text>
+                  <Text style={[styles.attractionActionText, { color: '#EF4444', fontSize: 12 }]}>Report Issue</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -1151,7 +1234,7 @@ export default function TripsScreen() {
         />
       )}
 
-      {/* ΓöÇΓöÇ Booking Details & Receipt Modal ΓöÇΓöÇ */}
+      {/* ── Booking Details & Receipt Modal ── */}
       <Modal
         visible={Boolean(selectedBookingDetails)}
         transparent
@@ -1166,7 +1249,7 @@ export default function TripsScreen() {
                   {selectedBookingDetails?.room_name || selectedBookingDetails?.hotel_status ? 'Hotel Stay Details & Receipt' : 'Tour Details & Receipt'}
                 </Text>
                 <Text style={[styles.modalSubtitle, { color: colors.textSub }]} numberOfLines={1}>
-                  Booking #{selectedBookingDetails?.id} ┬╖ {selectedBookingDetails?.listing_title}
+                  Booking #{selectedBookingDetails?.id} · {selectedBookingDetails?.listing_title}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setSelectedBookingDetails(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
@@ -1207,7 +1290,7 @@ export default function TripsScreen() {
                       ]}
                     >
                       {isBookingCompleted(selectedBookingDetails)
-                        ? 'Completed Reservation ┬╖ In History'
+                        ? 'Completed Reservation · In History'
                         : 'Active / Upcoming Reservation'}
                     </Text>
                     <Text style={{ fontSize: 11, color: colors.textSub, marginTop: 1 }}>
@@ -1283,7 +1366,7 @@ export default function TripsScreen() {
                         <Ionicons name="time-outline" size={14} color={colors.textSub} />
                         <Text style={[styles.metaText, { color: colors.textSub }]}>
                           {formatTime(selectedBookingDetails.booking_time)}
-                          {selectedBookingDetails.booking_end_time ? ` ΓÇô ${formatTime(selectedBookingDetails.booking_end_time)}` : ''}
+                          {selectedBookingDetails.booking_end_time ? ` – ${formatTime(selectedBookingDetails.booking_end_time)}` : ''}
                         </Text>
                       </View>
                     ) : null}
@@ -1335,7 +1418,7 @@ export default function TripsScreen() {
                                 : '#92400E',
                             }}
                           >
-                            {isDetailsCancelled ? 'Refunded' : (isDetailsSettled ? 'Γ£ô SETTLED' : isDetailsPaid ? 'Γ£ô PAID' : 'PARTIAL / PENDING')}
+                            {isDetailsCancelled ? 'Refunded' : (isDetailsSettled ? '✓ SETTLED' : isDetailsPaid ? '✓ PAID' : 'PARTIAL / PENDING')}
                           </Text>
                         </View>
                       </View>
@@ -1343,14 +1426,14 @@ export default function TripsScreen() {
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                         <Text style={{ fontSize: 13, color: colors.textSub }}>Total Amount</Text>
                         <Text style={{ fontSize: 16, fontWeight: '900', color: colors.text }}>
-                          {selectedBookingDetails ? formatPrice(selectedBookingDetails.total_amount) : 'Γé▒0'}
+                          {selectedBookingDetails ? formatPrice(selectedBookingDetails.total_amount) : '₱0'}
                         </Text>
                       </View>
                       {selectedBookingDetails?.deposit_amount && selectedBookingDetails.deposit_amount > 0 ? (
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                           <Text style={{ fontSize: 12, color: colors.textSub }}>Deposit Paid</Text>
                           <Text style={{ fontSize: 13, fontWeight: '700', color: isDetailsCancelled ? colors.textMute : '#059669' }}>
-                            {isDetailsCancelled ? '-' : `Γ£ô ${formatPrice(selectedBookingDetails.deposit_amount)}`}
+                            {isDetailsCancelled ? '-' : `✓ ${formatPrice(selectedBookingDetails.deposit_amount)}`}
                           </Text>
                         </View>
                       ) : null}
@@ -1366,12 +1449,12 @@ export default function TripsScreen() {
                           {isDetailsCancelled
                             ? '-'
                             : isDetailsSettled
-                            ? 'Γé▒0.00 (Fully Settled)'
+                            ? '₱0.00 (Fully Settled)'
                             : isDetailsPaid
-                            ? 'Γé▒0.00 (Paid at Check-In)'
+                            ? '₱0.00 (Paid at Check-In)'
                             : selectedBookingDetails?.balance_amount
                             ? formatPrice(selectedBookingDetails.balance_amount)
-                            : 'Γé▒0.00'}
+                            : '₱0.00'}
                         </Text>
                       </View>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
@@ -1510,7 +1593,20 @@ export default function TripsScreen() {
                   </TouchableOpacity>
                 ) : null}
 
-                {selectedBookingDetails?.can_report ? (
+                {selectedBookingDetails?.dispute_status || selectedBookingDetails?.dispute_id ? (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { borderColor: colors.primary, backgroundColor: isDark ? '#064E3B22' : '#F0FDF4', justifyContent: 'center', paddingVertical: 10 }]}
+                    onPress={() => {
+                      const item = selectedBookingDetails;
+                      const isHotel = Boolean(item.room_name || item.hotel_status);
+                      setSelectedBookingDetails(null);
+                      router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title, is_hotel: isHotel ? '1' : '0' } });
+                    }}
+                  >
+                    <Ionicons name="document-text" size={15} color={colors.primary} />
+                    <Text style={[styles.actionText, { color: colors.primary, fontWeight: '700' }]}>View Report</Text>
+                  </TouchableOpacity>
+                ) : selectedBookingDetails?.can_report ? (
                   <TouchableOpacity
                     style={[styles.actionBtn, { borderColor: '#EF4444', justifyContent: 'center', paddingVertical: 10 }]}
                     onPress={() => {
@@ -1521,11 +1617,11 @@ export default function TripsScreen() {
                     }}
                   >
                     <Ionicons name="flag-outline" size={15} color="#EF4444" />
-                    <Text style={[styles.actionText, { color: '#EF4444' }]}>Report a Problem</Text>
+                    <Text style={[styles.actionText, { color: '#EF4444' }]}>Report Issue</Text>
                   </TouchableOpacity>
                 ) : null}
 
-                {/* Cancel Booking Action ΓÇö hidden when completed, disabled when ineligible */}
+                {/* Cancel Booking Action — hidden when completed, disabled when ineligible */}
                 {selectedBookingDetails &&
                 selectedBookingDetails.status !== 'completed' &&
                 selectedBookingDetails.hotel_status !== 'completed' &&
@@ -1584,7 +1680,7 @@ export default function TripsScreen() {
         </View>
       </Modal>
 
-      {/* ΓöÇΓöÇ Balance Payment Modal ΓöÇΓöÇ */}
+      {/* ── Balance Payment Modal ── */}
       <Modal
         visible={balanceModalVisible}
         transparent
@@ -1615,7 +1711,7 @@ export default function TripsScreen() {
                     : 'Card Payment'}
                 </Text>
                 <Text style={[styles.modalSubtitle, { color: colors.textSub }]} numberOfLines={1}>
-                  {selectedBooking?.listing_title} ┬╖ {selectedBooking?.room_name || 'Room'}
+                  {selectedBooking?.listing_title} · {selectedBooking?.room_name || 'Room'}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1823,7 +1919,7 @@ export default function TripsScreen() {
           </View>
         </View>
       </Modal>
-      {/* ΓöÇΓöÇ Dedicated Travel Package Details Modal ΓöÇΓöÇ */}
+      {/* ── Dedicated Travel Package Details Modal ── */}
       <Modal
         visible={Boolean(selectedPackageDetails)}
         transparent
@@ -1836,7 +1932,7 @@ export default function TripsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>Travel Package Details</Text>
                 <Text style={[styles.modalSubtitle, { color: colors.textSub }]} numberOfLines={1}>
-                  Booking #BK-{selectedPackageDetails?.id} ┬╖ {selectedPackageDetails?.listing_title}
+                  Booking #BK-{selectedPackageDetails?.id} · {selectedPackageDetails?.listing_title}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setSelectedPackageDetails(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
@@ -1853,17 +1949,22 @@ export default function TripsScreen() {
                 const guideAvatar = selectedPackageDetails.guide_avatar || details?.guide?.avatar || '';
 
                 const guideItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'guide');
-                const guideSt = guideItem?.status || (overallStatus === 'confirmed' ? 'confirmed' : 'pending');
+                const guideSt = guideItem?.status || (overallStatus === 'completed' ? 'completed' : (overallStatus === 'confirmed' ? 'confirmed' : 'pending'));
 
                 const hotelItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'hotel');
                 const hasHotel = Boolean(hotelItem || details?.hotel_included || details?.accommodation);
-                const hotelSt = hotelItem?.hotel_reservation_status || hotelItem?.status || (overallStatus === 'confirmed' ? 'confirmed' : 'pending');
+                const hotelSt = hotelItem?.hotel_reservation_status || hotelItem?.status || (hasHotel && overallStatus === 'completed' ? 'completed' : (details?.hotel_reservation_status === 'approved' ? 'confirmed' : 'pending'));
                 const hotelObj = details?.accommodation || details?.accommodationDetail;
 
                 const vehicleItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'vehicle');
                 const hasVehicle = Boolean(vehicleItem || details?.rental_included || details?.rental);
-                const vehicleSt = vehicleItem?.rental_request_status || vehicleItem?.status || (details?.rental_request_status === 'approved' ? 'confirmed' : (overallStatus === 'confirmed' ? 'confirmed' : 'pending'));
+                const vehicleSt = vehicleItem?.rental_request_status || vehicleItem?.status || (hasVehicle && overallStatus === 'completed' ? 'completed' : (details?.rental_request_status === 'approved' ? 'confirmed' : 'pending'));
                 const vehicleObj = details?.rental || details?.rentalDetail;
+
+                const guideCompleted = guideSt === 'completed';
+                const hotelCompleted = !hasHotel || hotelSt === 'completed';
+                const vehicleCompleted = !hasVehicle || vehicleSt === 'completed';
+                const isAllCompleted = guideCompleted && hotelCompleted && vehicleCompleted;
 
                 const guideConfirmed = guideSt === 'confirmed' || guideSt === 'completed';
                 const hotelConfirmed = !hasHotel || hotelSt === 'confirmed' || hotelSt === 'checked_in' || hotelSt === 'completed';
@@ -1875,13 +1976,13 @@ export default function TripsScreen() {
 
                 const approvalsBadgeText = isAnyCancelled
                   ? 'CANCELLED'
-                  : (isAllConfirmed ? 'ALL CONFIRMED' : (isPartiallyConfirmed ? 'PARTIALLY CONFIRMED' : 'PENDING APPROVALS'));
+                  : (isAllCompleted ? 'ALL COMPLETED' : (isAllConfirmed ? 'ALL CONFIRMED' : (isPartiallyConfirmed ? 'PARTIALLY CONFIRMED' : 'PENDING APPROVALS')));
                 const approvalsBadgeBg = isAnyCancelled
                   ? '#FEF2F2'
-                  : (isAllConfirmed ? '#ECFDF5' : '#EFF6FF');
+                  : (isAllCompleted ? '#DCFCE7' : (isAllConfirmed ? '#ECFDF5' : '#EFF6FF'));
                 const approvalsBadgeColor = isAnyCancelled
                   ? '#DC2626'
-                  : (isAllConfirmed ? '#059669' : (isPartiallyConfirmed ? '#2563EB' : '#D97706'));
+                  : (isAllCompleted ? '#10B981' : (isAllConfirmed ? '#059669' : (isPartiallyConfirmed ? '#2563EB' : '#D97706')));
 
                 const inclusionsList: any[] = Array.isArray(details?.inclusions) ? details.inclusions : [];
                 const tourActivities = inclusionsList.filter((inc: any) => inc.type === 'attraction' || inc.type === 'activity');
@@ -1962,7 +2063,7 @@ export default function TripsScreen() {
                         <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>
                           {selectedPackageDetails.guide_name || selectedPackageDetails.package_details?.guide?.name || 'Marc Repuesto'}
                         </Text>
-                        <Text style={{ fontSize: 12, color: colors.textSub }}>Licensed Regional Tour Guide ┬╖ DOT Accredited</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub }}>Licensed Regional Tour Guide · DOT Accredited</Text>
                       </View>
                     </View>
                   </View>
@@ -2110,19 +2211,45 @@ export default function TripsScreen() {
                   <View style={{ marginTop: 18, gap: 10 }}>
                     {(selectedPackageDetails.is_completed || selectedPackageDetails.status === 'completed' || selectedPackageDetails.package_overall_status === 'completed' || selectedPackageDetails.can_review) ? (
                       <TouchableOpacity
-                        style={[styles.attractionActionBtn, { borderColor: colors.primary, backgroundColor: isDark ? '#1E2330' : '#F8FAFC', paddingVertical: 12 }]}
+                        style={[
+                          styles.attractionActionBtn,
+                          {
+                            borderColor: isDark ? '#EAB308' : '#D97706',
+                            backgroundColor: isDark ? '#713F1222' : '#FEFCE8',
+                            paddingVertical: 12,
+                          },
+                        ]}
                         onPress={() => {
                           const item = selectedPackageDetails;
                           setSelectedPackageDetails(null);
                           router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } });
                         }}
                       >
-                        <Ionicons name="star-outline" size={16} color={colors.primary} />
-                        <Text style={[styles.attractionActionText, { color: colors.primary }]}>Leave Review</Text>
+                        <Ionicons name="star-outline" size={16} color={isDark ? '#FACC15' : '#D97706'} />
+                        <Text style={[styles.attractionActionText, { color: isDark ? '#FACC15' : '#D97706', fontWeight: '700' }]}>Leave Review</Text>
                       </TouchableOpacity>
                     ) : null}
 
-                    {(selectedPackageDetails.is_completed || selectedPackageDetails.status === 'completed' || selectedPackageDetails.package_overall_status === 'completed' || selectedPackageDetails.can_report) ? (
+                    {selectedPackageDetails.dispute_status || selectedPackageDetails.dispute_id ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.attractionActionBtn,
+                          {
+                            borderColor: isDark ? '#475569' : '#94A3B8',
+                            backgroundColor: isDark ? '#33415525' : '#F1F5F9',
+                            paddingVertical: 12,
+                          },
+                        ]}
+                        onPress={() => {
+                          const item = selectedPackageDetails;
+                          setSelectedPackageDetails(null);
+                          router.push({ pathname: '/report/[id]', params: { id: String(item.id), title: item.listing_title } });
+                        }}
+                      >
+                        <Ionicons name="document-text" size={16} color={isDark ? '#94A3B8' : '#475569'} />
+                        <Text style={[styles.attractionActionText, { color: isDark ? '#94A3B8' : '#475569', fontWeight: '700' }]}>View Report</Text>
+                      </TouchableOpacity>
+                    ) : (selectedPackageDetails.is_completed || selectedPackageDetails.status === 'completed' || selectedPackageDetails.package_overall_status === 'completed' || selectedPackageDetails.can_report) ? (
                       <TouchableOpacity
                         style={[styles.attractionActionBtn, { borderColor: '#EF4444', backgroundColor: isDark ? '#1E2330' : '#F8FAFC', paddingVertical: 12 }]}
                         onPress={() => {
@@ -2132,7 +2259,7 @@ export default function TripsScreen() {
                         }}
                       >
                         <Ionicons name="flag-outline" size={16} color="#EF4444" />
-                        <Text style={[styles.attractionActionText, { color: '#EF4444' }]}>Report an Issue</Text>
+                        <Text style={[styles.attractionActionText, { color: '#EF4444' }]}>Report Issue</Text>
                       </TouchableOpacity>
                     ) : null}
 
@@ -2163,7 +2290,7 @@ export default function TripsScreen() {
         </View>
       </Modal>
 
-      {/* ΓöÇΓöÇ Dedicated Payment Receipt Modal ΓöÇΓöÇ */}
+      {/* ── Dedicated Payment Receipt Modal ── */}
       <Modal
         visible={Boolean(selectedPackageReceipt)}
         transparent

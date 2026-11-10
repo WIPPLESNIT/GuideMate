@@ -31,6 +31,15 @@ export type PackageHost = {
   badge: string;
   rating: number;
   reviewCount: number;
+  rating_label?: string;
+  reviews?: {
+    id: number;
+    userName: string;
+    userAvatar?: string;
+    rating: number;
+    comment: string;
+    createdAt?: string;
+  }[];
   toursCount: number;
   bio: string;
   responseRate?: string;
@@ -59,6 +68,15 @@ export type TravelPackage = {
   gallery: string[];
   rating: number;
   reviewCount: number;
+  rating_label?: string;
+  reviews?: {
+    id: number;
+    userName: string;
+    userAvatar?: string;
+    rating: number;
+    comment: string;
+    createdAt?: string;
+  }[];
   maxGroupSize: number;
   minGroupSize?: number;
   minPax?: number;

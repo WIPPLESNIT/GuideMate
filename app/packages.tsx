@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -31,6 +32,7 @@ import { getPackages, TravelPackage } from '../services/packageService';
 const PackageCardItem = React.memo(function PackageCardItem({
   item,
   onPress,
+  onRatingPress,
   isDark,
   colors,
   shadow,
@@ -38,6 +40,7 @@ const PackageCardItem = React.memo(function PackageCardItem({
 }: {
   item: TravelPackage;
   onPress: (item: TravelPackage) => void;
+  onRatingPress?: (item: TravelPackage) => void;
   isDark: boolean;
   colors: ThemeColors;
   shadow: any;
@@ -141,9 +144,18 @@ const PackageCardItem = React.memo(function PackageCardItem({
         </TouchableOpacity>
 
         {/* Rating Pill Top-Right */}
-        <View style={styles.ratingPos}>
+        <TouchableOpacity
+          style={styles.ratingPos}
+          activeOpacity={0.8}
+          onPress={(e) => {
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+            onRatingPress?.(item);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`View reviews for ${item.title}`}
+        >
           <RatingPill rating={item.rating} count={item.reviewCount} />
-        </View>
+        </TouchableOpacity>
 
         {/* Photo Counter Pill (shown only when > 1 photo) */}
         {photos.length > 1 ? (
@@ -335,6 +347,13 @@ const PackageCardItem = React.memo(function PackageCardItem({
   );
 });
 
+function formatReviewDate(value?: string): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 export default function PackagesScreen() {
   const router = useRouter();
   const { colors, isDark, shadow } = useTheme();
@@ -345,6 +364,7 @@ export default function PackagesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [selectedReviewPackage, setSelectedReviewPackage] = useState<TravelPackage | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -398,13 +418,14 @@ export default function PackagesScreen() {
       <PackageCardItem
         item={item}
         onPress={openPackageDetails}
+        onRatingPress={setSelectedReviewPackage}
         isDark={isDark}
         colors={colors}
         shadow={shadow}
         formatPrice={formatPrice}
       />
     ),
-    [openPackageDetails, isDark, colors, shadow, formatPrice]
+    [openPackageDetails, setSelectedReviewPackage, isDark, colors, shadow, formatPrice]
   );
 
   return (
@@ -487,6 +508,97 @@ export default function PackagesScreen() {
           }
         />
       )}
+
+      {/* Reviews Modal */}
+      <Modal
+        visible={selectedReviewPackage !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedReviewPackage(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              {
+                backgroundColor: colors.card,
+                maxHeight: '85%',
+              },
+            ]}
+          >
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Reviews{selectedReviewPackage && selectedReviewPackage.reviewCount > 0 ? ` (${selectedReviewPackage.reviewCount})` : ''}
+              </Text>
+              <TouchableOpacity onPress={() => setSelectedReviewPackage(null)} style={styles.modalCloseBtn} accessibilityLabel="Close reviews">
+                <Ionicons name="close" size={24} color={colors.textSub} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 }}>
+              {selectedReviewPackage && selectedReviewPackage.rating > 0 && selectedReviewPackage.reviewCount > 0 ? (
+                <View style={styles.reviewSummary}>
+                  <Ionicons name="star" size={22} color="#F6B100" />
+                  <Text style={[styles.reviewSummaryScore, { color: colors.text }]}>
+                    {selectedReviewPackage.rating.toFixed(1)}
+                  </Text>
+                  <Text style={[styles.reviewSummaryCount, { color: colors.textSub }]}>
+                    · {selectedReviewPackage.reviewCount} {selectedReviewPackage.reviewCount === 1 ? 'verified review' : 'verified reviews'}
+                  </Text>
+                </View>
+              ) : null}
+
+              <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+                {!selectedReviewPackage?.reviews || selectedReviewPackage.reviews.length === 0 ? (
+                  <View style={styles.reviewEmpty}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={36} color={colors.textSub} />
+                    <Text style={[styles.reviewEmptyText, { color: colors.textSub }]}>
+                      No reviews yet. Be the first traveler to rate this travel package!
+                    </Text>
+                  </View>
+                ) : (
+                  selectedReviewPackage.reviews.map((r) => (
+                    <View key={r.id} style={[styles.reviewItem, { borderColor: colors.border }]}>
+                      <View style={styles.reviewItemHead}>
+                        <View style={[styles.reviewAvatar, { backgroundColor: colors.chipBg }]}>
+                          <Text style={[styles.reviewAvatarText, { color: colors.primary }]}>
+                            {(r.userName || 'T').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.reviewName, { color: colors.text }]} numberOfLines={1}>
+                            {r.userName || 'Traveler'}
+                          </Text>
+                          <View style={styles.reviewStars}>
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <Ionicons
+                                key={n}
+                                name={n <= r.rating ? 'star' : 'star-outline'}
+                                size={13}
+                                color="#F6B100"
+                              />
+                            ))}
+                          </View>
+                        </View>
+                        {r.createdAt ? (
+                          <Text style={[styles.reviewDate, { color: colors.textSub }]}>
+                            {formatReviewDate(r.createdAt)}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {r.comment ? (
+                        <Text style={[styles.reviewComment, { color: colors.textSub }]}>
+                          {r.comment}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -771,4 +883,43 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800' },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewSummary: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  reviewSummaryScore: { fontSize: 22, fontWeight: '800' },
+  reviewSummaryCount: { fontSize: 14, fontWeight: '600' },
+  reviewEmpty: { alignItems: 'center', paddingVertical: 34, paddingHorizontal: 20, gap: 12 },
+  reviewEmptyText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  reviewItem: { paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth },
+  reviewItemHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  reviewAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  reviewAvatarText: { fontSize: 16, fontWeight: '800' },
+  reviewName: { fontSize: 14, fontWeight: '700' },
+  reviewStars: { flexDirection: 'row', gap: 1, marginTop: 3 },
+  reviewDate: { fontSize: 12 },
+  reviewComment: { fontSize: 14, lineHeight: 21, marginTop: 10 },
 });

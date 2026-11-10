@@ -784,7 +784,7 @@ final class Listing
              WHERE l.status = "approved" AND c.slug NOT IN ("restaurants")
              GROUP BY c.slug'
         );
-        $counts = ['all' => 0, 'attractions' => 0, 'things-to-do' => 0, 'hotels' => 0];
+        $counts = ['all' => 0, 'attractions' => 0, 'things-to-do' => 0, 'hotels' => 0, 'packages' => 0];
         foreach ($rows as $r) {
             $cnt = (int) $r['cnt'];
             $counts['all'] += $cnt;
@@ -795,6 +795,8 @@ final class Listing
                 $counts['attractions'] += $cnt;
             } elseif ($slug === 'things-to-do' || $slug === 'tour-guides') {
                 $counts['things-to-do'] += $cnt;
+            } elseif ($slug === 'packages' || $slug === 'travel-packages') {
+                $counts['packages'] += $cnt;
             }
         }
         return $counts;

@@ -2083,28 +2083,32 @@ final class ApiController extends Controller
     {
         $this->json([
             'vehicles' => array_map(
-                static fn (array $v): array => [
-                    'id' => (string) $v['id'],
-                    'slug' => (string) ($v['slug'] ?? ''),
-                    'name' => (string) $v['name'],
-                    'make' => (string) ($v['make'] ?? ''),
-                    'model' => (string) ($v['model'] ?? ''),
-                    'year' => (int) ($v['year'] ?? 0),
-                    'type' => (string) $v['type'],
-                    'price_per_day' => (float) $v['price_per_day'],
-                    'specs' => $v['specs'],
-                    'shop' => (string) $v['shop'],
-                    'provider_id' => (int) ($v['provider_id'] ?? 0),
-                    'provider_name' => (string) ($v['provider_name'] ?? $v['shop']),
-                    'location' => (string) $v['location'],
-                    'address' => (string) ($v['address'] ?? ''),
-                    'description' => (string) ($v['description'] ?? ''),
-                    'status' => (string) ($v['status'] ?? 'approved'),
-                    'is_available' => (bool) ($v['is_available'] ?? true),
-                    'rating' => (float) $v['rating'],
-                    'image' => (string) ($v['image'] ?? ''),
-                    'images' => (array) ($v['images'] ?? [$v['image']]),
-                ],
+                static function (array $v): array {
+                    $hasActive = RentalRequest::hasActiveRental((string) $v['id']);
+                    return [
+                        'id' => (string) $v['id'],
+                        'slug' => (string) ($v['slug'] ?? ''),
+                        'name' => (string) $v['name'],
+                        'make' => (string) ($v['make'] ?? ''),
+                        'model' => (string) ($v['model'] ?? ''),
+                        'year' => (int) ($v['year'] ?? 0),
+                        'type' => (string) $v['type'],
+                        'price_per_day' => (float) $v['price_per_day'],
+                        'specs' => $v['specs'],
+                        'shop' => (string) $v['shop'],
+                        'provider_id' => (int) ($v['provider_id'] ?? 0),
+                        'provider_name' => (string) ($v['provider_name'] ?? $v['shop']),
+                        'location' => (string) $v['location'],
+                        'address' => (string) ($v['address'] ?? ''),
+                        'description' => (string) ($v['description'] ?? ''),
+                        'status' => (string) ($v['status'] ?? 'approved'),
+                        'is_available' => ((bool) ($v['is_available'] ?? true)) && !$hasActive,
+                        'has_active_rental' => $hasActive,
+                        'rating' => (float) $v['rating'],
+                        'image' => (string) ($v['image'] ?? ''),
+                        'images' => (array) ($v['images'] ?? [$v['image']]),
+                    ];
+                },
                 RentalRequest::vehicleCatalog()
             ),
         ]);
@@ -2148,6 +2152,7 @@ final class ApiController extends Controller
         $providerStats = RentalReview::providerStats((int) $vehicle['user_id']);
         $vehicleStats = RentalReview::vehicleStats((string) $vehicle['id']);
         $displayRating = $vehicleStats['rating'] > 0.0 ? $vehicleStats['rating'] : $providerStats['rating'];
+        $hasActive = RentalRequest::hasActiveRental((string) $vehicle['id']);
 
         $this->json([
             'vehicle' => [
@@ -2165,7 +2170,8 @@ final class ApiController extends Controller
                 'address' => (string) ($vehicle['address'] ?? ''),
                 'description' => (string) ($vehicle['description'] ?? ''),
                 'status' => (string) ($vehicle['status'] ?? 'approved'),
-                'is_available' => (bool) ($vehicle['is_available'] ?? true),
+                'is_available' => ((bool) ($vehicle['is_available'] ?? true)) && !$hasActive,
+                'has_active_rental' => $hasActive,
                 'rating' => (float) $displayRating,
                 'reviews_count' => (int) $vehicleStats['reviews_count'],
                 'image' => $mainImg,
@@ -2230,6 +2236,11 @@ final class ApiController extends Controller
         }
         if ($vehicle === null) {
             $this->json(['error' => 'Unknown vehicle.'], 404);
+            return;
+        }
+
+        if (RentalRequest::hasActiveRental($vehicleId)) {
+            $this->json(['error' => 'This vehicle unit currently has an active rental and cannot be reserved until completed.'], 422);
             return;
         }
 
@@ -3234,9 +3245,11 @@ final class ApiController extends Controller
         $pkgSummary = $isPackage
             ? \App\Services\PackageBookingService::getPackageBookingSummary($booking['package_booking_ref'] ?? $booking['id'])
             : null;
-        $overallPackageStatus = (($booking['status'] ?? '') === 'completed' || ($booking['package_overall_status'] ?? '') === 'completed')
-            ? 'completed'
-            : ($pkgSummary['overall_status'] ?? ($booking['package_overall_status'] ?? $status));
+        $overallPackageStatus = $pkgSummary !== null
+            ? $pkgSummary['overall_status']
+            : ((($booking['status'] ?? '') === 'completed' || ($booking['package_overall_status'] ?? '') === 'completed')
+                ? 'completed'
+                : ($booking['package_overall_status'] ?? $status));
 
         $providerStatuses = $pkgSummary['items'] ?? [];
         if (empty($providerStatuses) && $isPackage) {
@@ -3370,6 +3383,7 @@ final class ApiController extends Controller
             'can_review' => $canReview,
             'can_report' => $canReport,
             'dispute_status' => $disputeStatus,
+            'dispute_id' => !empty($booking['dispute_id']) ? (int) $booking['dispute_id'] : null,
             'cancellation' => $this->computeCancellationPolicy($booking, $isHotel ? 'hotel' : 'attraction'),
         ];
     }

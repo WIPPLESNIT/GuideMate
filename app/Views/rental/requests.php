@@ -53,10 +53,11 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                             </thead>
                             <tbody>
                             <?php foreach ($requests as $r):
-                                $paymentStatus = (string) ($r['payment_status'] ?? 'unpaid');
-                                $reportStatus = (string) ($r['report_status'] ?? 'none');
-                                $reqStatus = (string) ($r['status'] ?? 'pending');
+                                $paymentStatus = strtolower(trim((string) ($r['payment_status'] ?? 'unpaid')));
+                                $reportStatus = strtolower(trim((string) ($r['report_status'] ?? 'none')));
+                                $reqStatus = strtolower(trim((string) ($r['status'] ?? 'pending')));
                                 $isPending = $reqStatus === 'pending';
+                                $isRefunded = in_array('refunded', [$reqStatus, $paymentStatus, $reportStatus], true);
                             ?>
                                 <tr class="<?= $isPending ? 'row-pending' : '' ?>"<?= $isPending ? ' style="background:#FFFBEB;"' : '' ?>>
                                     <td class="col-vehicle">
@@ -211,165 +212,179 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                                                      role="menu"
                                                      aria-labelledby="rentalReqBtn_<?= (int) $r['id'] ?>">
                                                     
-                                                    <?php if ($isWarned): ?>
-                                                        <div class="res-action-restricted-notice" title="Action unavailable: Active administrator warning on your account.">
-                                                            <span class="res-action-restricted-badge"><?= admin_icon('alert-triangle', 13) ?> Actions Restricted</span>
-                                                            <span>navailable due to an active administrator warning.</span>
-                                                        </div>
-                                                        <?php if ($reportStatus === 'open'):
-                                                            $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
-                                                            $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
-                                                        ?>
-                                                            <button type="button"
-                                                                    class="res-action-item action-problem"
-                                                                    role="menuitem"
-                                                                    data-open-problem-modal
-                                                                    data-req-id="<?= (int) $r['id'] ?>"
-                                                                    data-customer="<?= e($r['customer_name']) ?>"
-                                                                    data-phone="<?= e((string)($r['customer_phone'] ?? '')) ?>"
-                                                                    data-vehicle="<?= e($r['vehicle_name']) ?>"
-                                                                    data-pickup="<?= e(date('M j, Y', strtotime((string)$r['pickup_date']))) ?>"
-                                                                    data-amount="<?= money((float) $r['total_amount']) ?>"
-                                                                    data-message="<?= e((string)($r['report_message'] ?? '')) ?>"
-                                                                    data-photos="<?= e(json_encode($rPhotos)) ?>"
-                                                                    data-refund-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>"
-                                                                    data-reject-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>">
-                                                                <?= admin_icon('disputes', 14) ?> View Reported Problem
-                                                            </button>
-                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
-                                                                <?= admin_icon('revenue', 14) ?> Refund Customer
-                                                            </button>
-                                                            <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
-                                                        <?php endif; ?>
-
-                                                        <?php if ($isPending): ?>
-                                                            <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
-                                                                <?= admin_icon('check-circle', 14) ?> Confirm Booking
-                                                            </button>
-                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
-                                                                <?= admin_icon('x-circle', 14) ?> Decline Booking
-                                                            </button>
-                                                        <?php else: ?>
-                                                            <?php if ($reqStatus !== 'completed' && $reqStatus !== 'cancelled'): ?>
-                                                                <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
-                                                                    <?= admin_icon('check-circle', 14) ?> Complete Rental
+                                                    <?php if ($isRefunded): ?>
+                                                        <button type="button" class="res-action-item action-delete" data-delete-rental data-delete-report data-id="<?= (int) $r['id'] ?>" data-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
+                                                            <?= admin_icon('trash', 14) ?> Delete Report
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <?php if ($isWarned): ?>
+                                                            <div class="res-action-restricted-notice" title="Action unavailable: Active administrator warning on your account.">
+                                                                <span class="res-action-restricted-badge"><?= admin_icon('alert-triangle', 13) ?> Actions Restricted</span>
+                                                                <span>Unavailable due to an active administrator warning.</span>
+                                                            </div>
+                                                            <?php if ($reportStatus === 'open'):
+                                                                $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
+                                                                $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
+                                                            ?>
+                                                                <button type="button"
+                                                                        class="res-action-item action-problem"
+                                                                        role="menuitem"
+                                                                        data-open-problem-modal
+                                                                        data-req-id="<?= (int) $r['id'] ?>"
+                                                                        data-customer="<?= e($r['customer_name']) ?>"
+                                                                        data-phone="<?= e((string)($r['customer_phone'] ?? '')) ?>"
+                                                                        data-vehicle="<?= e($r['vehicle_name']) ?>"
+                                                                        data-pickup="<?= e(date('M j, Y', strtotime((string)$r['pickup_date']))) ?>"
+                                                                        data-amount="<?= money((float) $r['total_amount']) ?>"
+                                                                        data-message="<?= e((string)($r['report_message'] ?? '')) ?>"
+                                                                        data-photos="<?= e(json_encode($rPhotos)) ?>"
+                                                                        data-refund-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>"
+                                                                        data-reject-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>">
+                                                                    <?= admin_icon('disputes', 14) ?> View Reported Problem
                                                                 </button>
                                                                 <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
-                                                                    <?= admin_icon('x-circle', 14) ?> Cancel Rental
+                                                                    <?= admin_icon('revenue', 14) ?> Refund Customer
+                                                                </button>
+                                                                <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                            <?php endif; ?>
+
+                                                            <?php if ($isPending): ?>
+                                                                <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                    <?= admin_icon('check-circle', 14) ?> Confirm Booking
+                                                                </button>
+                                                                <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                    <?= admin_icon('x-circle', 14) ?> Decline Booking
+                                                                </button>
+                                                            <?php else: ?>
+                                                                <?php if ($reqStatus !== 'completed' && $reqStatus !== 'cancelled'): ?>
+                                                                    <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                        <?= admin_icon('check-circle', 14) ?> Complete Rental
+                                                                    </button>
+                                                                    <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                        <?= admin_icon('x-circle', 14) ?> Cancel Rental
+                                                                    </button>
+                                                                <?php endif; ?>
+                                                            <?php endif; ?>
+
+                                                            <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
+                                                                <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                                <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                    <?= admin_icon('revenue', 14) ?> Refund Payment
                                                                 </button>
                                                             <?php endif; ?>
-                                                        <?php endif; ?>
 
-                                                        <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
-                                                            <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
-                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
-                                                                <?= admin_icon('revenue', 14) ?> Refund Payment
-                                                            </button>
-                                                        <?php endif; ?>
-
-                                                    <?php elseif ($reportStatus === 'open'):
-                                                        $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
-                                                        $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
-                                                    ?>
-                                                        <button type="button"
-                                                                class="res-action-item action-problem"
-                                                                role="menuitem"
-                                                                data-open-problem-modal
-                                                                data-req-id="<?= (int) $r['id'] ?>"
-                                                                data-customer="<?= e($r['customer_name']) ?>"
-                                                                data-phone="<?= e((string)($r['customer_phone'] ?? '')) ?>"
-                                                                data-vehicle="<?= e($r['vehicle_name']) ?>"
-                                                                data-pickup="<?= e(date('M j, Y', strtotime((string)$r['pickup_date']))) ?>"
-                                                                data-amount="<?= money((float) $r['total_amount']) ?>"
-                                                                data-message="<?= e((string)($r['report_message'] ?? '')) ?>"
-                                                                data-photos="<?= e(json_encode($rPhotos)) ?>"
-                                                                data-refund-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>"
-                                                                data-reject-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>">
-                                                            <?= admin_icon('disputes', 14) ?> View Reported Problem
-                                                        </button>
-                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="res-action-form" onsubmit="return confirm('Refund full payment of <?= money((float) $r['total_amount']) ?> to the customer?');">
-                                                            <?= csrf_field() ?>
-                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
-                                                                <?= admin_icon('revenue', 14) ?> Refund Customer
-                                                            </button>
-                                                        </form>
-                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>" class="res-action-form" onsubmit="return confirm('Dismiss this problem report?');">
-                                                            <?= csrf_field() ?>
-                                                            <button type="submit" class="res-action-item action-accept" role="menuitem">
-                                                                <?= admin_icon('check-circle', 14) ?> Dismiss Report
-                                                            </button>
-                                                        </form>
-                                                        <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
-                                                    <?php endif; ?>
-
-                                                    <?php if ($isPending): ?>
-                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Confirm and approve this rental booking?');">
-                                                            <?= csrf_field() ?>
-                                                            <input type="hidden" name="status" value="approved">
-                                                            <button type="submit" class="res-action-item action-accept" role="menuitem">
-                                                                <?= admin_icon('check-circle', 14) ?> Confirm Booking
-                                                            </button>
-                                                        </form>
-                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Decline this booking? Any payment made will be refunded.');">
-                                                            <?= csrf_field() ?>
-                                                            <input type="hidden" name="status" value="cancelled">
-                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
-                                                                <?= admin_icon('x-circle', 14) ?> Decline Booking
-                                                            </button>
-                                                        </form>
-                                                    <?php else: ?>
-                                                        <?php if ($reqStatus !== 'completed' && $reqStatus !== 'cancelled'): ?>
-                                                            <?php if ($reqStatus !== 'contacted'): ?>
-                                                                <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form">
+                                                        <?php else: ?>
+                                                            <?php if ($reportStatus === 'open'):
+                                                                $rFiles = \App\Models\RentalReportFile::forRental((int) $r['id']);
+                                                                $rPhotos = array_map(fn($f) => img_src($f['file_path'], 'rental-evidence'), $rFiles);
+                                                            ?>
+                                                                <button type="button"
+                                                                        class="res-action-item action-problem"
+                                                                        role="menuitem"
+                                                                        data-open-problem-modal
+                                                                        data-req-id="<?= (int) $r['id'] ?>"
+                                                                        data-customer="<?= e($r['customer_name']) ?>"
+                                                                        data-phone="<?= e((string)($r['customer_phone'] ?? '')) ?>"
+                                                                        data-vehicle="<?= e($r['vehicle_name']) ?>"
+                                                                        data-pickup="<?= e(date('M j, Y', strtotime((string)$r['pickup_date']))) ?>"
+                                                                        data-amount="<?= money((float) $r['total_amount']) ?>"
+                                                                        data-message="<?= e((string)($r['report_message'] ?? '')) ?>"
+                                                                        data-photos="<?= e(json_encode($rPhotos)) ?>"
+                                                                        data-refund-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>"
+                                                                        data-reject-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>">
+                                                                    <?= admin_icon('disputes', 14) ?> View Reported Problem
+                                                                </button>
+                                                                <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="res-action-form" onsubmit="return confirm('Refund full payment of <?= money((float) $r['total_amount']) ?> to the customer?');">
                                                                     <?= csrf_field() ?>
-                                                                    <input type="hidden" name="status" value="contacted">
-                                                                    <button type="submit" class="res-action-item action-confirm" role="menuitem">
-                                                                        <?= admin_icon('messages', 14) ?> Mark Contacted
+                                                                    <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                        <?= admin_icon('revenue', 14) ?> Refund Customer
+                                                                    </button>
+                                                                </form>
+                                                                <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/reject-report')) ?>" class="res-action-form" onsubmit="return confirm('Dismiss this problem report?');">
+                                                                    <?= csrf_field() ?>
+                                                                    <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                        <?= admin_icon('check-circle', 14) ?> Dismiss Report
+                                                                    </button>
+                                                                </form>
+                                                                <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                            <?php endif; ?>
+
+                                                            <?php if ($isPending): ?>
+                                                                <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Confirm and approve this rental booking?');">
+                                                                    <?= csrf_field() ?>
+                                                                    <input type="hidden" name="status" value="approved">
+                                                                    <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                        <?= admin_icon('check-circle', 14) ?> Confirm Booking
+                                                                    </button>
+                                                                </form>
+                                                                <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Decline this booking? Any payment made will be refunded.');">
+                                                                    <?= csrf_field() ?>
+                                                                    <input type="hidden" name="status" value="cancelled">
+                                                                    <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                        <?= admin_icon('x-circle', 14) ?> Decline Booking
+                                                                    </button>
+                                                                </form>
+                                                            <?php else: ?>
+                                                                <?php if ($reqStatus !== 'completed' && $reqStatus !== 'cancelled'): ?>
+                                                                    <?php if ($reqStatus !== 'contacted'): ?>
+                                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form">
+                                                                            <?= csrf_field() ?>
+                                                                            <input type="hidden" name="status" value="contacted">
+                                                                            <button type="submit" class="res-action-item action-confirm" role="menuitem">
+                                                                                <?= admin_icon('messages', 14) ?> Mark Contacted
+                                                                            </button>
+                                                                        </form>
+                                                                    <?php endif; ?>
+                                                                    <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Mark this rental as completed?');">
+                                                                        <?= csrf_field() ?>
+                                                                        <input type="hidden" name="status" value="completed">
+                                                                        <button type="submit" class="res-action-item action-accept" role="menuitem">
+                                                                        <?= admin_icon('check-circle', 14) ?> Complete Rental
+                                                                        </button>
+                                                                    </form>
+                                                                    <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Cancel this reservation?');">
+                                                                        <?= csrf_field() ?>
+                                                                        <input type="hidden" name="status" value="cancelled">
+                                                                        <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                            <?= admin_icon('x-circle', 14) ?> Cancel Rental
+                                                                        </button>
+                                                                    </form>
+                                                                <?php endif; ?>
+                                                            <?php endif; ?>
+
+                                                            <?php if ($reqStatus === 'completed'): ?>
+                                                                <button type="button" class="res-action-item action-delete" data-delete-rental data-id="<?= (int) $r['id'] ?>" data-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
+                                                                    <?= admin_icon('trash', 14) ?> Delete Record
+                                                                </button>
+                                                            <?php endif; ?>
+
+                                                            <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
+                                                                <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                                <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="res-action-form" onsubmit="return confirm('Refund the full payment of <?= money((float) $r['total_amount']) ?> for this reservation?');">
+                                                                    <?= csrf_field() ?>
+                                                                    <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                        <?= admin_icon('revenue', 14) ?> Refund Payment
                                                                     </button>
                                                                 </form>
                                                             <?php endif; ?>
-                                                            <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Mark this rental as completed?');">
-                                                                <?= csrf_field() ?>
-                                                                <input type="hidden" name="status" value="completed">
-                                                                <button type="submit" class="res-action-item action-accept" role="menuitem">
-                                                                <?= admin_icon('check-circle', 14) ?> Complete Rental
-                                                                </button>
-                                                            </form>
-                                                            <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/status')) ?>" class="res-action-form" onsubmit="return confirm('Cancel this reservation?');">
-                                                                <?= csrf_field() ?>
-                                                                <input type="hidden" name="status" value="cancelled">
-                                                                <button type="submit" class="res-action-item action-cancel" role="menuitem">
-                                                                    <?= admin_icon('x-circle', 14) ?> Cancel Rental
-                                                                </button>
-                                                            </form>
+
+                                                            <?php if (!empty($idDoc)): ?>
+                                                                <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
+                                                                <a href="<?= e(url($idDoc)) ?>"
+                                                                   target="_blank"
+                                                                   rel="noopener"
+                                                                   class="res-action-item doc-link"
+                                                                   role="menuitem"
+                                                                   data-doc-preview="1"
+                                                                   data-doc-url="<?= e(url($idDoc)) ?>"
+                                                                   data-doc-label="<?= e($idLabel) ?>"
+                                                                   data-doc-type="Document"
+                                                                   data-doc-status="pending"
+                                                                   data-doc-owner="<?= e($guideName) ?>">
+                                                                    <?= admin_icon('documents', 14) ?> View Verification ID
+                                                                </a>
+                                                            <?php endif; ?>
                                                         <?php endif; ?>
-                                                    <?php endif; ?>
-
-                                                    <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
-                                                        <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
-                                                        <form method="post" action="<?= e(url('/dashboard/rentals/' . $r['id'] . '/refund')) ?>" class="res-action-form" onsubmit="return confirm('Refund the full payment of <?= money((float) $r['total_amount']) ?> for this reservation?');">
-                                                            <?= csrf_field() ?>
-                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
-                                                                <?= admin_icon('revenue', 14) ?> Refund Payment
-                                                            </button>
-                                                        </form>
-                                                    <?php endif; ?>
-
-                                                    <?php if (!empty($idDoc)): ?>
-                                                        <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
-                                                        <a href="<?= e(url($idDoc)) ?>"
-                                                           target="_blank"
-                                                           rel="noopener"
-                                                           class="res-action-item doc-link"
-                                                           role="menuitem"
-                                                           data-doc-preview="1"
-                                                           data-doc-url="<?= e(url($idDoc)) ?>"
-                                                           data-doc-label="<?= e($idLabel) ?>"
-                                                           data-doc-type="Document"
-                                                           data-doc-status="pending"
-                                                           data-doc-owner="<?= e($guideName) ?>">
-                                                            <?= admin_icon('documents', 14) ?> View Verification ID
-                                                        </a>
                                                     <?php endif; ?>
                                                 </div>
                                             </div>

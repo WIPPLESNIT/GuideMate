@@ -191,6 +191,7 @@ export type ApiBooking = {
   can_review?: boolean;
   can_report?: boolean;
   dispute_status?: string;
+  dispute_id?: number | null;
   is_hotel?: boolean;
   is_package?: boolean;
   category_slug?: string;
@@ -520,6 +521,7 @@ export type ApiRentalVehicle = {
   description?: string;
   status?: string;
   is_available?: boolean;
+  has_active_rental?: boolean;
   rating: number;
   image: string;
   images?: string[];

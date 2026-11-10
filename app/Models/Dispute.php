@@ -50,13 +50,16 @@ final class Dispute
     {
         return Database::first(
             'SELECT d.*, b.booking_date, b.total_amount, b.status AS booking_status,
-                    l.title AS listing_title, l.slug AS listing_slug,
+                    l.title AS listing_title, l.slug AS listing_slug, l.category_id,
+                    c.slug AS category_slug, c.name AS category_name,
                     u.name AS tourist_name, u.email AS tourist_email,
-                    g.name AS guide_name, g.email AS guide_email,
+                    g.name AS guide_name, g.email AS guide_email, g.role AS provider_role,
+                    g.guide_warned, g.guide_warning_note,
                     p.status AS payment_status, p.reference AS payment_reference
              FROM disputes d
              JOIN bookings b ON b.id = d.booking_id
              JOIN listings l ON l.id = b.listing_id
+             LEFT JOIN categories c ON c.id = l.category_id
              JOIN users u ON u.id = d.user_id
              JOIN users g ON g.id = d.guide_id
              LEFT JOIN payments p ON p.booking_id = b.id
@@ -82,11 +85,15 @@ final class Dispute
     {
         return Database::all(
             'SELECT d.*, b.booking_date, b.total_amount,
-                    l.title AS listing_title,
-                    u.name AS tourist_name, g.name AS guide_name
+                    l.title AS listing_title, l.slug AS listing_slug, l.category_id,
+                    c.slug AS category_slug, c.name AS category_name,
+                    u.name AS tourist_name, u.email AS tourist_email,
+                    g.name AS guide_name, g.email AS guide_email, g.role AS provider_role,
+                    g.guide_warned, g.guide_warning_note
              FROM disputes d
              JOIN bookings b ON b.id = d.booking_id
              JOIN listings l ON l.id = b.listing_id
+             LEFT JOIN categories c ON c.id = l.category_id
              JOIN users u ON u.id = d.user_id
              JOIN users g ON g.id = d.guide_id
              WHERE d.status IN ("open", "reviewing")
@@ -100,11 +107,15 @@ final class Dispute
     public static function all(?string $status = null): array
     {
         $sql = 'SELECT d.*, b.booking_date, b.total_amount,
-                       l.title AS listing_title,
-                       u.name AS tourist_name, g.name AS guide_name
+                       l.title AS listing_title, l.slug AS listing_slug, l.category_id,
+                       c.slug AS category_slug, c.name AS category_name,
+                       u.name AS tourist_name, u.email AS tourist_email,
+                       g.name AS guide_name, g.email AS guide_email, g.role AS provider_role,
+                       g.guide_warned, g.guide_warning_note
                 FROM disputes d
                 JOIN bookings b ON b.id = d.booking_id
                 JOIN listings l ON l.id = b.listing_id
+                LEFT JOIN categories c ON c.id = l.category_id
                 JOIN users u ON u.id = d.user_id
                 JOIN users g ON g.id = d.guide_id';
         $params = [];
@@ -141,6 +152,46 @@ final class Dispute
     public static function statusLabel(string $status): string
     {
         return self::STATUSES[$status] ?? ucfirst(str_replace('_', ' ', $status));
+    }
+
+    /**
+     * Resolve provider account details and contextual action labels.
+     *
+     * @param array<string, mixed> $dispute
+     * @return array{type:string,account_type_label:string,provider_title:string,warn_btn_label:string,badge_class:string}
+     */
+    public static function providerAccountInfo(array $dispute): array
+    {
+        $role = (string) ($dispute['provider_role'] ?? '');
+        $catSlug = (string) ($dispute['category_slug'] ?? '');
+
+        if (in_array($role, ['hotel_provider', 'hotel_admin'], true) || $catSlug === 'hotels') {
+            return [
+                'type' => 'hotel_provider',
+                'account_type_label' => 'Hotel Provider Account',
+                'provider_title' => 'Hotel Provider',
+                'warn_btn_label' => 'Warn Hotel Provider',
+                'badge_class' => 'pill-hotel',
+            ];
+        }
+
+        if (in_array($role, ['rental_provider', 'rental_admin'], true) || in_array($catSlug, ['vehicles', 'vehicle-rentals', 'rentals'], true)) {
+            return [
+                'type' => 'rental_provider',
+                'account_type_label' => 'Vehicle Rental Provider Account',
+                'provider_title' => 'Vehicle Rental Provider',
+                'warn_btn_label' => 'Warn Vehicle Rental Provider',
+                'badge_class' => 'pill-rental',
+            ];
+        }
+
+        return [
+            'type' => 'guide',
+            'account_type_label' => 'Guide Account',
+            'provider_title' => 'Tour Guide',
+            'warn_btn_label' => 'Warn Guide',
+            'badge_class' => 'pill-guide',
+        ];
     }
 
     /**

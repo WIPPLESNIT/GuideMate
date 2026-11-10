@@ -107,6 +107,13 @@ export default function CarRentalsScreen() {
   );
 
   const openRental = (item: ApiRentalVehicle) => {
+    if (!item.is_available) {
+      Alert.alert(
+        'Unit Currently Rented',
+        'This vehicle unit currently has an active rental request and cannot be reserved until completed.'
+      );
+      return;
+    }
     setSelected(item);
     setPickupDate('');
     setPickupTime('');
@@ -244,8 +251,15 @@ export default function CarRentalsScreen() {
             <View style={styles.catBadge}>
               <Text style={styles.catBadgeText}>{item.type}</Text>
             </View>
-            <View style={styles.verifiedBadge}>
-              <Text style={styles.verifiedBadgeText}>Verified Partner</Text>
+            <View
+              style={[
+                styles.verifiedBadge,
+                !item.is_available && { backgroundColor: isDark ? '#7F1D1D' : '#EF4444' },
+              ]}
+            >
+              <Text style={styles.verifiedBadgeText}>
+                {item.is_available ? 'Verified Partner' : 'Currently Rented'}
+              </Text>
             </View>
           </View>
         </View>
@@ -302,14 +316,20 @@ export default function CarRentalsScreen() {
               </Text>
             </View>
             <TouchableOpacity
-              style={styles.reserveBtn}
+              style={[
+                styles.reserveBtn,
+                !item.is_available && { backgroundColor: isDark ? '#334155' : '#94A3B8' },
+              ]}
+              disabled={!item.is_available}
               activeOpacity={0.85}
               onPress={(e) => {
                 if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
                 openRental(item);
               }}
             >
-              <Text style={styles.reserveText}>Rent Unit</Text>
+              <Text style={styles.reserveText}>
+                {item.is_available ? 'Rent Unit' : 'Currently Rented'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

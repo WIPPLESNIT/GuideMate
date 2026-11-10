@@ -3977,16 +3977,16 @@ body.page-messages .site-footer { display: none; }
     -webkit-backdrop-filter: blur(4px);
 }
 .admin-body .gm-modal-dialog {
-    background: #11252c;
-    color: #e2e8f0;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 14px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    background: #11252c !important;
+    color: #e2e8f0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
     overflow: hidden;
 }
 .admin-body .gm-modal-dialog .gm-modal-head {
-    background: rgba(255, 255, 255, 0.02);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
     padding: 1.1rem 1.4rem;
     display: flex;
     align-items: center;
@@ -4031,7 +4031,18 @@ body.page-messages .site-footer { display: none; }
     border-radius: 4px;
 }
 .admin-body .gm-modal-dialog .gm-modal-body {
+    background: #11252c !important;
     padding: 1.3rem 1.4rem;
+}
+.admin-body .gm-modal-dialog .gm-modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+.admin-body .gm-modal-dialog .gm-modal-body::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+.admin-body .gm-modal-dialog .gm-modal-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
 }
 .admin-body .gm-modal-dialog .gm-modal-body p.hint,
 .admin-body .admin-reject-hint {
@@ -4044,8 +4055,8 @@ body.page-messages .site-footer { display: none; }
 .admin-body .admin-reject-label {
     color: #f1f5f9 !important;
     font-weight: 600 !important;
-    font-size: 0.92rem !important;
-    margin-bottom: 0.5rem !important;
+    font-size: 0.88rem !important;
+    margin-bottom: 0.4rem !important;
     display: block !important;
 }
 .admin-body .gm-modal-dialog label .hint,
@@ -4055,7 +4066,19 @@ body.page-messages .site-footer { display: none; }
     font-size: 0.82rem !important;
     margin-left: 0.25rem !important;
 }
-.admin-body .gm-modal-dialog .input,
+.admin-body .gm-modal-dialog .input {
+    background: #08161b !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    padding: 0.6rem 0.85rem !important;
+    font-size: 0.88rem !important;
+    line-height: 1.4 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    min-height: auto;
+    transition: border-color .15s ease, box-shadow .15s ease !important;
+}
 .admin-body .gm-modal-dialog textarea.input,
 .admin-body .admin-reject-textarea {
     background: #08161b !important;
@@ -4082,7 +4105,11 @@ body.page-messages .site-footer { display: none; }
     border-color: rgba(255, 255, 255, 0.28) !important;
 }
 .admin-body .gm-modal-dialog .input:focus,
-.admin-body .gm-modal-dialog textarea.input:focus,
+.admin-body .gm-modal-dialog textarea.input:focus {
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25) !important;
+    outline: none !important;
+}
 .admin-body .admin-reject-textarea:focus {
     border-color: #ef4444 !important;
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25) !important;
@@ -4091,7 +4118,7 @@ body.page-messages .site-footer { display: none; }
 .admin-body .gm-modal-dialog .gm-modal-foot {
     background: rgba(0, 0, 0, 0.2) !important;
     border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
-    padding: 1rem 1.4rem !important;
+    padding: 0.9rem 1.4rem !important;
     margin-top: 0 !important;
     display: flex !important;
     justify-content: flex-end !important;
@@ -4125,8 +4152,7 @@ body.page-messages .site-footer { display: none; }
     outline: none !important;
 }
 .admin-body .gm-modal-dialog .btn-confirm-reject,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary {
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger {
     background: #dc2626 !important;
     border: 1px solid #dc2626 !important;
     color: #ffffff !important;
@@ -4139,28 +4165,60 @@ body.page-messages .site-footer { display: none; }
     transition: all .15s ease !important;
 }
 .admin-body .gm-modal-dialog .btn-confirm-reject:hover,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger:hover,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary:hover {
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger:hover {
     background: #b91c1c !important;
     border-color: #b91c1c !important;
     box-shadow: 0 2px 6px rgba(220, 38, 38, 0.5) !important;
 }
 .admin-body .gm-modal-dialog .btn-confirm-reject:active,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger:active,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary:active {
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger:active {
     background: #991b1b !important;
     border-color: #991b1b !important;
     transform: translateY(1px) !important;
 }
 .admin-body .gm-modal-dialog .btn-confirm-reject:focus-visible,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger:focus-visible,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary:focus-visible {
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger:focus-visible {
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.4) !important;
     outline: none !important;
 }
 .admin-body .gm-modal-dialog .btn-confirm-reject:disabled,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger:disabled,
-.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary:disabled {
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-danger:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+}
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary,
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-success {
+    background: #059669 !important;
+    border: 1px solid #059669 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 0.88rem !important;
+    padding: 0.5rem 1.35rem !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    box-shadow: 0 2px 6px rgba(5, 150, 105, 0.35) !important;
+    transition: all .15s ease !important;
+}
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary:hover,
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-success:hover {
+    background: #047857 !important;
+    border-color: #047857 !important;
+    box-shadow: 0 3px 8px rgba(5, 150, 105, 0.45) !important;
+}
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary:active,
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-success:active {
+    background: #065f46 !important;
+    border-color: #065f46 !important;
+    transform: translateY(1px) !important;
+}
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary:focus-visible,
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-success:focus-visible {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.4) !important;
+    outline: none !important;
+}
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-primary:disabled,
+.admin-body .gm-modal-dialog .gm-modal-foot .btn-success:disabled {
     opacity: 0.5 !important;
     cursor: not-allowed !important;
     box-shadow: none !important;
@@ -4814,6 +4872,53 @@ body.page-dashboard .reveal,
 .admin-body table.table th { color: rgba(255,255,255,.45); }
 .admin-body table.table td, .admin-body table.table th { border-color: rgba(255,255,255,.08); vertical-align: middle; }
 .admin-body table.table tbody tr:hover { background: rgba(255,255,255,.03); }
+
+/* Complaints Table in Admin Overview - no horizontal scrollbar, responsive fit */
+.admin-complaints-wrap {
+    padding: 0 !important;
+    overflow-x: hidden;
+    width: 100%;
+}
+
+.admin-body table.admin-complaints-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+.admin-body table.admin-complaints-table th,
+.admin-body table.admin-complaints-table td {
+    padding: 0.75rem 0.55rem !important;
+    vertical-align: top !important;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.admin-body table.admin-complaints-table th:first-child,
+.admin-body table.admin-complaints-table td:first-child {
+    padding-left: 1.15rem !important;
+}
+
+.admin-body table.admin-complaints-table th:last-child,
+.admin-body table.admin-complaints-table td:last-child {
+    padding-right: 1.15rem !important;
+}
+
+.admin-body table.admin-complaints-table th {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    color: rgba(255,255,255,.5);
+    white-space: nowrap;
+}
+
+@media (max-width: 800px) {
+    .admin-complaints-wrap {
+        overflow-x: auto;
+    }
+    .admin-body table.admin-complaints-table {
+        min-width: 700px;
+    }
+}
 .admin-body .empty-state { color: rgba(255,255,255,.55); }
 .admin-body .input, .admin-body textarea.input {
     background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.2); color: #fff;

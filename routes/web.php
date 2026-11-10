@@ -136,6 +136,8 @@ $router->get('/dashboard/bookings/verify', [GuideController::class, 'showVerifyB
 $router->post('/dashboard/bookings/verify', [GuideController::class, 'verifyBooking'], ['listing_provider']);
 $router->get('/dashboard/transactions', [GuideController::class, 'transactions'], ['listing_provider']);
 $router->post('/dashboard/bookings/{id}/status', [GuideController::class, 'updateBookingStatus'], ['listing_provider']);
+$router->post('/dashboard/bookings/{id}/delete', [GuideController::class, 'deleteBooking'], ['listing_provider']);
+$router->delete('/dashboard/bookings/{id}', [GuideController::class, 'deleteBooking'], ['listing_provider']);
 $router->get('/dashboard/listings/{id}/availability', [GuideController::class, 'availability'], ['listing_provider']);
 $router->post('/dashboard/listings/{id}/availability/block', [GuideController::class, 'blockDate'], ['listing_provider']);
 $router->post('/dashboard/listings/{id}/availability/unblock', [GuideController::class, 'unblockDate'], ['listing_provider']);
@@ -158,6 +160,8 @@ $router->post('/dashboard/hotel/rooms/{id}/edit', [HotelController::class, 'upda
 $router->post('/dashboard/hotel/rooms/{id}/status', [HotelController::class, 'updateRoomStatus'], ['auth']);
 $router->post('/dashboard/hotel/rooms/{id}/delete', [HotelController::class, 'destroyRoom'], ['auth']);
 $router->post('/dashboard/hotel/bookings/{id}/status', [HotelController::class, 'updateReservationStatus'], ['auth']);
+$router->post('/dashboard/hotel/bookings/{id}/delete', [HotelController::class, 'deleteReservation'], ['auth']);
+$router->delete('/dashboard/hotel/bookings/{id}', [HotelController::class, 'deleteReservation'], ['auth']);
 
 // ---- Rental partner management (relocated from the admin portal) -----------
 $router->get('/dashboard/vehicles', [RentalController::class, 'vehicles'], ['rental_provider']);
@@ -170,6 +174,8 @@ $router->post('/dashboard/vehicles/{id}/resubmit', [RentalController::class, 're
 $router->post('/dashboard/vehicles/{id}/delete', [RentalController::class, 'destroyVehicle'], ['rental_provider']);
 $router->get('/dashboard/rentals', [RentalController::class, 'requests'], ['rental_provider']);
 $router->post('/dashboard/rentals/{id}/status', [RentalController::class, 'updateStatus'], ['rental_provider']);
+$router->post('/dashboard/rentals/{id}/delete', [RentalController::class, 'deleteRequest'], ['rental_provider']);
+$router->delete('/dashboard/rentals/{id}', [RentalController::class, 'deleteRequest'], ['rental_provider']);
 $router->post('/dashboard/rentals/{id}/refund', [RentalController::class, 'refund'], ['rental_provider']);
 $router->post('/dashboard/rentals/{id}/reject-report', [RentalController::class, 'rejectReport'], ['rental_provider']);
 
@@ -199,6 +205,8 @@ $router->post('/admin/security/disable', [AdminAuthController::class, 'disableTw
 $router->get('/admin/listings', [AdminController::class, 'listings'], ['admin']);
 $router->post('/admin/listings/{id}/status', [AdminController::class, 'updateListingStatus'], ['admin']);
 $router->post('/admin/listings/{id}/feature', [AdminController::class, 'toggleFeatured'], ['admin']);
+$router->get('/admin/listing-review', [AdminController::class, 'listingReview'], ['admin']);
+$router->get('/admin/listings-review', [AdminController::class, 'listingReview'], ['admin']);
 $router->get('/admin/guide-listings', [AdminController::class, 'guideListings'], ['admin']);
 $router->get('/admin/guide-listings/{id}', [AdminController::class, 'showGuideListing'], ['admin']);
 $router->post('/admin/guide-listings/{id}/approve', [AdminController::class, 'approveGuideListing'], ['admin']);
