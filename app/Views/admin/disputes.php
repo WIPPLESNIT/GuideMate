@@ -60,11 +60,30 @@
                 <?php
                 $files = \App\Models\DisputeFile::forDispute((int) $d['id']);
                 if ($files !== []): ?>
-                    <p style="margin-bottom:0.4rem;font-weight:600;font-size:0.85rem;">Evidence:</p>
-                    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;">
-                        <?php foreach ($files as $f): ?>
-                            <a href="<?= e(url('/' . ltrim((string) $f['file_path'], '/'))) ?>" target="_blank" rel="noopener">
-                                <img src="<?= e(url('/' . ltrim((string) $f['file_path'], '/'))) ?>" alt="" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,0.1);">
+                    <p style="margin-bottom:0.5rem;font-weight:700;font-size:0.88rem;color:#f8fafc;">
+                        Evidence Photos (<?= count($files) ?>):
+                    </p>
+                    <div class="evidence-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(90px, 1fr));gap:0.75rem;max-width:480px;margin-bottom:1.25rem;">
+                        <?php foreach ($files as $f): 
+                            $fileUrl = url('/' . ltrim((string) $f['file_path'], '/'));
+                        ?>
+                            <a href="<?= e($fileUrl) ?>"
+                               data-doc-preview="1"
+                               data-doc-url="<?= e($fileUrl) ?>"
+                               data-doc-label="Evidence: <?= e(\App\Models\Dispute::typeLabel((string) $d['problem_type'])) ?>"
+                               data-doc-type="Evidence Photo"
+                               data-doc-status="<?= e($d['status']) ?>"
+                               data-doc-owner="<?= e($d['tourist_name']) ?>"
+                               target="_blank"
+                               rel="noopener"
+                               style="position:relative;display:block;aspect-ratio:1/1;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.18);box-shadow:0 3px 6px rgba(0,0,0,0.25);background:#0f172a;"
+                               title="Click to view full image in previewer">
+                                <img src="<?= e($fileUrl) ?>"
+                                     alt="Complaint Evidence"
+                                     style="width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.2s;"
+                                     onerror="this.onerror=null;this.parentElement.style.opacity='0.45';"
+                                     onmouseover="this.style.transform='scale(1.06)'"
+                                     onmouseout="this.style.transform='scale(1)'">
                             </a>
                         <?php endforeach; ?>
                     </div>

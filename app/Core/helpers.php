@@ -201,6 +201,7 @@ if (!function_exists('abort')) {
             }
             echo json_encode([
                 'success' => false,
+                'message' => $message !== '' ? $message : "Error {$status}",
                 'error' => $message !== '' ? $message : "Error {$status}",
                 'status' => $status,
             ], JSON_UNESCAPED_UNICODE);

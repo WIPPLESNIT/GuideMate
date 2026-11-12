@@ -247,5 +247,7 @@ $router->post('/admin/guides/{id}/reject', [AdminController::class, 'rejectGuide
 $router->post('/admin/guides/{id}/revoke', [AdminController::class, 'revokeGuide'], ['admin']);
 $router->get('/admin/disputes', [AdminController::class, 'disputes'], ['admin']);
 $router->post('/admin/disputes/{id}/resolve', [AdminController::class, 'resolveDispute'], ['admin']);
+$router->post('/admin/disputes/{id}/delete', [AdminController::class, 'deleteDispute'], ['admin']);
 $router->get('/admin/complaints', [AdminController::class, 'disputes'], ['admin']);
 $router->post('/admin/complaints/{id}/resolve', [AdminController::class, 'resolveDispute'], ['admin']);
+$router->post('/admin/complaints/{id}/delete', [AdminController::class, 'deleteDispute'], ['admin']);

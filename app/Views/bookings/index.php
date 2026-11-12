@@ -180,6 +180,12 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                             <div style="font-size:0.75rem;color:var(--ink-200,#6B7280);font-weight:600;margin-top:1px;">
                                                 Due: -
                                             </div>
+                                        <?php elseif ($hotelStatus === 'checked_in' || ($b['payment_stage'] ?? '') === 'paid'): ?>
+                                            <div style="font-size:0.75rem;color:#059669;font-weight:700;margin-top:1px;">
+                                                Due: Paid (at check-in)
+                                            </div>
+                                        <?php elseif ($hotelStatus === 'completed' || ($b['payment_stage'] ?? '') === 'settled'): ?>
+                                            <small class="hint" style="color:#059669;font-weight:600;display:block;margin-top:2px;">Fully settled</small>
                                         <?php elseif ($balance > 0 && !in_array($hotelStatus, ['cancelled', 'completed', 'refunded'], true)): ?>
                                             <div style="font-size:0.75rem;color:#D97706;font-weight:700;margin-top:1px;">
                                                 Due: <?= money($balance) ?>
@@ -187,8 +193,6 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                             <small class="hint" style="font-size:0.7rem;display:block;line-height:1.2;margin-top:2px;">
                                                 Pay at front desk on check-in
                                             </small>
-                                        <?php elseif ($hotelStatus === 'completed'): ?>
-                                            <small class="hint" style="color:#059669;font-weight:600;display:block;margin-top:2px;">Fully settled</small>
                                         <?php endif; ?>
                                     <?php endif; ?>
                                 </td>

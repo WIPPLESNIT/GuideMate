@@ -54,6 +54,11 @@ final class Database
         return self::$connection;
     }
 
+    public static function pdo(): PDO
+    {
+        return self::connection();
+    }
+
     /**
      * Run a query and return the prepared statement.
      *
@@ -113,5 +118,34 @@ final class Database
     {
         self::run($sql, $params);
         return (int) self::connection()->lastInsertId();
+    }
+
+    /**
+     * Execute a callback inside a database transaction.
+     *
+     * @template T
+     * @param callable(PDO): T $callback
+     * @return T
+     */
+    public static function transaction(callable $callback): mixed
+    {
+        $pdo = self::connection();
+        $inTransaction = $pdo->inTransaction();
+        if (!$inTransaction) {
+            $pdo->beginTransaction();
+        }
+
+        try {
+            $result = $callback($pdo);
+            if (!$inTransaction && $pdo->inTransaction()) {
+                $pdo->commit();
+            }
+            return $result;
+        } catch (\Throwable $e) {
+            if (!$inTransaction && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
     }
 }

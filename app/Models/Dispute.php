@@ -195,6 +195,32 @@ final class Dispute
     }
 
     /**
+     * Determine whether a complaint has already been reviewed by an administrator.
+     */
+    public static function isReviewed(string|array $disputeOrStatus): bool
+    {
+        $status = is_array($disputeOrStatus) ? (string) ($disputeOrStatus['status'] ?? '') : $disputeOrStatus;
+        return in_array($status, ['resolved_refund', 'resolved_warning', 'rejected'], true);
+    }
+
+    /**
+     * Delete a complaint record and its attached physical evidence files.
+     */
+    public static function delete(int $id): bool
+    {
+        $files = DisputeFile::forDispute($id);
+        foreach ($files as $f) {
+            if (!empty($f['file_path'])) {
+                $abs = dirname(__DIR__, 2) . '/public/' . ltrim((string) $f['file_path'], '/');
+                if (is_file($abs)) {
+                    @unlink($abs);
+                }
+            }
+        }
+        return Database::run("DELETE FROM disputes WHERE id = ?", [$id]) > 0;
+    }
+
+    /**
      * @return array{bookings:int,disputes:int,rate:float}
      */
     public static function rateStats(): array

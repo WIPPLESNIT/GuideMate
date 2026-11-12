@@ -7,6 +7,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StatusBar,
@@ -38,6 +39,7 @@ export default function ReportScreen() {
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -273,14 +275,24 @@ export default function ReportScreen() {
 
             {existing.photos && existing.photos.length > 0 ? (
               <>
-                <Text style={[styles.detailLabel, { color: colors.textSub }]}>Attached evidence photos</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSub }]}>
+                  Attached evidence photos ({existing.photos.length})
+                </Text>
                 <View style={styles.existingPhotosRow}>
                   {existing.photos.map((photoPath, i) => (
-                    <Image
+                    <TouchableOpacity
                       key={photoPath + i}
-                      source={{ uri: resolveImage(photoPath) }}
-                      style={styles.existingPhoto}
-                    />
+                      activeOpacity={0.85}
+                      onPress={() => setSelectedImage(resolveImage(photoPath))}
+                      style={[styles.existingPhotoWrap, { borderColor: colors.border }]}
+                      accessibilityLabel={`View evidence photo ${i + 1}`}
+                    >
+                      <Image
+                        source={{ uri: resolveImage(photoPath) }}
+                        style={styles.existingPhoto}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
                   ))}
                 </View>
               </>
@@ -425,6 +437,32 @@ export default function ReportScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       )}
+
+      {/* Full Evidence Image Preview Modal */}
+      <Modal
+        visible={Boolean(selectedImage)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <View style={styles.imageModalBackdrop}>
+          <TouchableOpacity
+            style={styles.imageModalCloseBtn}
+            onPress={() => setSelectedImage(null)}
+            activeOpacity={0.8}
+            accessibilityLabel="Close full image view"
+          >
+            <Ionicons name="close" size={26} color="#FFFFFF" />
+          </TouchableOpacity>
+          {selectedImage ? (
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.fullPreviewImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -463,5 +501,9 @@ const styles = StyleSheet.create({
   detailLabel: { fontSize: 12, fontWeight: '700', marginTop: 12 },
   detailText: { fontSize: 15, lineHeight: 21, marginTop: 3 },
   existingPhotosRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
-  existingPhoto: { width: 72, height: 72, borderRadius: 10, backgroundColor: '#f1f5f9' },
+  existingPhotoWrap: { borderRadius: 12, overflow: 'hidden', borderWidth: 1 },
+  existingPhoto: { width: 72, height: 72, backgroundColor: '#00000015' },
+  imageModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  imageModalCloseBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20 },
+  fullPreviewImage: { width: '100%', height: '80%' },
 });

@@ -216,6 +216,10 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                                                         <button type="button" class="res-action-item action-delete" data-delete-rental data-delete-report data-id="<?= (int) $r['id'] ?>" data-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
                                                             <?= admin_icon('trash', 14) ?> Delete Report
                                                         </button>
+                                                    <?php elseif (in_array($reqStatus, ['completed', 'cancelled'], true)): ?>
+                                                        <button type="button" class="res-action-item action-delete" data-delete-rental data-id="<?= (int) $r['id'] ?>" data-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
+                                                            <?= admin_icon('trash', 14) ?> Delete Record
+                                                        </button>
                                                     <?php else: ?>
                                                         <?php if ($isWarned): ?>
                                                             <div class="res-action-restricted-notice" title="Action unavailable: Active administrator warning on your account.">
@@ -352,11 +356,6 @@ $warningNote = $warningNote ?? (string) (auth_user()['guide_warning_note'] ?? ''
                                                                 <?php endif; ?>
                                                             <?php endif; ?>
 
-                                                            <?php if ($reqStatus === 'completed'): ?>
-                                                                <button type="button" class="res-action-item action-delete" data-delete-rental data-id="<?= (int) $r['id'] ?>" data-url="<?= e(url('/dashboard/rentals/' . $r['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
-                                                                    <?= admin_icon('trash', 14) ?> Delete Record
-                                                                </button>
-                                                            <?php endif; ?>
 
                                                             <?php if ($paymentStatus === 'paid' && !in_array($reqStatus, ['cancelled', 'refunded'], true) && $reportStatus !== 'open'): ?>
                                                                 <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>

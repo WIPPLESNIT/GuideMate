@@ -686,16 +686,21 @@ final class HotelController extends Controller
             abort(403, 'Unauthorized.');
         }
 
-        $hotelStatus = (string) ($booking['hotel_status'] ?? $booking['status'] ?? '');
-        $status = (string) ($booking['status'] ?? '');
-        $paymentStage = (string) ($booking['payment_stage'] ?? '');
+        $hotelStatus = strtolower((string) ($booking['hotel_status'] ?? $booking['status'] ?? ''));
+        $status = strtolower((string) ($booking['status'] ?? ''));
+        $paymentStage = strtolower((string) ($booking['payment_stage'] ?? ''));
 
-        if ($hotelStatus !== 'completed' && $status !== 'completed' && $paymentStage !== 'settled') {
+        $isEligible = in_array($hotelStatus, ['completed', 'cancelled', 'refunded'], true)
+            || in_array($status, ['completed', 'cancelled', 'refunded'], true)
+            || $paymentStage === 'settled'
+            || !empty($booking['refund_status']);
+
+        if (!$isEligible) {
             if ($isJson) {
-                $this->json(['success' => false, 'error' => 'Only completed reservations can be deleted.'], 400);
+                $this->json(['success' => false, 'error' => 'Only completed, refunded, or cancelled reservations can be deleted.'], 400);
                 return;
             }
-            flash('error', 'Only completed reservations can be deleted.');
+            flash('error', 'Only completed, refunded, or cancelled reservations can be deleted.');
             redirect('/dashboard#reservations');
             return;
         }

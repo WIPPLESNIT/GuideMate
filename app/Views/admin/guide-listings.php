@@ -336,25 +336,28 @@ $isCatFiltered = ($category !== 'all');
                         <td class="vehicle-actions-cell col-actions" data-label="Actions" style="text-align:right;vertical-align:middle;">
                             <div class="vehicle-actions-vertical">
                                 <?php if ($isPackage): ?>
-                                    <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical" style="font-weight:700;color:#059669;border-color:#10b981;">View</a>
+                                    <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical" style="font-weight:700;color:#059669;border-color:#10b981;">Inspect</a>
                                 <?php else: ?>
                                     <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical">Inspect</a>
                                 <?php endif; ?>
 
-                                <?php if ($lStatus !== 'approved'): ?>
+                                <?php if ($lStatus === 'approved'): ?>
+                                    <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-delete" onclick="openDeleteModal(<?= (int) $l['id'] ?>, '<?= e(addslashes((string) $l['title'])) ?>');">
+                                        Delete
+                                    </button>
+                                <?php elseif ($lStatus === 'pending'): ?>
                                     <form method="post" action="<?= e(url('/admin/guide-listings/' . (int) $l['id'] . '/approve')) ?>" class="vehicle-action-form" onsubmit="return confirm('Approve and publish this guide listing? It will immediately become live for travelers.');">
                                         <?= csrf_field() ?>
                                         <button type="submit" class="btn btn-primary btn-sm btn-action-vertical">✓ Approve</button>
                                     </form>
-                                <?php endif; ?>
-
-                                <?php if ($lStatus !== 'rejected'): ?>
                                     <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-reject" style="color:var(--coral-600);" onclick="openRejectModal(<?= (int) $l['id'] ?>, '<?= e(addslashes((string) $l['title'])) ?>');">
                                         Reject
                                     </button>
-                                <?php endif; ?>
-
-                                <?php if ($lStatus === 'rejected'): ?>
+                                <?php elseif ($lStatus === 'rejected'): ?>
+                                    <form method="post" action="<?= e(url('/admin/guide-listings/' . (int) $l['id'] . '/approve')) ?>" class="vehicle-action-form" onsubmit="return confirm('Approve and publish this guide listing? It will immediately become live for travelers.');">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-primary btn-sm btn-action-vertical">✓ Approve</button>
+                                    </form>
                                     <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-delete" onclick="openDeleteModal(<?= (int) $l['id'] ?>, '<?= e(addslashes((string) $l['title'])) ?>');">
                                         Delete
                                     </button>
@@ -504,29 +507,38 @@ function handleDeleteSubmit(e) {
     var form = document.getElementById('adminDeleteForm');
     var btn = document.getElementById('confirmDeleteBtn');
     if (!form || !btn) return;
+    var targetId = pendingDeleteId;
     btn.disabled = true;
     btn.textContent = 'Deleting...';
-    var csrf = form.querySelector('input[name="_csrf"]');
-    var csrfVal = csrf ? csrf.value : '';
+    var tokenInput = form.querySelector('input[name="_token"]') || form.querySelector('input[name="_csrf"]');
+    var token = tokenInput ? tokenInput.value : '';
     fetch(form.action, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
+            'X-CSRF-TOKEN': token
         },
-        body: '_csrf=' + encodeURIComponent(csrfVal)
+        body: '_csrf=' + encodeURIComponent(token) + '&_token=' + encodeURIComponent(token)
     })
-    .then(function (res) { return res.json(); })
-    .then(function (data) {
-        if (data.success) {
-            var row = document.getElementById('listing-row-' + pendingDeleteId);
+    .then(function (res) {
+        return res.json().then(function (data) {
+            return { ok: res.ok, status: res.status, data: data };
+        }).catch(function () {
+            return { ok: res.ok, status: res.status, data: {} };
+        });
+    })
+    .then(function (result) {
+        if (result.ok && result.data && result.data.success !== false) {
+            var row = document.getElementById('listing-row-' + targetId);
             if (row) {
                 row.remove();
             }
             closeDeleteModal();
         } else {
-            alert(data.message || 'Error deleting listing.');
+            var errorMsg = (result.data && (result.data.message || result.data.error)) || 'Error deleting listing.';
+            alert(errorMsg);
             btn.disabled = false;
             btn.textContent = 'Permanently Delete';
         }

@@ -153,10 +153,11 @@ final class Booking
     {
         return Database::first(
             'SELECT b.*, l.title AS listing_title, l.slug AS listing_slug, l.cover_image, l.user_id AS guide_id,
-                    l.price_unit, l.duration AS listing_duration, hr.name AS room_name, hr.price_per_night AS room_price,
+                    l.price_unit, l.duration AS listing_duration, c.slug AS category_slug, hr.name AS room_name, hr.price_per_night AS room_price,
                     u.name AS customer_name, u.email AS customer_email
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
+             LEFT JOIN categories c ON c.id = l.category_id
              JOIN users u ON u.id = b.user_id
              LEFT JOIN hotel_rooms hr ON hr.id = b.room_id
              WHERE b.id = ?',
@@ -222,15 +223,21 @@ final class Booking
 
         $out = [];
         foreach ($rows as $row) {
+            $catSlug = (string) ($row['category_slug'] ?? '');
+            $hasAddress = !empty(trim((string) ($row['address'] ?? '')));
             $coords = Geo::forListing($row);
+
             if ($coords === null) {
-                $row['latitude'] = (float) (!empty($row['latitude']) ? $row['latitude'] : 10.3157);
-                $row['longitude'] = (float) (!empty($row['longitude']) ? $row['longitude'] : 123.8854);
-                $row['approximate'] = true;
+                $row['latitude'] = null;
+                $row['longitude'] = null;
+                $row['has_valid_location'] = false;
+                $row['missing_location_message'] = Geo::missingLocationMessage($catSlug, $hasAddress);
             } else {
                 $row['latitude'] = $coords['latitude'];
                 $row['longitude'] = $coords['longitude'];
                 $row['approximate'] = $coords['approximate'];
+                $row['has_valid_location'] = true;
+                $row['missing_location_message'] = null;
             }
             $out[] = $row;
         }
@@ -255,15 +262,21 @@ final class Booking
         if ($row === null) {
             return null;
         }
+        $catSlug = (string) ($row['category_slug'] ?? '');
+        $hasAddress = !empty(trim((string) ($row['address'] ?? '')));
         $coords = Geo::forListing($row);
+
         if ($coords === null) {
-            $row['latitude'] = (float) (!empty($row['latitude']) ? $row['latitude'] : 10.3157);
-            $row['longitude'] = (float) (!empty($row['longitude']) ? $row['longitude'] : 123.8854);
-            $row['approximate'] = true;
+            $row['latitude'] = null;
+            $row['longitude'] = null;
+            $row['has_valid_location'] = false;
+            $row['missing_location_message'] = Geo::missingLocationMessage($catSlug, $hasAddress);
         } else {
             $row['latitude'] = $coords['latitude'];
             $row['longitude'] = $coords['longitude'];
             $row['approximate'] = $coords['approximate'];
+            $row['has_valid_location'] = true;
+            $row['missing_location_message'] = null;
         }
         return $row;
     }
@@ -427,6 +440,10 @@ final class Booking
             self::updateStatus($id, 'refunded');
         } else {
             self::updateStatus($id, 'cancelled');
+        }
+
+        if ($booking !== null && (!empty($booking['package_booking_ref']) || str_contains((string) ($booking['notes'] ?? ''), 'package_booking'))) {
+            \App\Services\PackageBookingService::onBookingUpdated($id, 'cancelled', (int) ($booking['guide_id'] ?? 0));
         }
 
         return ['refunded' => $wasPaid, 'amount' => $amount];

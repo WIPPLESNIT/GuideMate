@@ -144,33 +144,104 @@ final class Geo
     }
 
     /**
+     * Check if given coordinates are valid and within the regional bounds (Cebu / Central Visayas).
+     */
+    public static function isValidCoordinate(?float $lat, ?float $lng): bool
+    {
+        if ($lat === null || $lng === null) {
+            return false;
+        }
+        // Valid regional bounding box for Cebu and Central Visayas
+        return $lat >= 9.0 && $lat <= 12.0 && $lng >= 122.5 && $lng <= 125.0;
+    }
+
+    /**
+     * Return user-friendly missing location message tailored to the listing type.
+     */
+    public static function missingLocationMessage(string $categorySlug, bool $unresolvable = false): string
+    {
+        if ($unresolvable) {
+            return 'The saved address could not be resolved to a valid map location.';
+        }
+
+        $cat = strtolower(trim($categorySlug));
+        return match ($cat) {
+            'hotels', 'hotel' => 'No address is attached to this hotel.',
+            'attractions', 'attraction' => 'No address is attached to this attraction.',
+            'things-to-do', 'activity', 'activities', 'packages', 'package' => 'No address is attached to this activity.',
+            'rentals', 'rental', 'vehicles', 'vehicle' => 'No pickup location is attached to this vehicle.',
+            default => 'No address is attached to this listing.',
+        };
+    }
+
+    /**
+     * Resolve map coordinates for a vehicle rental using its actual saved pickup address / location.
+     *
+     * @param array<string, mixed> $vehicle
+     * @return array{latitude: float, longitude: float, address: string, approximate: bool}|null
+     */
+    public static function forVehicle(array $vehicle): ?array
+    {
+        $pickupAddress = trim((string) ($vehicle['address'] ?? ''));
+        $location = trim((string) ($vehicle['location'] ?? ''));
+        $name = trim((string) ($vehicle['name'] ?? $vehicle['vehicle_name'] ?? ''));
+
+        // Use actual pickup location/address rather than general business address
+        $effectiveAddress = $pickupAddress !== '' ? $pickupAddress : $location;
+        if ($effectiveAddress === '') {
+            return null;
+        }
+
+        $resolved = self::resolveCoordinates($location, $pickupAddress, $name);
+        if ($resolved !== null && self::isValidCoordinate($resolved['latitude'], $resolved['longitude'])) {
+            return [
+                'latitude' => $resolved['latitude'],
+                'longitude' => $resolved['longitude'],
+                'address' => $effectiveAddress,
+                'approximate' => $resolved['approximate'],
+            ];
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<string, mixed> $listing
      * @return array{latitude: float, longitude: float, approximate: bool}|null
      */
     public static function forListing(array $listing): ?array
     {
-        $title = (string) ($listing['listing_title'] ?? $listing['title'] ?? '');
+        // 1. If explicit valid saved coordinates exist in database, use them
+        $lat = isset($listing['latitude']) && $listing['latitude'] !== '' ? (float) $listing['latitude'] : null;
+        $lng = isset($listing['longitude']) && $listing['longitude'] !== '' ? (float) $listing['longitude'] : null;
+        if (self::isValidCoordinate($lat, $lng)) {
+            return [
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'approximate' => false,
+            ];
+        }
+
+        // 2. Validate that listing has a usable address or area
+        $address = trim((string) ($listing['address'] ?? ''));
+        $area = trim((string) ($listing['area'] ?? ''));
+        $title = trim((string) ($listing['listing_title'] ?? $listing['title'] ?? ''));
+
+        if ($address === '' && $area === '') {
+            return null;
+        }
+
         $resolved = self::resolveCoordinates(
-            (string) ($listing['area'] ?? ''),
-            isset($listing['address']) ? (string) $listing['address'] : null,
+            $area,
+            $address !== '' ? $address : null,
             $title !== '' ? $title : null
         );
 
-        if ($resolved !== null) {
+        if ($resolved !== null && self::isValidCoordinate($resolved['latitude'], $resolved['longitude'])) {
             return [
                 'latitude' => $resolved['latitude'],
                 'longitude' => $resolved['longitude'],
                 'approximate' => $resolved['approximate'],
-            ];
-        }
-
-        $lat = $listing['latitude'] ?? null;
-        $lng = $listing['longitude'] ?? null;
-        if ($lat !== null && $lat !== '' && $lng !== null && $lng !== '') {
-            return [
-                'latitude' => (float) $lat,
-                'longitude' => (float) $lng,
-                'approximate' => true,
             ];
         }
 

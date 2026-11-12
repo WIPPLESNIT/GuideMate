@@ -1267,99 +1267,254 @@ final class ApiController extends Controller
             $dateLabel = $date !== '' ? date('M j, Y', strtotime($date)) : '';
             $bId = (int) $b['id'];
 
-            if ($isPkg && str_starts_with(trim($notes), '{')) {
-                // Multi-destination pins for package booking
+            if ($isPkg) {
+                $pkgDetails = null;
+                if (str_starts_with(trim($notes), '{')) {
+                    $pkgDetails = json_decode($notes, true);
+                }
+
+                // 1. Meeting Point / Guide Meetup Pin (resolves to actual package coordinates/address)
+                $meetingPoint = trim((string) ($pkgDetails['meeting_point'] ?? ''));
+                $destination = trim((string) ($pkgDetails['destination'] ?? ''));
+                $pkgAddress = trim((string) ($b['address'] ?? ''));
+                $pkgArea = (string) ($b['area'] ?? $destination);
+                $pkgTitle = (string) ($b['listing_title'] ?? ($pkgDetails['package_title'] ?? 'Travel Package'));
+
+                $pinAddress = $meetingPoint !== '' ? $meetingPoint : ($pkgAddress !== '' ? $pkgAddress : $destination);
+                $pinCoords = null;
+                if (\App\Core\Geo::isValidCoordinate($b['latitude'] ?? null, $b['longitude'] ?? null)) {
+                    $pinCoords = ['latitude' => (float) $b['latitude'], 'longitude' => (float) $b['longitude'], 'approximate' => !empty($b['approximate'])];
+                } elseif ($pinAddress !== '') {
+                    $pinCoords = \App\Core\Geo::resolveCoordinates($pkgArea, $pinAddress, $pkgTitle);
+                }
+
+                $hasValidLocation = $pinCoords !== null && \App\Core\Geo::isValidCoordinate($pinCoords['latitude'] ?? null, $pinCoords['longitude'] ?? null);
                 $pins[] = [
                     'id' => $bId,
-                    'title' => '[Meeting Point] Panagsama Beach, Moalboal',
-                    'area' => 'Moalboal, Cebu',
-                    'address' => 'Panagsama Beach, Moalboal, Cebu',
-                    'googleQuery' => 'Panagsama Beach, Moalboal, Cebu, Philippines',
+                    'booking_id' => $bId,
+                    'title' => '[Meeting Point] ' . ($meetingPoint !== '' ? $meetingPoint : $pkgTitle),
+                    'area' => $pkgArea,
+                    'address' => $pinAddress,
+                    'googleQuery' => $pkgTitle . ($pinAddress !== '' ? ', ' . $pinAddress : ', Cebu, Philippines'),
                     'date' => $date,
                     'dateLabel' => $dateLabel,
-                    'lat' => 9.9492466,
-                    'lng' => 123.3658045,
-                    'upcoming' => true,
-                    'approximate' => false,
-                    'status' => 'confirmed',
+                    'lat' => $hasValidLocation ? $pinCoords['latitude'] : null,
+                    'lng' => $hasValidLocation ? $pinCoords['longitude'] : null,
+                    'upcoming' => $date !== '' && $date >= $today,
+                    'approximate' => $pinCoords['approximate'] ?? false,
+                    'status' => (string) ($b['status'] ?? 'confirmed'),
+                    'has_valid_location' => $hasValidLocation,
+                    'missing_location_message' => $hasValidLocation ? null : \App\Core\Geo::missingLocationMessage('activity', $pinAddress !== ''),
+                    'category_slug' => 'packages',
                 ];
-                $pins[] = [
-                    'id' => $bId,
-                    'title' => '[Activity] Kawasan Falls & Canyoneering',
-                    'area' => 'Badian, Cebu',
-                    'address' => 'Matutinao, Badian, Cebu',
-                    'googleQuery' => 'Kawasan Falls, Badian, Cebu, Philippines',
-                    'date' => $date,
-                    'dateLabel' => $dateLabel,
-                    'lat' => 9.8037,
-                    'lng' => 123.3742,
-                    'upcoming' => true,
-                    'approximate' => false,
-                    'status' => 'confirmed',
-                ];
-                $pins[] = [
-                    'id' => $bId,
-                    'title' => '[Activity] Moalboal Sardine & Turtle Sanctuary',
-                    'area' => 'Moalboal, Cebu',
-                    'address' => 'Panagsama Reef, Moalboal, Cebu',
-                    'googleQuery' => 'Panagsama Reef, Moalboal, Cebu, Philippines',
-                    'date' => $date,
-                    'dateLabel' => $dateLabel,
-                    'lat' => 9.9515,
-                    'lng' => 123.3662,
-                    'upcoming' => true,
-                    'approximate' => false,
-                    'status' => 'confirmed',
-                ];
-                $pins[] = [
-                    'id' => $bId,
-                    'title' => '[Hotel Stay] Sea Breeze Oceanfront Resort',
-                    'area' => 'Moalboal, Cebu',
-                    'address' => 'Panagsama Coastal Road, Moalboal, Cebu',
-                    'googleQuery' => 'Sea Breeze Resort, Moalboal, Cebu, Philippines',
-                    'date' => $date,
-                    'dateLabel' => $dateLabel,
-                    'lat' => 9.9542,
-                    'lng' => 123.3689,
-                    'upcoming' => true,
-                    'approximate' => false,
-                    'status' => 'confirmed',
-                ];
-                $pins[] = [
-                    'id' => $bId,
-                    'title' => '[Vehicle Rental] Yamaha NMAX Station Handover',
-                    'area' => 'Moalboal, Cebu',
-                    'address' => 'Moalboal Central Hub, Moalboal, Cebu',
-                    'googleQuery' => 'Moalboal Municipal Town Center, Cebu, Philippines',
-                    'date' => $date,
-                    'dateLabel' => $dateLabel,
-                    'lat' => 9.9575,
-                    'lng' => 123.3995,
-                    'upcoming' => true,
-                    'approximate' => false,
-                    'status' => 'confirmed',
-                ];
+
+                // 2. Real Hotel Accommodation Pin (from actual hotel listing in package)
+                $hotelData = $pkgDetails['accommodation'] ?? null;
+                $hotelListingId = (int) ($hotelData['hotel_listing_id'] ?? $hotelData['hotel_id'] ?? 0);
+                if ($hotelListingId > 0 || !empty($hotelData['hotel_name'])) {
+                    $hotelListing = $hotelListingId > 0 ? Listing::find($hotelListingId) : null;
+                    $hName = (string) ($hotelData['hotel_name'] ?? $hotelListing['title'] ?? 'Hotel Stay');
+                    $hAddress = trim((string) ($hotelListing['address'] ?? ''));
+                    $hArea = (string) ($hotelData['hotel_area'] ?? $hotelListing['area'] ?? '');
+
+                    $hCoords = null;
+                    if ($hotelListing !== null) {
+                        $hCoords = \App\Core\Geo::forListing($hotelListing);
+                    }
+                    if ($hCoords === null && ($hAddress !== '' || $hArea !== '')) {
+                        $hCoords = \App\Core\Geo::resolveCoordinates($hArea, $hAddress, $hName);
+                    }
+
+                    $hValid = $hCoords !== null && \App\Core\Geo::isValidCoordinate($hCoords['latitude'] ?? null, $hCoords['longitude'] ?? null);
+                    $pins[] = [
+                        'id' => $bId * 1000 + 1,
+                        'booking_id' => $bId,
+                        'title' => '[Hotel Stay] ' . $hName,
+                        'area' => $hArea,
+                        'address' => $hAddress,
+                        'googleQuery' => $hName . ($hAddress !== '' ? ', ' . $hAddress : ', ' . $hArea . ', Philippines'),
+                        'date' => (string) ($pkgDetails['check_in_date'] ?? $date),
+                        'dateLabel' => !empty($pkgDetails['check_in_date']) ? date('M j, Y', strtotime($pkgDetails['check_in_date'])) : $dateLabel,
+                        'lat' => $hValid ? $hCoords['latitude'] : null,
+                        'lng' => $hValid ? $hCoords['longitude'] : null,
+                        'upcoming' => $date !== '' && $date >= $today,
+                        'approximate' => $hCoords['approximate'] ?? false,
+                        'status' => (string) ($b['status'] ?? 'confirmed'),
+                        'has_valid_location' => $hValid,
+                        'missing_location_message' => $hValid ? null : \App\Core\Geo::missingLocationMessage('hotels', $hAddress !== ''),
+                        'category_slug' => 'hotels',
+                    ];
+                }
+
+                // 3. Real Vehicle Rental Pin (resolves to actual designated pickup location)
+                $rentalData = $pkgDetails['rental'] ?? null;
+                $vehicleId = (int) ($rentalData['id'] ?? $rentalData['vehicle_id'] ?? 0);
+                if ($vehicleId > 0 || !empty($rentalData['vehicle_name'])) {
+                    $vName = (string) ($rentalData['vehicle_name'] ?? 'Vehicle Rental');
+                    $vPickup = trim((string) ($rentalData['location'] ?? ''));
+                    $vVehicle = $vehicleId > 0 ? Vehicle::find($vehicleId) : null;
+                    if ($vPickup === '' && $vVehicle !== null) {
+                        $vPickup = trim((string) ($vVehicle['location'] ?? $vVehicle['address'] ?? ''));
+                    }
+
+                    $vCoords = null;
+                    if ($vVehicle !== null) {
+                        $vData = $vVehicle;
+                        if ($vPickup !== '') {
+                            $vData['location'] = $vPickup;
+                        }
+                        $vCoords = \App\Core\Geo::forVehicle($vData);
+                    }
+                    if ($vCoords === null && $vPickup !== '') {
+                        $vCoords = \App\Core\Geo::resolveCoordinates($vPickup, $vPickup, $vName);
+                    }
+
+                    $vValid = $vCoords !== null && \App\Core\Geo::isValidCoordinate($vCoords['latitude'] ?? null, $vCoords['longitude'] ?? null);
+                    $pins[] = [
+                        'id' => $bId * 1000 + 2,
+                        'booking_id' => $bId,
+                        'title' => '[Vehicle Pickup] ' . $vName,
+                        'area' => $vPickup,
+                        'address' => $vPickup,
+                        'googleQuery' => $vName . ($vPickup !== '' ? ', ' . $vPickup : ', Cebu, Philippines'),
+                        'date' => $date,
+                        'dateLabel' => $dateLabel,
+                        'lat' => $vValid ? $vCoords['latitude'] : null,
+                        'lng' => $vValid ? $vCoords['longitude'] : null,
+                        'upcoming' => $date !== '' && $date >= $today,
+                        'approximate' => $vCoords['approximate'] ?? false,
+                        'status' => (string) ($b['status'] ?? 'confirmed'),
+                        'has_valid_location' => $vValid,
+                        'missing_location_message' => $vValid ? null : \App\Core\Geo::missingLocationMessage('rentals', $vPickup !== ''),
+                        'category_slug' => 'rentals',
+                    ];
+                }
+
+                // 4. Real Inclusions (Attractions / Activities)
+                if (!empty($pkgDetails['inclusions']) && is_array($pkgDetails['inclusions'])) {
+                    $incIdx = 3;
+                    foreach ($pkgDetails['inclusions'] as $inc) {
+                        $type = (string) ($inc['type'] ?? '');
+                        if (!in_array($type, ['attraction', 'activity'], true)) {
+                            continue;
+                        }
+                        $incTitle = (string) ($inc['title'] ?? '');
+                        if ($incTitle === '') {
+                            continue;
+                        }
+                        $incListing = Database::first(
+                            'SELECT id, title, area, address, latitude, longitude FROM listings WHERE title = ? OR title LIKE ? LIMIT 1',
+                            [$incTitle, '%' . $incTitle . '%']
+                        );
+                        $incAddress = trim((string) ($incListing['address'] ?? ''));
+                        $incArea = (string) ($incListing['area'] ?? '');
+                        $incCoords = null;
+                        if ($incListing !== null) {
+                            $incCoords = \App\Core\Geo::forListing($incListing);
+                        }
+                        if ($incCoords === null && ($incAddress !== '' || $incArea !== '')) {
+                            $incCoords = \App\Core\Geo::resolveCoordinates($incArea, $incAddress, $incTitle);
+                        }
+
+                        $incValid = $incCoords !== null && \App\Core\Geo::isValidCoordinate($incCoords['latitude'] ?? null, $incCoords['longitude'] ?? null);
+                        $badgePrefix = $type === 'attraction' ? '[Attraction] ' : '[Activity] ';
+                        $pins[] = [
+                            'id' => $bId * 1000 + $incIdx,
+                            'booking_id' => $bId,
+                            'title' => $badgePrefix . $incTitle,
+                            'area' => $incArea,
+                            'address' => $incAddress,
+                            'googleQuery' => $incTitle . ($incAddress !== '' ? ', ' . $incAddress : ', Cebu, Philippines'),
+                            'date' => $date,
+                            'dateLabel' => $dateLabel,
+                            'lat' => $incValid ? $incCoords['latitude'] : null,
+                            'lng' => $incValid ? $incCoords['longitude'] : null,
+                            'upcoming' => $date !== '' && $date >= $today,
+                            'approximate' => $incCoords['approximate'] ?? false,
+                            'status' => (string) ($b['status'] ?? 'confirmed'),
+                            'has_valid_location' => $incValid,
+                            'missing_location_message' => $incValid ? null : \App\Core\Geo::missingLocationMessage($type === 'attraction' ? 'attractions' : 'things-to-do', $incAddress !== ''),
+                            'category_slug' => $type === 'attraction' ? 'attractions' : 'things-to-do',
+                        ];
+                        $incIdx++;
+                    }
+                }
             } else {
                 $address = trim((string) ($b['address'] ?? ''));
                 $area = (string) ($b['area'] ?? '');
                 $title = (string) ($b['listing_title'] ?? '');
+                $catSlug = (string) ($b['category_slug'] ?? '');
+                $hasValid = !empty($b['has_valid_location']) && \App\Core\Geo::isValidCoordinate($b['latitude'] ?? null, $b['longitude'] ?? null);
                 $googleQuery = $title . ($address !== '' ? ', ' . $address : ', ' . ($area !== '' ? $area : 'Cebu') . ', Philippines');
 
                 $pins[] = [
                     'id' => $bId,
+                    'booking_id' => $bId,
                     'title' => $title,
                     'area' => $area,
                     'address' => $address,
                     'googleQuery' => $googleQuery,
                     'date' => $date,
                     'dateLabel' => $dateLabel,
-                    'lat' => (float) $b['latitude'],
-                    'lng' => (float) $b['longitude'],
+                    'lat' => $hasValid ? (float) $b['latitude'] : null,
+                    'lng' => $hasValid ? (float) $b['longitude'] : null,
                     'upcoming' => $date !== '' && $date >= $today,
                     'approximate' => !empty($b['approximate']),
                     'status' => (string) ($b['status'] ?? 'pending'),
+                    'has_valid_location' => $hasValid,
+                    'missing_location_message' => $hasValid ? null : ($b['missing_location_message'] ?? \App\Core\Geo::missingLocationMessage($catSlug, $address !== '')),
+                    'category_slug' => $catSlug,
                 ];
             }
+        }
+
+        // Also include standalone customer rental reservations using actual pickup location
+        $rentals = Database::all(
+            'SELECT r.*, v.name AS vehicle_name, v.make AS vehicle_make, v.model AS vehicle_model,
+                    v.location AS vehicle_catalog_location, v.address AS vehicle_catalog_address
+             FROM rental_requests r
+             LEFT JOIN vehicles v ON v.id = r.vehicle_id
+             WHERE r.user_id = ?
+               AND r.status IN ("pending", "contacted", "approved", "completed")
+               AND (r.package_booking_ref IS NULL OR r.package_booking_ref = "")
+             ORDER BY r.pickup_date ASC, r.id ASC',
+            [$userId]
+        );
+        foreach ($rentals as $rent) {
+            $rId = 900000 + (int) $rent['id'];
+            $rDate = (string) ($rent['pickup_date'] ?? '');
+            $rDateLabel = $rDate !== '' ? date('M j, Y', strtotime($rDate)) : '';
+            $vTitle = (string) ($rent['vehicle_name'] ?? 'Vehicle Rental');
+            $pickupLoc = trim((string) ($rent['location'] ?? ''));
+            if ($pickupLoc === '') {
+                $pickupLoc = trim((string) ($rent['vehicle_catalog_address'] ?? $rent['vehicle_catalog_location'] ?? ''));
+            }
+
+            $coords = null;
+            if ($pickupLoc !== '') {
+                $coords = \App\Core\Geo::resolveCoordinates($pickupLoc, $pickupLoc, $vTitle);
+            }
+            $rValid = $coords !== null && \App\Core\Geo::isValidCoordinate($coords['latitude'] ?? null, $coords['longitude'] ?? null);
+
+            $pins[] = [
+                'id' => $rId,
+                'booking_id' => $rId,
+                'rental_id' => (int) $rent['id'],
+                'title' => '[Vehicle Pickup] ' . $vTitle,
+                'area' => $pickupLoc,
+                'address' => $pickupLoc,
+                'googleQuery' => $vTitle . ($pickupLoc !== '' ? ', ' . $pickupLoc : ', Cebu, Philippines'),
+                'date' => $rDate,
+                'dateLabel' => $rDateLabel,
+                'lat' => $rValid ? $coords['latitude'] : null,
+                'lng' => $rValid ? $coords['longitude'] : null,
+                'upcoming' => $rDate !== '' && $rDate >= $today,
+                'approximate' => $coords['approximate'] ?? false,
+                'status' => (string) ($rent['status'] ?? 'pending'),
+                'has_valid_location' => $rValid,
+                'missing_location_message' => $rValid ? null : \App\Core\Geo::missingLocationMessage('rentals', $pickupLoc !== ''),
+                'category_slug' => 'rentals',
+            ];
         }
 
         $maps = App::config('maps') ?? [];
@@ -2527,7 +2682,7 @@ final class ApiController extends Controller
     /**
      * POST /api/rentals/{id}/report/evidence - upload additional evidence photo for a rental report.
      */
-    public function uploadRentalReportEvidence(int $id): void
+    public function uploadRentalReportEvidence(string|int $id): void
     {
         $userId = ApiAuth::id();
         if ($userId === null) {
@@ -2535,7 +2690,8 @@ final class ApiController extends Controller
             return;
         }
 
-        $rental = RentalRequest::find($id);
+        $rentalId = (int) $id;
+        $rental = RentalRequest::find($rentalId);
         if ($rental === null || (int) $rental['user_id'] !== $userId) {
             $this->json(['error' => 'Reservation not found.'], 404);
             return;
@@ -2545,7 +2701,7 @@ final class ApiController extends Controller
         foreach ($this->normalizeFiles($_FILES['evidence'] ?? null) as $file) {
             $path = Upload::image($file, 'rentals/reports');
             if ($path !== null) {
-                RentalReportFile::add($id, $path, (string) ($file['name'] ?? ''));
+                RentalReportFile::add($rentalId, $path, (string) ($file['name'] ?? ''));
                 $attached++;
             }
         }
@@ -2841,19 +2997,33 @@ final class ApiController extends Controller
         } else {
             $coords = Geo::forListing($listing);
             if ($coords === null) {
-                return null;
+                return [
+                    'available' => false,
+                    'message' => 'No nearby hotel accommodations currently available.',
+                ];
             }
             $tourLat = $coords['latitude'];
             $tourLng = $coords['longitude'];
         }
 
+        if (!Geo::isValidCoordinate($tourLat, $tourLng)) {
+            return [
+                'available' => false,
+                'message' => 'No nearby hotel accommodations currently available.',
+            ];
+        }
+
         $hotel = Listing::nearestHotel(
             $tourLat,
             $tourLng,
-            (int) ($listing['id'] ?? 0)
+            (int) ($listing['id'] ?? 0),
+            35.0
         );
         if ($hotel === null) {
-            return null;
+            return [
+                'available' => false,
+                'message' => 'No partner hotels are currently located near this experience.',
+            ];
         }
 
         $hLat = (float) $hotel['latitude'];
@@ -2864,6 +3034,7 @@ final class ApiController extends Controller
             . '&travelmode=driving';
 
         return [
+            'available' => true,
             'id' => (int) $hotel['id'],
             'title' => (string) $hotel['title'],
             'slug' => (string) $hotel['slug'],
@@ -3086,15 +3257,27 @@ final class ApiController extends Controller
     private function bookingPayload(array $booking, ?int $viewerId = null): array
     {
         $listingId = (int) $booking['listing_id'];
+        $bookingId = (int) ($booking['id'] ?? 0);
         $status = (string) $booking['status'];
         $disputeStatus = (string) ($booking['dispute_status'] ?? '');
-        $paid = (string) ($booking['payment_status'] ?? '') === 'paid';
-        $canReport = $paid && in_array($status, ['confirmed', 'completed', 'disputed'], true) && empty($booking['dispute_id']);
 
+        // Resolve real payment status from row or payments table
+        $paymentStatus = (string) ($booking['payment_status'] ?? '');
+        if ($paymentStatus === '' && $bookingId > 0) {
+            $latestPayment = Database::first(
+                "SELECT status FROM payments WHERE booking_id = ? ORDER BY id DESC LIMIT 1",
+                [$bookingId]
+            );
+            if ($latestPayment !== null) {
+                $paymentStatus = (string) $latestPayment['status'];
+            }
+        }
+        if ($paymentStatus === '') {
+            $paymentStatus = 'unpaid';
+        }
+        $isPaymentPaid = ($paymentStatus === 'paid') || ($bookingId > 0 && \App\Models\Payment::isPaid($bookingId));
         $reviewed = $viewerId !== null && Review::userHasReviewed($listingId, $viewerId);
-        // A tourist can review a finished tour once, and report a paid booking
-        // that hasn't already been reported.
-        $canReview = $status === 'completed' && !$reviewed;
+
         $bookingDates = null;
         if (!empty($booking['booking_dates'])) {
             $parsed = json_decode((string) $booking['booking_dates'], true);
@@ -3104,9 +3287,50 @@ final class ApiController extends Controller
         }
         $daysCount = $bookingDates !== null ? count($bookingDates) : 1;
 
+        $rawNotes = (string) ($booking['notes'] ?? '');
+        $packageDetails = null;
+        if (str_starts_with(trim($rawNotes), '{') && str_contains($rawNotes, 'package_booking')) {
+            $packageDetails = json_decode($rawNotes, true);
+        }
+
+        // Resolve listing category slug reliably
+        $categorySlug = (string) ($booking['category_slug'] ?? '');
+        if ($categorySlug === '' && $listingId > 0) {
+            $catRow = Database::first(
+                "SELECT c.slug FROM listings l JOIN categories c ON c.id = l.category_id WHERE l.id = ?",
+                [$listingId]
+            );
+            if ($catRow !== null && !empty($catRow['slug'])) {
+                $categorySlug = (string) $catRow['slug'];
+            }
+        }
+
+        $isPackage = ($categorySlug === 'packages')
+            || !empty($booking['is_package'])
+            || !empty($booking['package_booking_ref'])
+            || $packageDetails !== null
+            || str_contains(strtolower((string)($booking['listing_title'] ?? '')), 'package');
+
+        // Hotel check: must be hotel category or have a valid room, and never an activity/attraction/package
+        $isHotel = !$isPackage && (
+            $categorySlug === 'hotels'
+            || (!empty($booking['room_id']) && $categorySlug !== 'things-to-do' && $categorySlug !== 'attractions')
+            || (!empty($booking['hotel_status']) && $categorySlug !== 'things-to-do' && $categorySlug !== 'attractions')
+        );
+
+        $kind = 'attraction';
+        if ($isPackage) {
+            $kind = 'package';
+        } elseif ($isHotel) {
+            $kind = 'hotel';
+        } elseif ($categorySlug === 'things-to-do' || $categorySlug === 'things_to_do') {
+            $kind = 'activity';
+        } elseif ($categorySlug === 'attractions') {
+            $kind = 'attraction';
+        }
+
         $today = date('Y-m-d');
-        $isHotel = !empty($booking['room_id']) || !empty($booking['hotel_status']) || (!empty($booking['deposit_amount']) && (float) $booking['deposit_amount'] > 0);
-        $hotelStatus = (string) ($booking['hotel_status'] ?? '');
+        $hotelStatus = $isHotel ? (string) ($booking['hotel_status'] ?? '') : '';
         $isCompleted = ($hotelStatus === 'completed' || $status === 'completed' || $status === 'cancelled' || $status === 'refunded' || $hotelStatus === 'cancelled' || $hotelStatus === 'no_show');
 
         if (!$isCompleted) {
@@ -3137,19 +3361,8 @@ final class ApiController extends Controller
             $hotelCheckInLabel = (strtotime($hotelCheckInTime) !== false) ? date('g:i A', strtotime($hotelCheckInTime)) : $parsedTimes['check_in_time_label'];
             $hotelCheckOutLabel = (strtotime($hotelCheckOutTime) !== false) ? date('g:i A', strtotime($hotelCheckOutTime)) : $parsedTimes['check_out_time_label'];
             $hotelCheckInOutLabel = "{$hotelCheckInLabel} / {$hotelCheckOutLabel}";
-            $hotelCheckInScheduleLabel = "Check-in from {$hotelCheckInLabel} Â· Check-out until {$hotelCheckOutLabel}";
+            $hotelCheckInScheduleLabel = "Check-in from {$hotelCheckInLabel} • Check-out until {$hotelCheckOutLabel}";
         }
-
-        $rawNotes = (string) ($booking['notes'] ?? '');
-        $packageDetails = null;
-        if (str_starts_with(trim($rawNotes), '{') && str_contains($rawNotes, 'package_booking')) {
-            $packageDetails = json_decode($rawNotes, true);
-        }
-        $isPackage = ($booking['category_slug'] ?? '') === 'packages'
-            || !empty($booking['is_package'])
-            || !empty($booking['package_booking_ref'])
-            || $packageDetails !== null
-            || str_contains(strtolower((string)($booking['listing_title'] ?? '')), 'package');
 
         if ($isPackage && ($packageDetails === null || empty($packageDetails['inclusions']))) {
             $pkgListing = Listing::find($listingId);
@@ -3295,15 +3508,98 @@ final class ApiController extends Controller
             }
         }
 
+        $navBooking = Booking::navigableForCustomerById($viewerId ?? (int) $booking['user_id'], (int) $booking['id']);
+        $hasValidLocation = $navBooking['has_valid_location'] ?? false;
+        $missingLocationMessage = $navBooking['missing_location_message'] ?? null;
+        $latitude = $navBooking['latitude'] ?? null;
+        $longitude = $navBooking['longitude'] ?? null;
+        $address = (string) ($booking['address'] ?? ($navBooking['address'] ?? ''));
+
+        if ($isPackage && !$hasValidLocation) {
+            $meetingPoint = trim((string) ($packageDetails['meeting_point'] ?? ''));
+            if ($meetingPoint !== '') {
+                $pCoords = \App\Core\Geo::resolveCoordinates((string) ($booking['area'] ?? ''), $meetingPoint, (string) ($booking['listing_title'] ?? ''));
+                if ($pCoords !== null && \App\Core\Geo::isValidCoordinate($pCoords['latitude'] ?? null, $pCoords['longitude'] ?? null)) {
+                    $hasValidLocation = true;
+                    $latitude = $pCoords['latitude'];
+                    $longitude = $pCoords['longitude'];
+                    $missingLocationMessage = null;
+                }
+            }
+        }
+
+        $totalPaid = 0.0;
+        if ($bookingId > 0) {
+            $sumPaidRow = Database::first(
+                "SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payments WHERE booking_id = ? AND status = 'paid'",
+                [$bookingId]
+            );
+            $totalPaid = (float) ($sumPaidRow['total_paid'] ?? 0.0);
+        }
+
+        $totalAmount = (float) ($booking['total_amount'] ?? 0.0);
+        $hotelDepositAmount = (float) ($booking['deposit_amount'] ?? 0.0);
+        if ($hotelDepositAmount <= 0.0 && $totalPaid > 0.0 && $totalPaid < $totalAmount) {
+            $hotelDepositAmount = $totalPaid;
+        }
+
+        $bookingPaymentStage = (string) ($booking['payment_stage'] ?? '');
+        $isHotelCheckedIn = ($hotelStatus === 'checked_in');
+        $isHotelSettled = in_array($hotelStatus, ['completed', 'settled'], true) || $bookingPaymentStage === 'settled';
+        $isHotelFullyPaid = ($totalAmount > 0.0 && $totalPaid >= $totalAmount);
+
+        if ($isHotel) {
+            if ($isHotelSettled) {
+                $balanceAmount = 0.0;
+                $balancePaymentStatus = 'Settled';
+                $paymentStage = 'settled';
+                $effectivePaymentStatus = 'paid';
+            } elseif ($isHotelCheckedIn) {
+                $balanceAmount = 0.0;
+                $balancePaymentStatus = 'Paid';
+                $paymentStage = 'paid';
+                $effectivePaymentStatus = 'paid';
+            } elseif ($isHotelFullyPaid || ($bookingPaymentStage === 'paid' && ((float) ($booking['balance_amount'] ?? 0.0) <= 0.0))) {
+                $balanceAmount = 0.0;
+                $balancePaymentStatus = 'Paid';
+                $paymentStage = 'paid';
+                $effectivePaymentStatus = 'paid';
+            } else {
+                $dbBalance = (float) ($booking['balance_amount'] ?? 0.0);
+                $calculatedBalance = max(0.0, round($totalAmount - ($hotelDepositAmount > 0 ? $hotelDepositAmount : $totalPaid), 2));
+                $balanceAmount = $dbBalance > 0 ? $dbBalance : $calculatedBalance;
+                $balancePaymentStatus = 'Pending';
+                $paymentStage = in_array($hotelStatus, ['confirmed', 'accepted'], true) ? 'balance_due' : 'deposit_paid';
+                $effectivePaymentStatus = ($totalPaid > 0.0 || $hotelDepositAmount > 0.0 || $hotelStatus === 'deposit_paid') ? 'deposit_paid' : 'unpaid';
+            }
+            $paid = ($effectivePaymentStatus === 'paid');
+        } else {
+            $paid = $isPaymentPaid;
+            $balanceAmount = $isPaymentPaid ? 0.0 : $totalAmount;
+            $paymentStage = $isPaymentPaid ? (($isCompleted || $bookingPaymentStage === 'settled') ? 'settled' : 'paid') : ($bookingPaymentStage !== '' ? $bookingPaymentStage : 'unpaid');
+            $balancePaymentStatus = $isPaymentPaid ? (($isCompleted || $bookingPaymentStage === 'settled') ? 'Settled' : 'Paid') : 'Pending';
+            $effectivePaymentStatus = $isPaymentPaid ? 'paid' : $paymentStatus;
+        }
+
+        $canReport = ($paid || ($isHotel && ($totalPaid > 0.0 || $hotelDepositAmount > 0.0)) || $isPaymentPaid) && in_array($status, ['confirmed', 'completed', 'disputed'], true) && empty($booking['dispute_id']);
+        $reviewed = $viewerId !== null && Review::userHasReviewed($listingId, $viewerId);
+        $canReview = $status === 'completed' && !$reviewed;
+
         return [
             'id' => (int) $booking['id'],
             'listing_id' => $listingId,
             'is_hotel' => $isHotel,
             'is_package' => $isPackage,
             'is_completed' => $isCompleted,
+            'has_valid_location' => $hasValidLocation,
+            'missing_location_message' => $missingLocationMessage,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'address' => $address,
             'listing_title' => (string) ($booking['listing_title'] ?? ($packageDetails['package_title'] ?? '')),
             'listing_slug' => (string) ($booking['listing_slug'] ?? ''),
-            'category_slug' => (string) ($booking['category_slug'] ?? ($isPackage ? 'packages' : '')),
+            'category_slug' => $categorySlug !== '' ? $categorySlug : ($isPackage ? 'packages' : ($isHotel ? 'hotels' : 'attractions')),
+            'kind' => $kind,
             'guide_name' => (string) ($booking['guide_name'] ?? ($packageDetails['guide']['name'] ?? '')),
             'guide_avatar' => !empty($booking['guide_avatar']) ? api_img_src((string)$booking['guide_avatar'], 'user' . ($booking['guide_id'] ?? '')) : (!empty($packageDetails['guide']['avatar']) ? $packageDetails['guide']['avatar'] : ''),
             'guide_phone' => (string) ($booking['guide_phone'] ?? ($packageDetails['guide']['phone'] ?? '')),
@@ -3331,23 +3627,12 @@ final class ApiController extends Controller
             'check_in_date' => (string) ($booking['check_in_date'] ?? $booking['booking_date']),
             'check_out_date' => (string) (!empty($booking['check_out_date']) ? $booking['check_out_date'] : ($isHotel ? date('Y-m-d', strtotime(($booking['check_in_date'] ?? $booking['booking_date']) . ' +1 day')) : ($booking['booking_date'] ?? ''))),
             'nights' => (int) ($booking['nights'] ?? 1),
-            'deposit_amount' => (float) ($booking['deposit_amount'] ?? 0),
-            'balance_amount' => (($booking['payment_stage'] ?? '') === 'settled' || ($booking['hotel_status'] ?? '') === 'completed' || ($booking['payment_stage'] ?? '') === 'paid' || ($booking['hotel_status'] ?? '') === 'checked_in')
-                ? 0.0
-                : ((float) ($booking['balance_amount'] ?? 0) > 0
-                    ? (float) $booking['balance_amount']
-                    : max(0.0, round((float) $booking['total_amount'] - (float) ($booking['deposit_amount'] ?? 0), 2))),
-            'payment_stage' => (($booking['payment_stage'] ?? '') === 'settled' || ($booking['hotel_status'] ?? '') === 'completed')
-                ? 'settled'
-                : ((($booking['payment_stage'] ?? '') === 'paid' || ($booking['hotel_status'] ?? '') === 'checked_in')
-                    ? 'paid'
-                    : (string) ($booking['payment_stage'] ?? 'full')),
-            'balance_payment_status' => (($booking['payment_stage'] ?? '') === 'settled' || ($booking['hotel_status'] ?? '') === 'completed')
-                ? 'Settled'
-                : ((($booking['payment_stage'] ?? '') === 'paid' || ($booking['hotel_status'] ?? '') === 'checked_in')
-                    ? 'Paid'
-                    : (((float) ($booking['balance_amount'] ?? 0) > 0 || (float) ($booking['deposit_amount'] ?? 0) > 0) ? 'Pending' : 'Settled')),
-            'hotel_status' => (string) ($booking['hotel_status'] ?? ''),
+            'deposit_amount' => $isHotel ? $hotelDepositAmount : 0.0,
+            'balance_amount' => $balanceAmount,
+            'payment_stage' => $paymentStage,
+            'balance_payment_status' => $balancePaymentStatus,
+            'payment_status' => $effectivePaymentStatus,
+            'hotel_status' => $isHotel ? (string) ($booking['hotel_status'] ?? '') : '',
             'package_booking_ref' => $booking['package_booking_ref'] ?? ($pkgSummary['package_booking_ref'] ?? ($packageDetails['package_booking_ref'] ?? null)),
             'package_overall_status' => $overallPackageStatus,
             'provider_statuses' => $providerStatuses,
@@ -3359,7 +3644,7 @@ final class ApiController extends Controller
                 'cancelled' => 'Cancelled',
                 'completed' => 'Completed',
                 default => ucfirst(str_replace('_', ' ', $overallPackageStatus)),
-            } : (!empty($booking['hotel_status']) ? match ($booking['hotel_status']) {
+            } : (($isHotel && !empty($booking['hotel_status'])) ? match ($booking['hotel_status']) {
                 'pending' => 'Pending Review',
                 'accepted' => 'Accepted',
                 'deposit_paid' => 'Deposit Paid',
@@ -3478,11 +3763,27 @@ final class ApiController extends Controller
             $this->json(['error' => 'Booking not found.'], 404);
             return;
         }
-        if (!Payment::isPaid($bookingId)) {
+
+        $isPaid = Payment::isPaid($bookingId)
+            || ($booking['payment_status'] ?? '') === 'paid'
+            || in_array(($booking['payment_stage'] ?? ''), ['paid', 'settled'], true)
+            || ($booking['status'] ?? '') === 'completed';
+
+        if (!$isPaid && !empty($booking['package_booking_ref'])) {
+            $pkgPayment = \App\Core\Database::first("SELECT id FROM payments WHERE reference = ? OR reference LIKE ? LIMIT 1", [
+                $booking['package_booking_ref'],
+                '%' . $booking['package_booking_ref'] . '%'
+            ]);
+            if ($pkgPayment !== null) {
+                $isPaid = true;
+            }
+        }
+
+        if (!$isPaid) {
             $this->json(['error' => 'You can only report a problem on a paid booking.'], 403);
             return;
         }
-        if (!in_array((string) $booking['status'], ['confirmed', 'completed', 'disputed'], true)) {
+        if (!in_array((string) $booking['status'], ['confirmed', 'completed', 'disputed', 'cancelled'], true)) {
             $this->json(['error' => 'This booking cannot be reported yet.'], 422);
             return;
         }
@@ -3507,24 +3808,37 @@ final class ApiController extends Controller
             $amount = (float) $amountRaw;
         }
 
+        // Resolving Guide ID: Ensure report is assigned to package creator / listing owner Guide
+        $guideId = (int) ($booking['guide_id'] ?? 0);
+        if ($guideId <= 0 && !empty($booking['listing_id'])) {
+            $listing = \App\Core\Database::first('SELECT user_id FROM listings WHERE id = ?', [(int) $booking['listing_id']]);
+            $guideId = (int) ($listing['user_id'] ?? 0);
+        }
+
         $disputeId = Dispute::create([
             'booking_id' => $bookingId,
             'user_id' => $userId,
-            'guide_id' => (int) $booking['guide_id'],
+            'guide_id' => $guideId,
             'problem_type' => $type,
             'amount_requested' => $amount,
             'description' => $description,
         ]);
 
-        // Attach any photo evidence (field "evidence" or "evidence[]").
+        // Attach any photo evidence (field "evidence", "photos", or array shape).
         foreach ($this->normalizeFiles($_FILES['evidence'] ?? null) as $file) {
             $path = Upload::image($file, 'disputes');
             if ($path !== null) {
                 DisputeFile::add($disputeId, $path, (string) ($file['name'] ?? ''));
             }
         }
+        foreach ($this->normalizeFiles($_FILES['photos'] ?? null) as $file) {
+            $path = Upload::image($file, 'disputes');
+            if ($path !== null) {
+                DisputeFile::add($disputeId, $path, (string) ($file['name'] ?? ''));
+            }
+        }
 
-        Booking::updateStatus($bookingId, 'disputed');
+        // Preserve original booking status (completed, confirmed, etc.) so it stays in History section.
 
         $dispute = Dispute::find($disputeId);
         $this->json([
@@ -3536,7 +3850,7 @@ final class ApiController extends Controller
     /**
      * POST /api/disputes/{id}/evidence - upload additional photo evidence for a dispute.
      */
-    public function uploadDisputeEvidence(int $id): void
+    public function uploadDisputeEvidence(string|int $id): void
     {
         $userId = ApiAuth::id();
         if ($userId === null) {
@@ -3544,7 +3858,8 @@ final class ApiController extends Controller
             return;
         }
 
-        $dispute = Dispute::find($id);
+        $disputeId = (int) $id;
+        $dispute = Dispute::find($disputeId);
         if ($dispute === null || (int) $dispute['user_id'] !== $userId) {
             $this->json(['error' => 'Dispute not found.'], 404);
             return;
@@ -3554,7 +3869,14 @@ final class ApiController extends Controller
         foreach ($this->normalizeFiles($_FILES['evidence'] ?? null) as $file) {
             $path = Upload::image($file, 'disputes');
             if ($path !== null) {
-                DisputeFile::add($id, $path, (string) ($file['name'] ?? ''));
+                DisputeFile::add($disputeId, $path, (string) ($file['name'] ?? ''));
+                $attached++;
+            }
+        }
+        foreach ($this->normalizeFiles($_FILES['photos'] ?? null) as $file) {
+            $path = Upload::image($file, 'disputes');
+            if ($path !== null) {
+                DisputeFile::add($disputeId, $path, (string) ($file['name'] ?? ''));
                 $attached++;
             }
         }
@@ -4246,6 +4568,9 @@ final class ApiController extends Controller
                     (int) $row['id'],
                     isset($row['package_approval_status']) ? (string) $row['package_approval_status'] : null
                 );
+                if ($pkgApprovalStatus !== 'agreed') {
+                    $pkgApprovalStatus = \App\Models\PackageService::refreshPackageApprovalStatus((int) $row['id']);
+                }
                 if ($pkgApprovalStatus !== 'agreed') {
                     // Pending and Rejected packages are not visible to tourists
                     continue;

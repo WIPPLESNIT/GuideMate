@@ -398,12 +398,17 @@ final class Listing
 
     /**
      * Find the closest approved hotel to a coordinate. Returns the hotel row
-     * plus a `distance_km` value, or null when no hotel has coordinates.
+     * plus a `distance_km` value, or null when no hotel has valid coordinates
+     * within the maximum proximity threshold.
      *
      * @return array<string, mixed>|null
      */
-    public static function nearestHotel(float $lat, float $lng, int $excludeId = 0): ?array
+    public static function nearestHotel(float $lat, float $lng, int $excludeId = 0, float $maxDistanceKm = 35.0): ?array
     {
+        if (!\App\Core\Geo::isValidCoordinate($lat, $lng)) {
+            return null;
+        }
+
         $rows = Database::all(
             'SELECT l.id, l.title, l.slug, l.area, l.address, l.cover_image,
                     l.latitude, l.longitude, l.price, l.price_unit
@@ -418,8 +423,14 @@ final class Listing
         $best = null;
         $bestDist = INF;
         foreach ($rows as $row) {
-            $dist = Geo::distanceKm($lat, $lng, (float) $row['latitude'], (float) $row['longitude']);
-            if ($dist < $bestDist) {
+            $hLat = (float) ($row['latitude'] ?? 0);
+            $hLng = (float) ($row['longitude'] ?? 0);
+            if (!\App\Core\Geo::isValidCoordinate($hLat, $hLng)) {
+                continue;
+            }
+
+            $dist = \App\Core\Geo::distanceKm($lat, $lng, $hLat, $hLng);
+            if ($dist <= $maxDistanceKm && $dist < $bestDist) {
                 $bestDist = $dist;
                 $best = $row;
             }
@@ -430,6 +441,47 @@ final class Listing
         }
         $best['distance_km'] = round($bestDist, 1);
         return $best;
+    }
+
+    /**
+     * Find all nearby approved hotels ordered from nearest to farthest.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function nearestHotels(float $lat, float $lng, int $excludeId = 0, float $maxDistanceKm = 35.0, int $limit = 3): array
+    {
+        if (!\App\Core\Geo::isValidCoordinate($lat, $lng)) {
+            return [];
+        }
+
+        $rows = Database::all(
+            'SELECT l.id, l.title, l.slug, l.area, l.address, l.cover_image,
+                    l.latitude, l.longitude, l.price, l.price_unit
+             FROM listings l
+             JOIN categories c ON c.id = l.category_id
+             WHERE l.status = "approved" AND c.slug = "hotels"
+               AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL
+               AND l.id <> ?',
+            [$excludeId]
+        );
+
+        $results = [];
+        foreach ($rows as $row) {
+            $hLat = (float) ($row['latitude'] ?? 0);
+            $hLng = (float) ($row['longitude'] ?? 0);
+            if (!\App\Core\Geo::isValidCoordinate($hLat, $hLng)) {
+                continue;
+            }
+
+            $dist = \App\Core\Geo::distanceKm($lat, $lng, $hLat, $hLng);
+            if ($dist <= $maxDistanceKm) {
+                $row['distance_km'] = round($dist, 1);
+                $results[] = $row;
+            }
+        }
+
+        usort($results, fn($a, $b) => $a['distance_km'] <=> $b['distance_km']);
+        return array_slice($results, 0, $limit);
     }
 
     /**
@@ -449,9 +501,128 @@ final class Listing
 
     public static function delete(int $id): void
     {
-        Database::run('DELETE FROM hotel_rooms WHERE listing_id = ?', [$id]);
-        Database::run('DELETE FROM listing_images WHERE listing_id = ?', [$id]);
-        Database::run('DELETE FROM listings WHERE id = ?', [$id]);
+        Database::transaction(function () use ($id): void {
+            $listing = Database::first('SELECT * FROM listings WHERE id = ?', [$id]);
+            if ($listing === null) {
+                return;
+            }
+
+            $cat = Database::first('SELECT slug FROM categories WHERE id = ?', [(int) ($listing['category_id'] ?? 0)]);
+            $catSlug = (string) ($cat['slug'] ?? '');
+            $isPackage = ($catSlug === 'packages' || $catSlug === 'travel-packages' || (int) ($listing['category_id'] ?? 0) === 5 || str_contains(strtolower((string) $listing['title']), 'package'));
+
+            if ($isPackage) {
+                // Collect all parent bookings and package booking refs
+                $parentBookings = Database::all('SELECT id, package_booking_ref FROM bookings WHERE listing_id = ?', [$id]);
+                $parentBookingIds = array_map(fn($b) => (int) $b['id'], $parentBookings);
+                $packageRefs = array_filter(array_map(fn($b) => trim((string) ($b['package_booking_ref'] ?? '')), $parentBookings));
+
+                // Also find items from package_booking_items
+                $items = Database::all('SELECT * FROM package_booking_items WHERE package_id = ?', [$id]);
+                foreach ($items as $item) {
+                    $ref = trim((string) ($item['package_booking_ref'] ?? ''));
+                    if ($ref !== '') {
+                        $packageRefs[] = $ref;
+                    }
+                    if (!empty($item['parent_booking_id'])) {
+                        $parentBookingIds[] = (int) $item['parent_booking_id'];
+                    }
+                }
+                $packageRefs = array_values(array_unique($packageRefs));
+                $parentBookingIds = array_values(array_unique(array_filter($parentBookingIds)));
+
+                // Gather all child booking IDs (Hotel Reservations & Guide Bookings)
+                $bookingIdsToDelete = $parentBookingIds;
+                foreach ($items as $item) {
+                    if (!empty($item['sub_booking_id'])) {
+                        $bookingIdsToDelete[] = (int) $item['sub_booking_id'];
+                    }
+                    if (!empty($item['hotel_booking_id'])) {
+                        $bookingIdsToDelete[] = (int) $item['hotel_booking_id'];
+                    }
+                }
+
+                if ($packageRefs !== []) {
+                    $refPlaceholders = implode(',', array_fill(0, count($packageRefs), '?'));
+                    $refBookings = Database::all("SELECT id FROM bookings WHERE package_booking_ref IN ($refPlaceholders)", $packageRefs);
+                    foreach ($refBookings as $rb) {
+                        $bookingIdsToDelete[] = (int) $rb['id'];
+                    }
+                }
+                $bookingIdsToDelete = array_values(array_unique(array_filter($bookingIdsToDelete)));
+
+                // Gather all Vehicle Rental Requests
+                $rentalIdsToDelete = [];
+                foreach ($items as $item) {
+                    if (!empty($item['rental_request_id'])) {
+                        $rentalIdsToDelete[] = (int) $item['rental_request_id'];
+                    }
+                }
+
+                if ($packageRefs !== []) {
+                    $refPlaceholders = implode(',', array_fill(0, count($packageRefs), '?'));
+                    $refRentals = Database::all("SELECT id FROM rental_requests WHERE package_booking_ref IN ($refPlaceholders)", $packageRefs);
+                    foreach ($refRentals as $rr) {
+                        $rentalIdsToDelete[] = (int) $rr['id'];
+                    }
+                }
+
+                if ($parentBookingIds !== []) {
+                    $parentPlaceholders = implode(',', array_fill(0, count($parentBookingIds), '?'));
+                    $parentRentals = Database::all("SELECT id FROM rental_requests WHERE package_booking_id IN ($parentPlaceholders)", $parentBookingIds);
+                    foreach ($parentRentals as $pr) {
+                        $rentalIdsToDelete[] = (int) $pr['id'];
+                    }
+                }
+                $rentalIdsToDelete = array_values(array_unique(array_filter($rentalIdsToDelete)));
+
+                // Delete associated rental requests and files
+                if ($rentalIdsToDelete !== []) {
+                    foreach ($rentalIdsToDelete as $rId) {
+                        try {
+                            \App\Models\RentalReportFile::deleteForRental($rId);
+                        } catch (\Throwable $e) {}
+                    }
+                    $rentalPlaceholders = implode(',', array_fill(0, count($rentalIdsToDelete), '?'));
+                    Database::run("DELETE FROM rental_requests WHERE id IN ($rentalPlaceholders)", $rentalIdsToDelete);
+                }
+
+                // Delete package booking items
+                if ($packageRefs !== []) {
+                    $refPlaceholders = implode(',', array_fill(0, count($packageRefs), '?'));
+                    Database::run("DELETE FROM package_booking_items WHERE package_id = ? OR package_booking_ref IN ($refPlaceholders)", array_merge([$id], $packageRefs));
+                } else {
+                    Database::run('DELETE FROM package_booking_items WHERE package_id = ?', [$id]);
+                }
+
+                // Delete all associated bookings (parents and child hotel/guide bookings)
+                if ($bookingIdsToDelete !== []) {
+                    $bkPlaceholders = implode(',', array_fill(0, count($bookingIdsToDelete), '?'));
+                    try {
+                        Database::run("DELETE FROM disputes WHERE booking_id IN ($bkPlaceholders)", $bookingIdsToDelete);
+                    } catch (\Throwable $e) {}
+                    Database::run("DELETE FROM bookings WHERE id IN ($bkPlaceholders)", $bookingIdsToDelete);
+                }
+
+                // Delete package service inclusions & itineraries
+                try {
+                    Database::run('DELETE FROM package_services WHERE package_id = ? OR listing_id = ?', [$id, $id]);
+                    Database::run('DELETE FROM package_itineraries WHERE package_id = ?', [$id]);
+                } catch (\Throwable $e) {}
+            }
+
+            // Clean up general listing associations
+            Database::run('DELETE FROM listing_schedules WHERE listing_id = ?', [$id]);
+            Database::run('DELETE FROM hotel_rooms WHERE listing_id = ?', [$id]);
+            Database::run('DELETE FROM listing_images WHERE listing_id = ?', [$id]);
+            try {
+                Database::run('DELETE FROM package_services WHERE package_id = ? OR listing_id = ?', [$id, $id]);
+                Database::run('DELETE FROM package_itineraries WHERE package_id = ?', [$id]);
+                Database::run('DELETE FROM reviews WHERE listing_id = ?', [$id]);
+                Database::run('DELETE FROM favorites WHERE listing_id = ?', [$id]);
+            } catch (\Throwable $e) {}
+            Database::run('DELETE FROM listings WHERE id = ?', [$id]);
+        });
     }
 
     /**

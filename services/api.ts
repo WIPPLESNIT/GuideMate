@@ -69,6 +69,8 @@ export type ApiListing = {
   address?: string;
   latitude?: number | null;
   longitude?: number | null;
+  has_valid_location?: boolean;
+  missing_location_message?: string | null;
   price: number;
   lowest_room_price?: number | null;
   price_unit: string;
@@ -105,18 +107,20 @@ export type ApiListing = {
 };
 
 export type NearestHotel = {
-  id: number;
-  title: string;
-  slug: string;
-  area: string;
-  address: string;
-  image: string;
-  price: number;
-  price_unit: string;
-  distance_km: number;
-  latitude: number;
-  longitude: number;
-  directions_url: string;
+  available?: boolean;
+  message?: string;
+  id?: number;
+  title?: string;
+  slug?: string;
+  area?: string;
+  address?: string;
+  image?: string;
+  price?: number;
+  price_unit?: string;
+  distance_km?: number;
+  latitude?: number;
+  longitude?: number;
+  directions_url?: string;
 };
 
 export type ApiListingSchedule = {
@@ -178,6 +182,7 @@ export type ApiBooking = {
   nights?: number;
   deposit_amount?: number;
   balance_amount?: number;
+  payment_status?: 'unpaid' | 'paid' | 'refunded' | string;
   payment_stage?: 'full' | 'deposit_paid' | 'balance_due' | 'paid' | 'settled' | string;
   balance_payment_status?: string;
   hotel_status?: string;
@@ -187,6 +192,8 @@ export type ApiBooking = {
   address?: string;
   latitude?: number | null;
   longitude?: number | null;
+  has_valid_location?: boolean;
+  missing_location_message?: string | null;
   reviewed?: boolean;
   can_review?: boolean;
   can_report?: boolean;
@@ -194,6 +201,7 @@ export type ApiBooking = {
   dispute_id?: number | null;
   is_hotel?: boolean;
   is_package?: boolean;
+  kind?: 'hotel' | 'package' | 'activity' | 'attraction';
   category_slug?: string;
   guide_name?: string;
   guide_avatar?: string;
@@ -257,7 +265,13 @@ export function isBookingCompleted(b: ApiBooking): boolean {
   }
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const isHotel = Boolean(b.room_name || b.hotel_status || (b.deposit_amount && b.deposit_amount > 0));
+  const isHotel = Boolean(
+    b.is_hotel ||
+    b.kind === 'hotel' ||
+    b.category_slug === 'hotels' ||
+    ((b.room_id && b.room_id > 0) && b.category_slug !== 'things-to-do' && b.category_slug !== 'attractions') ||
+    (b.room_name && b.category_slug !== 'things-to-do' && b.category_slug !== 'attractions')
+  );
 
   if (isHotel) {
     const checkout = b.check_out_date || b.booking_date;
@@ -478,11 +492,14 @@ export type TripPin = {
   googleQuery: string;
   date: string;
   dateLabel: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   upcoming: boolean;
   approximate: boolean;
   status?: string;
+  has_valid_location?: boolean;
+  missing_location_message?: string | null;
+  category_slug?: string;
 };
 
 export const getTripMap = () =>
@@ -946,6 +963,16 @@ export async function submitDispute(payload: {
           console.warn(`Failed to upload photo evidence #${i + 1}:`, e);
         }
       }
+
+      // Re-fetch dispute to ensure all uploaded photos are populated in result
+      try {
+        const fresh = await getMyDispute(payload.booking_id);
+        if (fresh.dispute) {
+          result.dispute = fresh.dispute;
+        }
+      } catch (err) {
+        console.warn('Could not refresh dispute photos:', err);
+      }
     }
   } else {
     // No photo attached: use the reliable JSON API helper
@@ -1023,7 +1050,7 @@ async function uploadFileMultipart<T = any>(
     const err = new Error(
       (data && (data.error || data.message)) || 'Upload failed.'
     ) as Error & { code?: string };
-    if (result.status === 401 || result.status === 403) err.code = 'UNAUTHORIZED';
+    if (result.status === 401) err.code = 'UNAUTHORIZED';
     throw err;
   }
   return data as T;

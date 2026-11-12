@@ -415,6 +415,11 @@ final class CancellationPolicyService
             NotificationService::rentalCancelled($customerEmail, $vehicleName, $refundNote);
         }
 
+        // 4. If this rental request is part of a Travel Package, synchronize package cancellation
+        if (!empty($rental['package_booking_ref']) || !empty($rental['package_booking_id'])) {
+            PackageBookingService::onRentalUpdated($rentalId, 'cancelled', $userId);
+        }
+
         return [
             'success' => true,
             'rental_id' => $rentalId,

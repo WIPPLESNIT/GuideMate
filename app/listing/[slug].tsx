@@ -162,7 +162,7 @@ export default function ListingDetailScreen() {
   const { t, formatPrice } = usePreferences();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
-  const { colors, gradients } = useTheme();
+  const { colors, gradients, isDark } = useTheme();
 
   const [listing, setListing] = useState<ApiListing | null>(null);
   const [hotelRooms, setHotelRooms] = useState<ApiHotelRoom[]>([]);
@@ -1259,48 +1259,87 @@ export default function ListingDetailScreen() {
             </>
           ) : null}
 
-          {listing.nearest_hotel ? (
+          {/* Nearest Hotel Recommendation section */}
+          {(listing.category_slug === 'attractions' || listing.category_slug === 'things-to-do' || listing.category_slug === 'things_to_do' || (listing.category_slug !== 'hotels' && listing.category_slug !== 'packages')) ? (
             <>
               <Text style={[styles.sectionTitle, { color: theme.textMain }]}>Nearest hotel</Text>
-              <View style={styles.hotelCard}>
-                <Image source={{ uri: resolveImage(listing.nearest_hotel.image) }} style={styles.hotelImage} />
-                <View style={styles.hotelDistanceBadge}>
-                  <Ionicons name="navigate" size={12} color="#0B3D2E" />
-                  <Text style={styles.hotelDistanceText}>
-                    {listing.nearest_hotel.distance_km} km away
-                  </Text>
-                </View>
-                <View style={styles.hotelBody}>
-                  <Text style={styles.hotelName} numberOfLines={1}>{listing.nearest_hotel.title}</Text>
-                  <View style={styles.hotelMetaRow}>
-                    <Ionicons name="location" size={13} color="#0B3D2E" />
-                    <Text style={styles.hotelMeta} numberOfLines={1}>
-                      {listing.nearest_hotel.area || listing.nearest_hotel.address}
+              {listing.nearest_hotel && listing.nearest_hotel.available !== false && listing.nearest_hotel.title ? (
+                <View style={styles.hotelCard}>
+                  <Image source={{ uri: resolveImage(listing.nearest_hotel.image) }} style={styles.hotelImage} />
+                  <View style={styles.hotelDistanceBadge}>
+                    <Ionicons name="navigate" size={12} color="#0B3D2E" />
+                    <Text style={styles.hotelDistanceText}>
+                      {listing.nearest_hotel.distance_km} km away
                     </Text>
                   </View>
-                  {listing.nearest_hotel.price ? (
-                    <Text style={styles.hotelPrice}>
-                      {formatPrice(listing.nearest_hotel.price)}
-                      <Text style={styles.hotelPriceUnit}> / {listing.nearest_hotel.price_unit || 'night'}</Text>
-                    </Text>
-                  ) : null}
-                  <TouchableOpacity
-                    style={styles.hotelDirBtn}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      const url = listing.nearest_hotel?.directions_url;
-                      if (url) {
-                        Linking.openURL(url).catch(() =>
-                          Alert.alert('Unable to open maps', 'Please try again later.')
-                        );
-                      }
+                  <View style={styles.hotelBody}>
+                    <Text style={styles.hotelName} numberOfLines={1}>{listing.nearest_hotel.title}</Text>
+                    <View style={styles.hotelMetaRow}>
+                      <Ionicons name="location" size={13} color="#0B3D2E" />
+                      <Text style={styles.hotelMeta} numberOfLines={1}>
+                        {listing.nearest_hotel.area || listing.nearest_hotel.address}
+                      </Text>
+                    </View>
+                    {listing.nearest_hotel.price ? (
+                      <Text style={styles.hotelPrice}>
+                        {formatPrice(listing.nearest_hotel.price)}
+                        <Text style={styles.hotelPriceUnit}> / {listing.nearest_hotel.price_unit || 'night'}</Text>
+                      </Text>
+                    ) : null}
+                    <TouchableOpacity
+                      style={styles.hotelDirBtn}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        const url = listing.nearest_hotel?.directions_url;
+                        if (url) {
+                          Linking.openURL(url).catch(() =>
+                            Alert.alert('Unable to open maps', 'Please try again later.')
+                          );
+                        }
+                      }}
+                    >
+                      <Ionicons name="navigate-circle" size={18} color="#0B3D2E" style={{ marginRight: 7 }} />
+                      <Text style={styles.hotelDirText}>Get directions</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: isDark ? '#1E2330' : '#F8FAFC',
+                    borderWidth: 1,
+                    borderColor: isDark ? '#334155' : '#E2E8F0',
+                    borderRadius: 14,
+                    padding: 16,
+                    gap: 14,
+                    marginTop: 6,
+                    marginBottom: 10,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
+                      backgroundColor: isDark ? '#33415555' : '#E2E8F0',
+                      justifyContent: 'center',
+                      alignItems: 'center',
                     }}
                   >
-                    <Ionicons name="navigate-circle" size={18} color="#0B3D2E" style={{ marginRight: 7 }} />
-                    <Text style={styles.hotelDirText}>Get directions</Text>
-                  </TouchableOpacity>
+                    <Ionicons name="bed-outline" size={22} color={isDark ? '#94A3B8' : '#64748B'} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textMain }}>
+                      No Nearby Hotels Available
+                    </Text>
+                    <Text style={{ fontSize: 11, color: theme.textSub, marginTop: 3, lineHeight: 16 }}>
+                      {listing.nearest_hotel?.message || 'There are currently no partner hotel accommodations within reasonable proximity to this location.'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              )}
             </>
           ) : null}
 

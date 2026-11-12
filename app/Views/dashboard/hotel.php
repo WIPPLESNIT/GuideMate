@@ -537,7 +537,7 @@ foreach ($reservations as $res) {
                                                             </button>
                                                         </form>
 
-                                                    <?php elseif ($hotelStatus === 'completed' || ($b['payment_stage'] ?? '') === 'settled'): ?>
+                                                    <?php elseif (in_array($hotelStatus, ['completed', 'cancelled', 'refunded'], true) || in_array($b['status'] ?? '', ['completed', 'cancelled', 'refunded'], true) || ($b['payment_stage'] ?? '') === 'settled' || !empty($b['refund_status'])): ?>
                                                         <button type="button" class="res-action-item action-delete" data-delete-booking data-id="<?= (int) $b['id'] ?>" data-url="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
                                                             <?= admin_icon('trash', 14) ?> Delete Record
                                                         </button>

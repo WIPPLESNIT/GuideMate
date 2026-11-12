@@ -469,15 +469,16 @@ final class RentalController extends Controller
         $status = strtolower(trim((string) ($req['status'] ?? '')));
         $paymentStatus = strtolower(trim((string) ($req['payment_status'] ?? '')));
         $reportStatus = strtolower(trim((string) ($req['report_status'] ?? '')));
-        $isCompleted = ($status === 'completed');
-        $isRefunded = in_array('refunded', [$status, $paymentStatus, $reportStatus], true);
+        $isEligible = in_array($status, ['completed', 'cancelled', 'refunded'], true)
+            || in_array('refunded', [$paymentStatus, $reportStatus], true)
+            || !empty($req['refund_status']);
 
-        if (!$isCompleted && !$isRefunded) {
+        if (!$isEligible) {
             if ($isJson) {
-                $this->json(['success' => false, 'error' => 'Only completed or refunded rental requests can be deleted.'], 400);
+                $this->json(['success' => false, 'error' => 'Only completed, refunded, or cancelled rental requests can be deleted.'], 400);
                 return;
             }
-            flash('error', 'Only completed or refunded rental requests can be deleted.');
+            flash('error', 'Only completed, refunded, or cancelled rental requests can be deleted.');
             redirect('/dashboard/rentals');
             return;
         }

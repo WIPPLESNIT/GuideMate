@@ -709,17 +709,35 @@ final class PackageBookingService
             return;
         }
 
+        // If cancelled or refunded, trigger immediate cancellation cascade
+        if (in_array($status, ['cancelled', 'refunded'], true)) {
+            $booking = Database::first("SELECT id, package_booking_ref FROM bookings WHERE id = ?", [$bookingId]);
+            $pkgRef = !empty($booking['package_booking_ref']) ? (string) $booking['package_booking_ref'] : null;
+
+            if (!$pkgRef) {
+                $item = Database::first("SELECT package_booking_ref FROM package_booking_items WHERE sub_booking_id = ? OR parent_booking_id = ? LIMIT 1", [$bookingId, $bookingId]);
+                if ($item) {
+                    $pkgRef = (string) $item['package_booking_ref'];
+                }
+            }
+
+            if ($pkgRef) {
+                self::respond($pkgRef, 'guide', $userId, 'cancel');
+                return;
+            }
+        }
+
         $item = Database::first("
             SELECT * FROM package_booking_items
-            WHERE sub_booking_id = ? AND provider_id = ?
-        ", [$bookingId, $userId]);
+            WHERE sub_booking_id = ?
+        ", [$bookingId]);
 
         if (!$item) {
             // Check if this booking is the parent booking
             $parent = Database::first("SELECT id, package_booking_ref FROM bookings WHERE id = ? AND package_booking_ref IS NOT NULL", [$bookingId]);
             if ($parent && !empty($parent['package_booking_ref'])) {
                 $pkgRef = (string) $parent['package_booking_ref'];
-                $action = ($status === 'confirmed') ? 'confirm' : ($status === 'cancelled' ? 'cancel' : 'pending');
+                $action = ($status === 'confirmed') ? 'confirm' : (in_array($status, ['cancelled', 'refunded'], true) ? 'cancel' : 'pending');
                 self::respond($pkgRef, 'guide', $userId, $action);
             }
             return;
@@ -727,7 +745,7 @@ final class PackageBookingService
 
         $pkgRef = (string) $item['package_booking_ref'];
         $serviceType = (string) $item['service_type'];
-        $action = ($status === 'confirmed') ? 'confirm' : ($status === 'cancelled' ? 'cancel' : 'pending');
+        $action = ($status === 'confirmed') ? 'confirm' : (in_array($status, ['cancelled', 'refunded'], true) ? 'cancel' : 'pending');
 
         self::respond($pkgRef, $serviceType, $userId, $action);
     }
@@ -752,7 +770,7 @@ final class PackageBookingService
         $mappedAction = match ($action) {
             'settle_balance', 'completed' => 'completed',
             'confirm', 'confirm_deposit', 'accept', 'check_in' => 'confirm',
-            'cancel', 'no_show' => 'cancel',
+            'cancel', 'no_show', 'cancelled', 'refunded' => 'cancel',
             default => 'pending',
         };
 
@@ -800,7 +818,7 @@ final class PackageBookingService
         $pkgRef = (string) $item['package_booking_ref'];
         $action = in_array($status, ['approved', 'contacted'], true)
             ? 'confirm'
-            : ($status === 'completed' ? 'completed' : ($status === 'cancelled' ? 'cancel' : 'pending'));
+            : ($status === 'completed' ? 'completed' : (in_array($status, ['cancelled', 'refunded', 'declined', 'rejected'], true) ? 'cancel' : 'pending'));
 
         self::respond($pkgRef, 'vehicle', (int) $item['provider_id'], $action);
     }
@@ -838,7 +856,21 @@ final class PackageBookingService
         }
 
         if (!$item) {
-            throw new RuntimeException("Package booking service item not found for reference {$pkgRef}.");
+            // Check if parent booking exists
+            $parent = Database::first("SELECT id FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+            if ($parent && $action === 'cancel') {
+                self::cascadeCancellation($pkgRef, (int) $parent['id'], null, $reason);
+                return [
+                    'success' => true,
+                    'package_booking_ref' => $pkgRef,
+                    'overall_status' => 'cancelled',
+                ];
+            }
+            return [
+                'success' => false,
+                'package_booking_ref' => $pkgRef,
+                'error' => "Package booking service item not found for reference {$pkgRef}.",
+            ];
         }
 
         $newStatus = ($action === 'confirm' || $action === 'completed') ? (($action === 'completed') ? 'completed' : 'confirmed') : 'cancelled';
@@ -1038,7 +1070,8 @@ final class PackageBookingService
     }
 
     /**
-     * Cascade cancellation: Cancel all sub-bookings, process tourist refund, and notify everyone.
+     * Cascade cancellation: Atomically cancel all bookings, reservations, and rental requests
+     * associated with the same Travel Package, refund payments, and notify customer and all providers.
      *
      * @param string $pkgRef
      * @param int $parentBookingId
@@ -1051,46 +1084,189 @@ final class PackageBookingService
         ?array $rejectingItem,
         ?string $reason
     ): void {
-        $cancelReason = $reason ?? ($rejectingItem['cancellation_reason'] ?? 'A participating provider was unable to accommodate the package reservation.');
+        self::ensureTables();
 
-        // 1. Cancel all bookings and rental requests tied to this package
-        Database::run("
-            UPDATE bookings
-            SET package_overall_status = 'cancelled', status = 'cancelled',
-                cancelled_at = NOW(), cancellation_reason = ?
-            WHERE package_booking_ref = ?
-        ", [$cancelReason, $pkgRef]);
-
-        Database::run("
-            UPDATE rental_requests
-            SET status = 'cancelled', admin_note = ?
-            WHERE package_booking_ref = ?
-        ", [$cancelReason, $pkgRef]);
-
-        // 2. Refund the tourist's payment
-        Payment::refund($parentBookingId);
-
-        // 3. Notify tourist and participating providers
         $parent = Database::first("
             SELECT b.*, u.email AS tourist_email, u.name AS tourist_name, l.title AS package_title
             FROM bookings b
-            JOIN users u ON u.id = b.user_id
-            JOIN listings l ON l.id = b.listing_id
-            WHERE b.id = ?
-        ", [$parentBookingId]);
+            LEFT JOIN users u ON u.id = b.user_id
+            LEFT JOIN listings l ON l.id = b.listing_id
+            WHERE b.id = ? OR b.package_booking_ref = ?
+            LIMIT 1
+        ", [$parentBookingId, $pkgRef]);
 
-        if ($parent && !empty($parent['tourist_email'])) {
-            $refundAmount = (float) $parent['total_amount'];
-            $msg = "Notice: Your travel package reservation '{$parent['package_title']}' (#{$pkgRef}) has been cancelled because: {$cancelReason}. A full refund of ₱" . number_format($refundAmount, 2) . " has been automatically reversed to your original payment method.";
-            NotificationService::send($parent['tourist_email'], "Package Reservation Cancelled (#{$pkgRef})", $msg);
+        if (!$parent) {
+            return;
         }
 
-        // Notify guide
-        if ($parent && !empty($parent['guide_id'])) {
-            $guide = User::find((int) $parent['guide_id']);
+        // Rule: If package is already completed, prevent cancellation
+        if (($parent['status'] ?? '') === 'completed' || ($parent['package_overall_status'] ?? '') === 'completed') {
+            return;
+        }
+
+        // Rule: Prevent duplicate cancellation processing and repeated notifications
+        $items = Database::all("SELECT * FROM package_booking_items WHERE package_booking_ref = ?", [$pkgRef]);
+        if ($items === []) {
+            $items = Database::all("SELECT * FROM package_booking_items WHERE parent_booking_id = ?", [$parentBookingId]);
+        }
+        $allCancelled = count($items) > 0;
+        foreach ($items as $it) {
+            if (($it['status'] ?? '') !== 'cancelled') {
+                $allCancelled = false;
+                break;
+            }
+        }
+        if ($allCancelled && ($parent['status'] ?? '') === 'cancelled' && ($parent['package_overall_status'] ?? '') === 'cancelled') {
+            return; // Already fully cancelled
+        }
+
+        // Determine initiating provider context
+        $initiatingRole = (string) ($rejectingItem['service_type'] ?? 'provider');
+        $initiatorId = (int) ($rejectingItem['provider_id'] ?? 0);
+        $initiatorUser = $initiatorId > 0 ? User::find($initiatorId) : null;
+        $initiatorName = $initiatorUser['name'] ?? ($rejectingItem['service_name'] ?? ucfirst($initiatingRole) . ' Provider');
+
+        $baseReason = $reason ?: ($rejectingItem['cancellation_reason'] ?? 'A participating service provider was unable to accommodate the reservation.');
+        $cancelReason = "Cancelled by {$initiatorName} (" . ucfirst($initiatingRole) . "): {$baseReason}";
+
+        // Wrap updates in transaction to guarantee consistency and prevent partially updated records
+        $pdo = Database::pdo();
+        $inTx = $pdo->inTransaction();
+        if (!$inTx) {
+            $pdo->beginTransaction();
+        }
+
+        try {
+            // 1. Cancel all package_booking_items
+            Database::run("
+                UPDATE package_booking_items
+                SET status = 'cancelled',
+                    cancellation_reason = COALESCE(?, cancellation_reason),
+                    responded_at = COALESCE(responded_at, NOW())
+                WHERE package_booking_ref = ? OR parent_booking_id = ?
+            ", [$cancelReason, $pkgRef, $parentBookingId]);
+
+            // 2. Cancel all associated bookings (parent package booking + hotel sub-bookings)
+            Database::run("
+                UPDATE bookings
+                SET status = 'cancelled',
+                    hotel_status = 'cancelled',
+                    package_overall_status = 'cancelled',
+                    cancelled_at = COALESCE(cancelled_at, NOW()),
+                    cancellation_reason = COALESCE(cancellation_reason, ?)
+                WHERE package_booking_ref = ? OR id = ?
+            ", [$cancelReason, $pkgRef, $parentBookingId]);
+
+            // Ensure every sub_booking_id explicitly in items is updated
+            foreach ($items as $it) {
+                if (!empty($it['sub_booking_id'])) {
+                    Database::run("
+                        UPDATE bookings
+                        SET status = 'cancelled',
+                            hotel_status = 'cancelled',
+                            package_overall_status = 'cancelled',
+                            cancelled_at = COALESCE(cancelled_at, NOW()),
+                            cancellation_reason = COALESCE(cancellation_reason, ?)
+                        WHERE id = ?
+                    ", [$cancelReason, (int) $it['sub_booking_id']]);
+                }
+                if (!empty($it['rental_request_id'])) {
+                    Database::run("
+                        UPDATE rental_requests
+                        SET status = 'cancelled',
+                            cancelled_at = COALESCE(cancelled_at, NOW()),
+                            cancellation_reason = COALESCE(cancellation_reason, ?),
+                            admin_note = COALESCE(admin_note, ?)
+                        WHERE id = ?
+                    ", [$cancelReason, $cancelReason, (int) $it['rental_request_id']]);
+                }
+            }
+
+            // 3. Cancel all rental_requests associated with this package
+            Database::run("
+                UPDATE rental_requests
+                SET status = 'cancelled',
+                    cancelled_at = COALESCE(cancelled_at, NOW()),
+                    cancellation_reason = COALESCE(cancellation_reason, ?),
+                    admin_note = COALESCE(admin_note, ?)
+                WHERE package_booking_ref = ? OR package_booking_id = ?
+            ", [$cancelReason, $cancelReason, $pkgRef, $parentBookingId]);
+
+            // 4. Preserve existing payment and refund workflows
+            if (Payment::isPaid($parentBookingId)) {
+                Payment::refund($parentBookingId);
+                Database::run("
+                    UPDATE bookings
+                    SET refund_status = 'refunded', refund_amount = total_amount
+                    WHERE id = ? OR package_booking_ref = ?
+                ", [$parentBookingId, $pkgRef]);
+
+                Database::run("
+                    UPDATE rental_requests
+                    SET payment_status = 'refunded', refund_status = 'refunded', refund_amount = total_amount
+                    WHERE (package_booking_ref = ? OR package_booking_id = ?) AND payment_status = 'paid'
+                ", [$pkgRef, $parentBookingId]);
+            }
+
+            if (!$inTx) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if (!$inTx && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        // 5. Notify customer and all affected providers
+        $pkgTitle = (string) ($parent['package_title'] ?? 'Travel Package');
+        $touristEmail = (string) ($parent['tourist_email'] ?? '');
+        $touristId = (int) ($parent['user_id'] ?? 0);
+
+        // A. Notify Tourist
+        if ($touristEmail !== '') {
+            $refundAmount = (float) $parent['total_amount'];
+            $msg = "Notice: Your travel package reservation '{$pkgTitle}' (#{$pkgRef}) has been cancelled because: {$cancelReason}. A full refund of ₱" . number_format($refundAmount, 2) . " has been reversed to your original payment method.";
+            NotificationService::send($touristEmail, "Package Reservation Cancelled (#{$pkgRef})", $msg);
+        }
+        if ($touristId > 0) {
+            self::createAutomatedMessage(
+                $touristId,
+                "Package Booking Cancelled (#{$pkgRef})",
+                "Your travel package '{$pkgTitle}' has been cancelled. Reason: {$cancelReason}."
+            );
+        }
+
+        // B. Notify Guide
+        $guideId = (int) ($parent['guide_id'] ?? 0);
+        if ($guideId > 0 && $guideId !== $initiatorId) {
+            $guide = User::find($guideId);
             if ($guide && !empty($guide['email'])) {
-                $msg = "Your travel package booking #{$pkgRef} ('{$parent['package_title']}') was cancelled. Reason: {$cancelReason}.";
+                $msg = "Notice: Travel Package #{$pkgRef} ('{$pkgTitle}') was cancelled because another participating provider was unable to accommodate the package reservation. Reason: {$cancelReason}.";
                 NotificationService::send($guide['email'], "Package Booking Cancelled (#{$pkgRef})", $msg);
+            }
+            self::createAutomatedMessage(
+                $guideId,
+                "Package Reservation Cancelled (#{$pkgRef})",
+                "Travel Package reservation #{$pkgRef} ('{$pkgTitle}') was cancelled. Reason: {$cancelReason}."
+            );
+        }
+
+        // C. Notify Hotel Provider and Vehicle Rental Provider
+        foreach ($items as $it) {
+            $provId = (int) ($it['provider_id'] ?? 0);
+            if ($provId > 0 && $provId !== $initiatorId && $provId !== $guideId) {
+                $prov = User::find($provId);
+                if ($prov && !empty($prov['email'])) {
+                    $svcType = ucfirst((string) $it['service_type']);
+                    $msg = "Notice: Travel Package #{$pkgRef} ('{$pkgTitle}') containing your {$svcType} reservation was cancelled. Reason: {$cancelReason}.";
+                    NotificationService::send($prov['email'], "Package Reservation Cancelled (#{$pkgRef})", $msg);
+                }
+                self::createAutomatedMessage(
+                    $provId,
+                    "Package Reservation Cancelled (#{$pkgRef})",
+                    "Travel Package reservation #{$pkgRef} ('{$pkgTitle}') was cancelled. Reason: {$cancelReason}."
+                );
             }
         }
     }
@@ -1234,8 +1410,15 @@ final class PackageBookingService
         }
 
         $parent = Database::first("SELECT * FROM bookings WHERE id = ?", [(int) $item['parent_booking_id']]);
-        if ($hasRejection) {
+        $parentCancelled = $parent && (in_array($parent['status'], ['cancelled', 'refunded'], true) || ($parent['package_overall_status'] ?? '') === 'cancelled');
+        if ($hasRejection || $parentCancelled) {
             $overallStatus = 'cancelled';
+            foreach ($items as &$it) {
+                if (($it['status'] ?? '') !== 'completed') {
+                    $it['status'] = 'cancelled';
+                }
+            }
+            unset($it);
         } elseif ($allCompleted) {
             $overallStatus = 'completed';
         } elseif ($allConfirmedOrCompleted) {

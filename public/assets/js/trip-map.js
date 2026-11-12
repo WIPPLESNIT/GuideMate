@@ -54,12 +54,13 @@
     var mlyViewer = null;
     var lastAccuracy = 40;
     var geocodeCache = {};
+    var validPins = pins.filter(function (p) { return p.lat != null && p.lng != null && p.has_valid_location !== false; });
 
     map = new mapboxgl.Map({
         container: 'tripMap',
         style: STYLES.satellite,
-        center: [123.8854, 10.3157],
-        zoom: 11,
+        center: validPins.length ? [validPins[0].lng, validPins[0].lat] : [123.8854, 10.3157],
+        zoom: validPins.length ? 13 : 11,
         maxZoom: 22,
         minZoom: 8,
         antialias: true,
@@ -212,6 +213,7 @@
         bookingMarkers = {};
 
         pins.forEach(function (p) {
+            if (p.lat == null || p.lng == null || p.has_valid_location === false) return;
             var marker = new mapboxgl.Marker({ element: bookingMarkerElement(p.upcoming, p.title), anchor: 'bottom' })
                 .setLngLat([p.lng, p.lat])
                 .addTo(map);
@@ -341,7 +343,7 @@
     }
 
     function fitMapToMarkers(pin) {
-        if (!pin) return;
+        if (!pin || pin.lat == null || pin.lng == null || pin.has_valid_location === false) return;
         if (userPos) {
             var bounds = new mapboxgl.LngLatBounds();
             bounds.extend([userPos.lng, userPos.lat]);
@@ -356,7 +358,7 @@
         var source = map.getSource(ROUTE_SOURCE);
         if (!source) return;
 
-        if (!userPos || !pin) {
+        if (!userPos || !pin || pin.lat == null || pin.lng == null || pin.has_valid_location === false) {
             source.setData({ type: 'FeatureCollection', features: [] });
             return;
         }
@@ -429,7 +431,13 @@
         if (actionsEl) actionsEl.hidden = false;
         if (selectedLabel) selectedLabel.textContent = pin.title + ' — ' + pin.dateLabel;
         if (addressLabel) {
-            addressLabel.textContent = pin.address || pin.area || '';
+            addressLabel.textContent = (pin.has_valid_location === false && pin.missing_location_message)
+                ? pin.missing_location_message
+                : (pin.address || pin.area || '');
+        }
+
+        if (pin.has_valid_location === false || pin.lat == null || pin.lng == null) {
+            return;
         }
 
         resolvePinLocation(pin).then(function (resolved) {

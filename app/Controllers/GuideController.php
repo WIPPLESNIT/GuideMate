@@ -205,6 +205,16 @@ final class GuideController extends Controller
         $this->verifyCsrf();
         $listing = $this->ownedListing((int) $id);
         Listing::delete((int) $listing['id']);
+
+        $isJson = $this->isJson()
+            || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+            || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        if ($isJson) {
+            $this->json(['success' => true, 'message' => 'Listing and associated records deleted.', 'id' => (int) $listing['id']]);
+            return;
+        }
+
         flash('info', 'Listing deleted.');
         redirect('/dashboard/listings');
     }
@@ -422,19 +432,23 @@ final class GuideController extends Controller
             }
         }
 
-        $status = (string) ($booking['status'] ?? '');
-        $overallPkgStatus = (string) ($booking['package_overall_status'] ?? '');
-        $hotelStatus = (string) ($booking['hotel_status'] ?? $status);
-        $paymentStage = (string) ($booking['payment_stage'] ?? '');
+        $status = strtolower((string) ($booking['status'] ?? ''));
+        $overallPkgStatus = strtolower((string) ($booking['package_overall_status'] ?? ''));
+        $hotelStatus = strtolower((string) ($booking['hotel_status'] ?? $status));
+        $paymentStage = strtolower((string) ($booking['payment_stage'] ?? ''));
 
-        $isCompleted = ($status === 'completed' || $overallPkgStatus === 'completed' || $hotelStatus === 'completed' || $paymentStage === 'settled');
+        $isEligible = in_array($status, ['completed', 'cancelled', 'refunded'], true)
+            || in_array($overallPkgStatus, ['completed', 'cancelled', 'refunded'], true)
+            || in_array($hotelStatus, ['completed', 'cancelled', 'refunded'], true)
+            || $paymentStage === 'settled'
+            || !empty($booking['refund_status']);
 
-        if (!$isCompleted) {
+        if (!$isEligible) {
             if ($isJson) {
-                $this->json(['success' => false, 'error' => 'Only completed records can be deleted.'], 400);
+                $this->json(['success' => false, 'error' => 'Only completed, refunded, or cancelled records can be deleted.'], 400);
                 return;
             }
-            flash('error', 'Only completed records can be deleted.');
+            flash('error', 'Only completed, refunded, or cancelled records can be deleted.');
             redirect('/dashboard/bookings');
             return;
         }

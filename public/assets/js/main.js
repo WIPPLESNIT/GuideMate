@@ -181,9 +181,9 @@
 
         var isRental = btn.hasAttribute('data-delete-rental');
         var isReport = btn.hasAttribute('data-delete-report') || (btn.textContent && btn.textContent.toLowerCase().includes('delete report'));
-        var confirmMsg = isReport
+        var confirmMsg = btn.getAttribute('data-confirm') || (isReport
             ? 'Are you sure you want to delete this report? This action cannot be undone.'
-            : ('Are you sure you want to delete this completed ' + (isRental ? 'rental request' : 'booking/reservation') + '? This action cannot be undone.');
+            : ('Are you sure you want to delete this ' + (isRental ? 'rental request' : 'booking/reservation') + '? This action cannot be undone.'));
         if (!window.confirm(confirmMsg)) {
             return;
         }

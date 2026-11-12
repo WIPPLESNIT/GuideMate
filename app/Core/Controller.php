@@ -57,11 +57,15 @@ abstract class Controller
      */
     protected function verifyCsrf(): void
     {
-        $token = (string) ($_POST['_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        $token = (string) ($_POST['_token'] ?? $_POST['_csrf'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
         if ($token === '') {
             $input = json_decode((string) file_get_contents('php://input'), true);
-            if (is_array($input) && !empty($input['_token'])) {
-                $token = (string) $input['_token'];
+            if (is_array($input)) {
+                if (!empty($input['_token'])) {
+                    $token = (string) $input['_token'];
+                } elseif (!empty($input['_csrf'])) {
+                    $token = (string) $input['_csrf'];
+                }
             }
         }
         if (!Auth::verifyCsrf($token)) {

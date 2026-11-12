@@ -213,20 +213,23 @@ $isStatusFiltered = ($status !== 'all');
                             <div class="vehicle-actions-vertical">
                                 <a href="<?= e(url('/admin/hotels/' . (int) $h['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical">Inspect</a>
 
-                                <?php if ($hStatus !== 'approved'): ?>
+                                <?php if ($hStatus === 'approved'): ?>
+                                    <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-delete" onclick="openDeleteModal(<?= (int) $h['id'] ?>, '<?= e(addslashes((string) $h['title'])) ?>');">
+                                        Delete
+                                    </button>
+                                <?php elseif ($hStatus === 'pending'): ?>
                                     <form method="post" action="<?= e(url('/admin/hotels/' . (int) $h['id'] . '/approve')) ?>" class="vehicle-action-form" onsubmit="return confirm('Approve and publish this hotel listing? It will become visible to travelers and the partner can manage room types.');">
                                         <?= csrf_field() ?>
                                         <button type="submit" class="btn btn-primary btn-sm btn-action-vertical">✓ Approve</button>
                                     </form>
-                                <?php endif; ?>
-
-                                <?php if ($hStatus !== 'rejected'): ?>
                                     <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-reject" style="color:var(--coral-600);" onclick="openRejectModal(<?= (int) $h['id'] ?>, '<?= e(addslashes((string) $h['title'])) ?>');">
                                         Reject
                                     </button>
-                                <?php endif; ?>
-
-                                <?php if ($hStatus === 'rejected'): ?>
+                                <?php elseif ($hStatus === 'rejected'): ?>
+                                    <form method="post" action="<?= e(url('/admin/hotels/' . (int) $h['id'] . '/approve')) ?>" class="vehicle-action-form" onsubmit="return confirm('Approve and publish this hotel listing? It will become visible to travelers and the partner can manage room types.');">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-primary btn-sm btn-action-vertical">✓ Approve</button>
+                                    </form>
                                     <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-delete" onclick="openDeleteModal(<?= (int) $h['id'] ?>, '<?= e(addslashes((string) $h['title'])) ?>');">
                                         Delete
                                     </button>

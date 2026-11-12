@@ -269,7 +269,7 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                             </button>
                                                         </form>
 
-                                                    <?php elseif ($hotelStatus === 'completed' || ($b['payment_stage'] ?? '') === 'settled'): ?>
+                                                    <?php elseif (in_array($hotelStatus, ['completed', 'cancelled', 'refunded'], true) || in_array($b['status'] ?? '', ['completed', 'cancelled', 'refunded'], true) || ($b['payment_stage'] ?? '') === 'settled' || !empty($b['refund_status'])): ?>
                                                         <button type="button" class="res-action-item action-delete" data-delete-booking data-id="<?= (int) $b['id'] ?>" data-url="<?= e(url('/dashboard/hotel/bookings/' . $b['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
                                                             <?= admin_icon('trash', 14) ?> Delete Record
                                                         </button>
@@ -439,12 +439,12 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                                 <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
                                                             </button>
                                                         </form>
-                                                    <?php elseif ($isCompleted): ?>
+                                                    <?php elseif ($isCompleted || $isCancelled): ?>
                                                         <button type="button" class="res-action-item action-delete" data-delete-booking data-id="<?= (int) $b['id'] ?>" data-url="<?= e(url('/dashboard/bookings/' . $b['id'] . '/delete')) ?>" role="menuitem" style="color:#DC2626;display:flex;align-items:center;gap:6px;">
                                                             <?= admin_icon('trash', 14) ?> <?= e(__('btn_delete', 'Delete Record')) ?>
                                                         </button>
                                                     <?php endif; ?>
-                                                    <?php if (!$isPkg): ?>
+                                                    <?php if (!$isPkg && !$isCompleted && !$isCancelled): ?>
                                                         <?php if (!$isWarned && in_array($b['status'], ['pending', 'confirmed'], true)): ?>
                                                             <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>
                                                         <?php endif; ?>

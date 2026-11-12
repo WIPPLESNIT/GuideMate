@@ -824,12 +824,12 @@ final class AdminController extends Controller
         }
 
         $status = (string) ($listing['status'] ?? '');
-        if ($status !== 'rejected') {
+        if (!in_array($status, ['rejected', 'approved'], true)) {
             if ($this->isJson()) {
-                $this->json(['success' => false, 'message' => 'Only rejected listings can be permanently deleted.'], 400);
+                $this->json(['success' => false, 'message' => 'Only rejected or approved listings can be deleted.'], 400);
                 return;
             }
-            flash('error', 'Only rejected listings can be permanently deleted.');
+            flash('error', 'Only rejected or approved listings can be deleted.');
             redirect('/admin/guide-listings');
             return;
         }
@@ -838,7 +838,18 @@ final class AdminController extends Controller
         $listingTitle = (string) $listing['title'];
         $guideId = (int) ($listing['user_id'] ?? 0);
 
-        Listing::delete($listingId);
+        try {
+            Listing::delete($listingId);
+        } catch (\Throwable $e) {
+            error_log('Error deleting guide listing #' . $listingId . ': ' . $e->getMessage());
+            if ($this->isJson()) {
+                $this->json(['success' => false, 'message' => 'Failed to delete listing: ' . $e->getMessage()], 500);
+                return;
+            }
+            flash('error', 'Failed to delete listing.');
+            redirect('/admin/guide-listings');
+            return;
+        }
 
         AuditLog::recordAction('guide_listing.delete', 'listing', $listingId, [
             'title' => $listingTitle,
@@ -849,13 +860,13 @@ final class AdminController extends Controller
         if ($this->isJson()) {
             $this->json([
                 'success' => true,
-                'message' => "Rejected listing '{$listingTitle}' has been permanently deleted.",
+                'message' => "Listing '{$listingTitle}' has been permanently deleted.",
                 'id' => $listingId,
             ]);
             return;
         }
 
-        flash('success', "Rejected listing '{$listingTitle}' has been permanently deleted.");
+        flash('success', "Listing '{$listingTitle}' has been permanently deleted.");
         redirect('/admin/guide-listings');
     }
 
@@ -977,14 +988,14 @@ final class AdminController extends Controller
             return;
         }
 
-        // Deletion is strictly permitted only for rejected listings
+        // Deletion is permitted for rejected and approved listings
         $status = (string) ($hotel['status'] ?? '');
-        if ($status !== 'rejected') {
+        if (!in_array($status, ['rejected', 'approved'], true)) {
             if ($this->isJson()) {
-                $this->json(['success' => false, 'message' => 'Only rejected hotel listings can be permanently deleted.'], 400);
+                $this->json(['success' => false, 'message' => 'Only rejected or approved hotel listings can be permanently deleted.'], 400);
                 return;
             }
-            flash('error', 'Only rejected hotel listings can be permanently deleted.');
+            flash('error', 'Only rejected or approved hotel listings can be permanently deleted.');
             redirect('/admin/hotels');
             return;
         }
@@ -1004,13 +1015,13 @@ final class AdminController extends Controller
         if ($this->isJson()) {
             $this->json([
                 'success' => true,
-                'message' => "Rejected hotel '{$hotelTitle}' has been permanently deleted.",
+                'message' => "Hotel listing '{$hotelTitle}' has been permanently deleted.",
                 'id' => $hotelId,
             ]);
             return;
         }
 
-        flash('success', "Rejected hotel '{$hotelTitle}' has been permanently deleted.");
+        flash('success', "Hotel listing '{$hotelTitle}' has been permanently deleted.");
         redirect('/admin/hotels');
     }
 
@@ -1101,14 +1112,14 @@ final class AdminController extends Controller
             return;
         }
 
-        // Deletion is strictly permitted only for rejected listings
+        // Deletion is permitted for rejected and approved listings
         $status = (string) ($vehicle['status'] ?? '');
-        if ($status !== 'rejected') {
+        if (!in_array($status, ['rejected', 'approved'], true)) {
             if ($this->isJson()) {
-                $this->json(['success' => false, 'message' => 'Only rejected vehicle listings can be permanently deleted.'], 400);
+                $this->json(['success' => false, 'message' => 'Only rejected or approved vehicle listings can be permanently deleted.'], 400);
                 return;
             }
-            flash('error', 'Only rejected vehicle listings can be permanently deleted.');
+            flash('error', 'Only rejected or approved vehicle listings can be permanently deleted.');
             redirect('/admin/vehicles');
             return;
         }
@@ -1128,13 +1139,13 @@ final class AdminController extends Controller
         if ($this->isJson()) {
             $this->json([
                 'success' => true,
-                'message' => "Rejected vehicle '{$vehicleName}' has been permanently deleted.",
+                'message' => "Vehicle listing '{$vehicleName}' has been permanently deleted.",
                 'id' => $vehicleId,
             ]);
             return;
         }
 
-        flash('success', "Rejected vehicle '{$vehicleName}' has been permanently deleted.");
+        flash('success', "Vehicle listing '{$vehicleName}' has been permanently deleted.");
         redirect('/admin/vehicles');
     }
 
@@ -1544,6 +1555,55 @@ final class AdminController extends Controller
         }
 
         redirect('/admin/disputes');
+    }
+
+    public function deleteDispute(string $id): void
+    {
+        $this->verifyCsrf();
+        $disputeId = (int) $id;
+        $dispute = Dispute::find($disputeId);
+
+        $isJson = $this->isJson() 
+            || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+            || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        if ($dispute === null) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Complaint record not found.'], 404);
+                return;
+            }
+            flash('error', 'Complaint record not found.');
+            redirect('/admin');
+            return;
+        }
+
+        if (!Dispute::isReviewed($dispute)) {
+            if ($isJson) {
+                $this->json(['success' => false, 'error' => 'Only reviewed complaints can be deleted.'], 400);
+                return;
+            }
+            flash('error', 'Only reviewed complaints can be deleted.');
+            redirect('/admin');
+            return;
+        }
+
+        Dispute::delete($disputeId);
+        AuditLog::recordAction('dispute.delete', 'dispute', $disputeId, [
+            'booking_id' => $dispute['booking_id'],
+            'status' => $dispute['status'],
+        ]);
+
+        if ($isJson) {
+            $this->json([
+                'success' => true,
+                'message' => "Complaint #{$disputeId} was permanently deleted.",
+                'id' => $disputeId,
+            ]);
+            return;
+        }
+
+        flash('success', "Complaint #{$disputeId} was permanently deleted.");
+        redirect('/admin');
     }
 
     public function warnProvider(string $id): void

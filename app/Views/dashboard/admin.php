@@ -88,6 +88,13 @@ $complaints = $complaints ?? ($disputes ?? []);
                             <p class="hint" style="margin:3px 0 0;font-size:0.76rem;line-height:1.35;color:#94a3b8;" title="<?= e((string)$c['description']) ?>">
                                 <?= e(mb_strimwidth((string)$c['description'], 0, 95, '...')) ?>
                             </p>
+                            <?php 
+                            $cFiles = \App\Models\DisputeFile::forDispute((int) $c['id']);
+                            if ($cFiles !== []): ?>
+                                <div style="display:inline-flex;align-items:center;gap:3px;margin-top:4px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.06);font-size:0.7rem;color:#cbd5e1;">
+                                    <span>📎</span> <?= count($cFiles) ?> evidence photo<?= count($cFiles) > 1 ? 's' : '' ?>
+                                </div>
+                            <?php endif; ?>
                         </td>
                         <td class="col-complaint-status" style="text-align:center;">
                             <span class="pill pill-<?= e($c['status']) ?>" style="font-size:0.72rem;padding:3px 8px;">
@@ -98,7 +105,16 @@ $complaints = $complaints ?? ($disputes ?? []);
                             </span>
                         </td>
                         <td class="col-complaint-action" style="text-align:right;">
-                            <a href="<?= e(url('/admin/disputes')) ?>" class="btn btn-primary btn-sm" style="font-size:0.78rem;padding:0.32rem 0.75rem;white-space:nowrap;">Review</a>
+                            <?php if (!\App\Models\Dispute::isReviewed((string) $c['status'])): ?>
+                                <a href="<?= e(url('/admin/disputes')) ?>" class="btn btn-primary btn-sm" style="font-size:0.78rem;padding:0.32rem 0.75rem;white-space:nowrap;">Review</a>
+                            <?php else: ?>
+                                <form method="post" action="<?= e(url('/admin/disputes/' . $c['id'] . '/delete')) ?>" class="delete-complaint-form" style="display:inline-block;margin:0;" data-id="<?= (int) $c['id'] ?>">
+                                    <?= csrf_field() ?>
+                                    <button type="submit" class="btn btn-danger btn-sm btn-delete-complaint" style="font-size:0.78rem;padding:0.32rem 0.75rem;white-space:nowrap;background:#ef4444;color:#ffffff;border:none;border-radius:6px;cursor:pointer;">
+                                        Delete
+                                    </button>
+                                </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -188,3 +204,90 @@ $complaints = $complaints ?? ($disputes ?? []);
         <?php endif; ?>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var forms = document.querySelectorAll('.delete-complaint-form');
+    forms.forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            var cid = form.getAttribute('data-id') || '';
+            var confirmed = confirm('Are you sure you want to permanently delete Complaint #' + cid + '? This action cannot be undone.');
+            if (!confirmed) {
+                e.preventDefault();
+                return false;
+            }
+
+            e.preventDefault();
+            var btn = form.querySelector('button[type="submit"]');
+            var originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Deleting...';
+
+            var formData = new FormData(form);
+            var actionUrl = form.getAttribute('action');
+
+            fetch(actionUrl, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(function(res) {
+                return res.json().then(function(data) {
+                    return { ok: res.ok, data: data };
+                });
+            })
+            .then(function(resObj) {
+                if (resObj.ok && resObj.data && resObj.data.success) {
+                    var row = form.closest('tr');
+                    if (row) {
+                        row.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                        row.style.opacity = '0';
+                        row.style.transform = 'translateX(20px)';
+                        setTimeout(function() {
+                            var tbody = row.parentElement;
+                            row.remove();
+                            if (tbody && tbody.querySelectorAll('tr').length === 0) {
+                                var tableWrap = document.querySelector('.admin-complaints-wrap');
+                                if (tableWrap) {
+                                    tableWrap.innerHTML = '<div class="empty-state" style="padding:2.5rem 1rem;"><p>✅ No complaints reported.</p></div>';
+                                }
+                            }
+                        }, 300);
+                    }
+                    var msg = resObj.data.message || 'Complaint deleted successfully.';
+                    if (typeof showToast === 'function') {
+                        showToast(msg, 'success');
+                    } else {
+                        var notice = document.createElement('div');
+                        notice.style.position = 'fixed';
+                        notice.style.top = '20px';
+                        notice.style.right = '20px';
+                        notice.style.zIndex = '99999';
+                        notice.style.padding = '12px 20px';
+                        notice.style.borderRadius = '8px';
+                        notice.style.background = '#059669';
+                        notice.style.color = '#ffffff';
+                        notice.style.fontWeight = '600';
+                        notice.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
+                        notice.textContent = msg;
+                        document.body.appendChild(notice);
+                        setTimeout(function() { notice.remove(); }, 4000);
+                    }
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                    alert((resObj.data && resObj.data.error) ? resObj.data.error : 'Failed to delete complaint.');
+                }
+            })
+            .catch(function() {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                form.submit();
+            });
+        });
+    });
+});
+</script>

@@ -159,15 +159,17 @@ function buildHtml(pins: TripPin[], mapboxToken: string, mapillaryToken: string,
     var STYLES = { satellite: 'mapbox://styles/mapbox/satellite-streets-v12', streets: 'mapbox://styles/mapbox/streets-v12' };
     var ROUTE = 'trip-route';
 
+    var validPins = pins.filter(function (p) { return p.lat != null && p.lng != null && p.has_valid_location !== false; });
     var map = new mapboxgl.Map({
       container: 'map', style: STYLES.satellite,
-      center: pins.length ? [pins[0].lng, pins[0].lat] : [123.8854, 10.3157],
-      zoom: pins.length ? 14 : 11, maxZoom: 22, minZoom: 8, antialias: true,
+      center: validPins.length ? [validPins[0].lng, validPins[0].lat] : [123.8854, 10.3157],
+      zoom: validPins.length ? 14 : 11, maxZoom: 22, minZoom: 8, antialias: true,
     });
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
 
     function renderMarkers() {
       pins.forEach(function (p) {
+        if (p.lat == null || p.lng == null || p.has_valid_location === false) return;
         var el = makeEl('trip-pin' + (p.upcoming ? ' up' : ''));
         var mk = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(map);
         el.addEventListener('click', function (e) { e.stopPropagation(); selectPin(p.id); });
@@ -187,7 +189,15 @@ function buildHtml(pins: TripPin[], mapboxToken: string, mapillaryToken: string,
     function drawRoute(pin) {
       var src = map.getSource(ROUTE);
       var eta = document.getElementById('eta');
-      if (!src || !userPos || !pin) { if (src) src.setData({ type:'FeatureCollection', features: [] }); return; }
+      if (!pin || pin.lat == null || pin.lng == null || pin.has_valid_location === false) {
+        if (src) src.setData({ type:'FeatureCollection', features: [] });
+        if (eta) {
+          eta.className = 'hint';
+          eta.textContent = pin ? (pin.missing_location_message || 'Location unavailable') : 'Destination not found';
+        }
+        return;
+      }
+      if (!src || !userPos) { if (src) src.setData({ type:'FeatureCollection', features: [] }); return; }
       var url = 'https://api.mapbox.com/directions/v5/mapbox/' + travelMode + '/'
         + userPos.lng + ',' + userPos.lat + ';' + pin.lng + ',' + pin.lat
         + '?geometries=geojson&overview=full&access_token=' + encodeURIComponent(CFG.mapboxToken);
@@ -301,8 +311,9 @@ function buildHtml(pins: TripPin[], mapboxToken: string, mapillaryToken: string,
 
   // Engine 2: Leaflet + OpenStreetMap & Esri World Imagery (Zero-config instant fallback)
   function initLeaflet() {
-    var initialCenter = pins.length ? [pins[0].lat, pins[0].lng] : [10.3157, 123.8854];
-    var map = L.map('map', { zoomControl: false, maxZoom: 19, minZoom: 8 }).setView(initialCenter, pins.length ? 14 : 11);
+    var validPins = pins.filter(function (p) { return p.lat != null && p.lng != null && p.has_valid_location !== false; });
+    var initialCenter = validPins.length ? [validPins[0].lat, validPins[0].lng] : [10.3157, 123.8854];
+    var map = L.map('map', { zoomControl: false, maxZoom: 19, minZoom: 8 }).setView(initialCenter, validPins.length ? 14 : 11);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     var satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -319,6 +330,7 @@ function buildHtml(pins: TripPin[], mapboxToken: string, mapillaryToken: string,
 
     function renderMarkers() {
       pins.forEach(function (p) {
+        if (p.lat == null || p.lng == null || p.has_valid_location === false) return;
         var el = makeEl('trip-pin' + (p.upcoming ? ' up' : ''));
         var icon = L.divIcon({ className: el.className, iconSize: [18, 18], iconAnchor: [9, 9] });
         var mk = L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
@@ -335,7 +347,15 @@ function buildHtml(pins: TripPin[], mapboxToken: string, mapillaryToken: string,
 
     function drawRoute(pin) {
       var eta = document.getElementById('eta');
-      if (!userPos || !pin) {
+      if (!pin || pin.lat == null || pin.lng == null || pin.has_valid_location === false) {
+        if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+        if (eta) {
+          eta.className = 'hint';
+          eta.textContent = pin ? (pin.missing_location_message || 'Location unavailable') : 'Destination not found';
+        }
+        return;
+      }
+      if (!userPos) {
         if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
         return;
       }
@@ -367,6 +387,7 @@ function buildHtml(pins: TripPin[], mapboxToken: string, mapillaryToken: string,
     }
 
     function fitTo(pin) {
+      if (!pin || pin.lat == null || pin.lng == null || pin.has_valid_location === false) return;
       if (userPos && pin) {
         var bounds = L.latLngBounds([[userPos.lat, userPos.lng], [pin.lat, pin.lng]]);
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
@@ -605,6 +626,9 @@ export default function TripMapScreen() {
   };
 
   const hasPins = pins.length > 0;
+  const focusedPin = pins.find((p) => p.id === focusId);
+  const locationUnavailable = Boolean(focusedPin && focusedPin.has_valid_location === false);
+  const unavailableMsg = focusedPin?.missing_location_message || 'The saved address could not be resolved to a valid map location.';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgAlt }]} edges={['left', 'right', 'top']}>
@@ -631,6 +655,15 @@ export default function TripMapScreen() {
           <View style={styles.headerBtn} />
         )}
       </View>
+
+      {locationUnavailable ? (
+        <View style={{ backgroundColor: isDark ? '#7F1D1D44' : '#FEF2F2', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderColor: isDark ? '#B91C1C' : '#FECACA', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name="alert-circle" size={18} color="#EF4444" />
+          <Text style={{ flex: 1, color: isDark ? '#FCA5A5' : '#991B1B', fontSize: 13, fontWeight: '600' }}>
+            {unavailableMsg}
+          </Text>
+        </View>
+      ) : null}
 
       {loading ? (
         <View style={styles.center}>

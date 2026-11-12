@@ -322,20 +322,23 @@ $isTypeFiltered = ($type !== 'all');
                             <div class="vehicle-actions-vertical">
                                 <a href="<?= e(url('/admin/vehicles/' . (int) $v['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical">Inspect</a>
 
-                                <?php if ($vStatus !== 'approved'): ?>
+                                <?php if ($vStatus === 'approved'): ?>
+                                    <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-delete" onclick="openDeleteModal(<?= (int) $v['id'] ?>, '<?= e(addslashes((string) $v['name'])) ?>');">
+                                        Delete
+                                    </button>
+                                <?php elseif ($vStatus === 'pending'): ?>
                                     <form method="post" action="<?= e(url('/admin/vehicles/' . (int) $v['id'] . '/approve')) ?>" class="vehicle-action-form" onsubmit="return confirm('Approve and publish this vehicle listing? It will become visible to tourists.');">
                                         <?= csrf_field() ?>
                                         <button type="submit" class="btn btn-primary btn-sm btn-action-vertical">✓ Approve</button>
                                     </form>
-                                <?php endif; ?>
-
-                                <?php if ($vStatus !== 'rejected'): ?>
                                     <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-reject" style="color:var(--coral-600);" onclick="openRejectModal(<?= (int) $v['id'] ?>, '<?= e(addslashes((string) $v['name'])) ?>');">
                                         Reject
                                     </button>
-                                <?php endif; ?>
-
-                                <?php if ($vStatus === 'rejected'): ?>
+                                <?php elseif ($vStatus === 'rejected'): ?>
+                                    <form method="post" action="<?= e(url('/admin/vehicles/' . (int) $v['id'] . '/approve')) ?>" class="vehicle-action-form" onsubmit="return confirm('Approve and publish this vehicle listing? It will become visible to tourists.');">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-primary btn-sm btn-action-vertical">✓ Approve</button>
+                                    </form>
                                     <button type="button" class="btn btn-ghost btn-sm btn-action-vertical btn-action-delete" onclick="openDeleteModal(<?= (int) $v['id'] ?>, '<?= e(addslashes((string) $v['name'])) ?>');">
                                         Delete
                                     </button>

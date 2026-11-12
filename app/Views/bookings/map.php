@@ -10,6 +10,7 @@ $mapboxToken = $mapboxToken ?? '';
 $today = date('Y-m-d');
 $mapPins = [];
 foreach ($bookings as $b) {
+    $hasValid = !empty($b['has_valid_location']) && \App\Core\Geo::isValidCoordinate($b['latitude'] ?? null, $b['longitude'] ?? null);
     $address = trim((string) ($b['address'] ?? ''));
     $googleQuery = $b['listing_title'];
     if ($address !== '') {
@@ -26,10 +27,12 @@ foreach ($bookings as $b) {
         'googleQuery' => $googleQuery,
         'date' => $b['booking_date'],
         'dateLabel' => date('M j, Y', strtotime($b['booking_date'])),
-        'lat' => (float) $b['latitude'],
-        'lng' => (float) $b['longitude'],
+        'lat' => $hasValid ? (float) $b['latitude'] : null,
+        'lng' => $hasValid ? (float) $b['longitude'] : null,
         'upcoming' => $b['booking_date'] >= $today,
         'approximate' => !empty($b['approximate']),
+        'has_valid_location' => $hasValid,
+        'missing_location_message' => $b['missing_location_message'] ?? null,
     ];
 }
 $mapPinsJson = json_encode($mapPins, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP);
@@ -75,10 +78,14 @@ $mapPinsJson = json_encode($mapPins, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP
                                     data-booking-id="<?= (int) $b['id'] ?>">
                                 <strong><?= e($b['listing_title']) ?></strong>
                                 <span class="hint"><?= e(date('M j, Y', strtotime($b['booking_date']))) ?> · <?= e($b['area']) ?></span>
-                                <?php if (!empty($b['address'])): ?>
-                                    <span class="hint trip-map-address"><?= e($b['address']) ?></span>
-                                <?php elseif (!empty($b['approximate'])): ?>
-                                    <span class="hint trip-map-address">Approximate area pin (from <?= e($b['area']) ?>)</span>
+                                <?php if (!empty($b['has_valid_location'])): ?>
+                                    <?php if (!empty($b['address'])): ?>
+                                        <span class="hint trip-map-address"><?= e($b['address']) ?></span>
+                                    <?php elseif (!empty($b['approximate'])): ?>
+                                        <span class="hint trip-map-address">Approximate area pin (from <?= e($b['area']) ?>)</span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="hint trip-map-address" style="color:#ef4444;"><?= e($b['missing_location_message'] ?? 'Location unavailable for this listing.') ?></span>
                                 <?php endif; ?>
                             </button>
                         <?php endforeach; ?>
