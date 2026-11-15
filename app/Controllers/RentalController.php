@@ -102,9 +102,18 @@ final class RentalController extends Controller
         $user = Auth::user();
         $userId = (int) Auth::id();
 
+        $vehicles = Vehicle::forOwner($userId);
+        foreach ($vehicles as &$v) {
+            $galleryRows = Vehicle::gallery((int) $v['id']);
+            $v['gallery'] = array_values(array_filter(array_map(function ($g) {
+                return is_array($g) ? ($g['image_path'] ?? '') : (string) $g;
+            }, $galleryRows)));
+        }
+        unset($v);
+
         $this->view('rental/vehicles', [
             'title' => 'My Vehicles',
-            'vehicles' => Vehicle::forOwner($userId),
+            'vehicles' => $vehicles,
             'stats' => Vehicle::countForOwner($userId),
             'isVerified' => (string) ($user['guide_status'] ?? 'none') === 'approved',
             'user' => $user,
@@ -140,11 +149,18 @@ final class RentalController extends Controller
         // Complete server-side validation for all mandatory fields and primary photo
         $data = $this->validateVehicleData();
 
-        // Store uploaded cover photo
+        // Store uploaded cover photo or URL
         $coverPath = null;
-        if (Upload::present($_FILES['image'] ?? null)) {
+        $coverFile = null;
+        if (isset($_FILES['photo_file_0']) && Upload::present($_FILES['photo_file_0'])) {
+            $coverFile = $_FILES['photo_file_0'];
+        } elseif (isset($_FILES['image']) && Upload::present($_FILES['image'])) {
+            $coverFile = $_FILES['image'];
+        }
+
+        if ($coverFile !== null) {
             try {
-                $coverPath = Upload::store($_FILES['image'], 'vehicles/' . $userId, ['jpg', 'jpeg', 'png', 'webp']);
+                $coverPath = Upload::store($coverFile, 'vehicles/' . $userId, ['jpg', 'jpeg', 'png', 'webp']);
             } catch (RuntimeException $e) {
                 $errors = errors();
                 $errors['image'] = $e->getMessage();
@@ -154,6 +170,10 @@ final class RentalController extends Controller
                 }
                 flash_keep_old($errors, $_POST, '/dashboard/vehicles?create=1');
             }
+        } elseif (!empty($_POST['photo_url_0'])) {
+            $coverPath = trim((string) $_POST['photo_url_0']);
+        } elseif (!empty($_POST['cover_image'])) {
+            $coverPath = trim((string) $_POST['cover_image']);
         }
 
         $status = 'pending';
@@ -208,15 +228,30 @@ final class RentalController extends Controller
 
         $coverPath = (string) ($vehicle['image'] ?? '');
         $newPhotoUploaded = false;
-        if (Upload::present($_FILES['image'] ?? null)) {
+        $coverFile = null;
+        if (isset($_FILES['photo_file_0']) && Upload::present($_FILES['photo_file_0'])) {
+            $coverFile = $_FILES['photo_file_0'];
+        } elseif (isset($_FILES['image']) && Upload::present($_FILES['image'])) {
+            $coverFile = $_FILES['image'];
+        }
+
+        if ($coverFile !== null) {
             try {
-                $coverPath = Upload::store($_FILES['image'], 'vehicles/' . $userId, ['jpg', 'jpeg', 'png', 'webp']);
+                $coverPath = Upload::store($coverFile, 'vehicles/' . $userId, ['jpg', 'jpeg', 'png', 'webp']);
                 $newPhotoUploaded = true;
             } catch (RuntimeException $e) {
                 $errors = errors();
                 $errors['image'] = $e->getMessage();
                 flash_keep_old($errors, $_POST, '/dashboard/vehicles?edit=' . (int) $id);
             }
+        } elseif (!empty($_POST['photo_url_0']) && $_POST['photo_url_0'] !== $coverPath) {
+            $coverPath = trim((string) $_POST['photo_url_0']);
+            $newPhotoUploaded = true;
+        } elseif (isset($_POST['photo_removed_0']) && $_POST['photo_removed_0'] === '1' && empty($_POST['existing_photo_0'])) {
+            $coverPath = '';
+            $newPhotoUploaded = true;
+        } elseif (!empty($_POST['existing_photo_0'])) {
+            $coverPath = trim((string) $_POST['existing_photo_0']);
         }
 
         // Upload additional gallery photos if provided
@@ -657,11 +692,13 @@ final class RentalController extends Controller
             }
         }
 
-        // 4. Vehicle Type validation (required, in Vehicle::TYPES)
+        // 4. Vehicle Type validation (required, string, 2-50 chars)
         if ($type === '') {
-            $errors['type'] = 'Vehicle type category is required.';
-        } elseif (!in_array($type, Vehicle::TYPES, true)) {
-            $errors['type'] = 'Please select a valid vehicle type category (' . implode(', ', Vehicle::TYPES) . ').';
+            $errors['type'] = 'Vehicle type is required (e.g. Scooter, Sedan, SUV, Van).';
+        } elseif (mb_strlen($type) < 2) {
+            $errors['type'] = 'Vehicle type must be at least 2 characters.';
+        } elseif (mb_strlen($type) > 50) {
+            $errors['type'] = 'Vehicle type must not exceed 50 characters.';
         }
 
         // 5. Daily Rental Rate validation (required, numeric, >= 50, <= 500,000)
@@ -698,11 +735,16 @@ final class RentalController extends Controller
         }
 
         // 8. Primary Cover Photo validation
+        $hasCoverInput = ($file !== null && Upload::present($file))
+            || !empty($input['photo_url_0'])
+            || !empty($input['cover_image'])
+            || !empty($input['existing_photo_0']);
+
         if ($vehicleId === null) {
             // Creation: Photo is strictly required
-            if ($file === null || !Upload::present($file)) {
+            if (!$hasCoverInput) {
                 $errors['image'] = 'A primary cover photo of the vehicle is required (JPG, PNG, or WebP up to 5 MB).';
-            } else {
+            } elseif ($file !== null && Upload::present($file)) {
                 $fileError = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
                 if ($fileError !== UPLOAD_ERR_OK) {
                     $errors['image'] = match ($fileError) {
@@ -802,9 +844,17 @@ final class RentalController extends Controller
             'description' => $this->input('description', ''),
             'specs' => $this->input('specs', []),
             'custom_spec' => $this->input('custom_spec', ''),
+            'photo_url_0' => $this->input('photo_url_0', ''),
+            'existing_photo_0' => $this->input('existing_photo_0', ''),
+            'cover_image' => $this->input('cover_image', ''),
         ];
 
-        $file = $_FILES['image'] ?? null;
+        $file = null;
+        if (isset($_FILES['photo_file_0']) && Upload::present($_FILES['photo_file_0'])) {
+            $file = $_FILES['photo_file_0'];
+        } elseif (isset($_FILES['image']) && Upload::present($_FILES['image'])) {
+            $file = $_FILES['image'];
+        }
         $validation = self::validateVehicleInputs($input, $file, $vehicleId);
         $errors = $validation['errors'];
 
@@ -822,10 +872,48 @@ final class RentalController extends Controller
     }
 
     /**
-     * Process multiple gallery uploads.
+     * Process multiple gallery uploads (both slot-based photo_file_1..3 and legacy gallery).
      */
     private function processGalleryUploads(int $vehicleId, int $userId): void
     {
+        $hasSlotInputs = false;
+        for ($i = 1; $i <= 3; $i++) {
+            if (isset($_FILES['photo_file_' . $i]) || isset($_POST['photo_url_' . $i]) || isset($_POST['existing_photo_' . $i]) || isset($_POST['photo_removed_' . $i])) {
+                $hasSlotInputs = true;
+                break;
+            }
+        }
+
+        if ($hasSlotInputs) {
+            $finalPhotos = [];
+            for ($i = 1; $i <= 3; $i++) {
+                $file = $_FILES['photo_file_' . $i] ?? null;
+                $url = trim((string) ($_POST['photo_url_' . $i] ?? ''));
+                $existing = trim((string) ($_POST['existing_photo_' . $i] ?? ''));
+                $removed = (string) ($_POST['photo_removed_' . $i] ?? '0') === '1';
+
+                if ($file !== null && Upload::present($file)) {
+                    try {
+                        $stored = Upload::store($file, 'vehicles/' . $userId, ['jpg', 'jpeg', 'png', 'webp']);
+                        $finalPhotos[] = $stored;
+                    } catch (RuntimeException $e) {
+                        // Skip invalid extra images gracefully
+                    }
+                } elseif ($url !== '') {
+                    $finalPhotos[] = $url;
+                } elseif (!$removed && $existing !== '') {
+                    $finalPhotos[] = $existing;
+                }
+            }
+
+            // Sync with vehicle_images table
+            \App\Core\Database::run('DELETE FROM vehicle_images WHERE vehicle_id = ?', [$vehicleId]);
+            foreach ($finalPhotos as $order => $path) {
+                Vehicle::addImage($vehicleId, $path, $order + 1);
+            }
+            return;
+        }
+
         if (empty($_FILES['gallery']['name']) || !is_array($_FILES['gallery']['name'])) {
             return;
         }

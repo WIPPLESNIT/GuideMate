@@ -61,12 +61,12 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
     <div class="container header-inner">
 <?php if ($isGuide): ?>
             <span class="brand brand-static">
-                <span class="brand-mark">◐</span>
+                <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span>
                 <span class="brand-text">Guide<strong>Mate</strong></span>
             </span>
         <?php else: ?>
             <a href="<?= e(url('/')) ?>" class="brand">
-                <span class="brand-mark">◐</span>
+                <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span>
                 <span class="brand-text">Guide<strong>Mate</strong></span>
             </a>
         <?php endif; ?>
@@ -142,11 +142,11 @@ $currentLocale = $_SESSION['_locale'] ?? 'en';
         <div>
             <?php if ($isGuide): ?>
                 <span class="brand brand-static">
-                    <span class="brand-mark">◐</span><span class="brand-text">Guide<strong>Mate</strong></span>
+                    <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span><span class="brand-text">Guide<strong>Mate</strong></span>
                 </span>
             <?php else: ?>
                 <a href="<?= e(url('/')) ?>" class="brand">
-                    <span class="brand-mark">◐</span><span class="brand-text">Guide<strong>Mate</strong></span>
+                    <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span><span class="brand-text">Guide<strong>Mate</strong></span>
                 </a>
             <?php endif; ?>
             <p class="footer-tag">Your local companion for discovering the best of <strong>Cebu</strong> — tours, guides and stays.</p>

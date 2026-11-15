@@ -26,7 +26,7 @@ $hasErrors = !empty($errors);
         <div class="auth-aside-inner">
             <div class="auth-aside-top">
                 <a href="<?= e(url('/')) ?>" class="brand brand-light a-rise" style="animation-delay:.05s;">
-                    <span class="brand-mark">◐</span><span class="brand-text">Guide<strong>Mate</strong></span>
+                    <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span><span class="brand-text">Guide<strong>Mate</strong></span>
                 </a>
                 <span class="auth-eyebrow a-rise" style="animation-delay:.15s;">🌴 Explore Cebu with GuideMate</span>
                 <h2 class="a-rise" style="animation-delay:.25s;">Your local companion for discovering Cebu.</h2>

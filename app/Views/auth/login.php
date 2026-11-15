@@ -4,7 +4,7 @@ $errors = $errors ?? [];
 $redirect = $redirect ?? '';
 ?>
 <a href="<?= e(url('/')) ?>" class="brand a-rise" style="margin-bottom:2rem;display:inline-flex;animation-delay:.05s;">
-    <span class="brand-mark">◐</span><span class="brand-text">Guide<strong>Mate</strong></span>
+    <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span><span class="brand-text">Guide<strong>Mate</strong></span>
 </a>
 <h1 class="a-rise" style="animation-delay:.12s;">Welcome back</h1>
 <p class="auth-switch a-rise" style="animation-delay:.18s;">New here? <a href="<?= e(url('/register')) ?>">Create an account</a></p>

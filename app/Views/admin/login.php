@@ -6,7 +6,7 @@ $errors = $errors ?? [];
     <div class="admin-auth-card">
         <div class="admin-badge">ADMIN PORTAL</div>
         <a href="<?= e(url('/')) ?>" class="brand brand-light" style="justify-content:center;margin-bottom:1rem;">
-            <span class="brand-mark">◐</span><span class="brand-text">Guide<strong>Mate</strong></span>
+            <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span><span class="brand-text">Guide<strong>Mate</strong></span>
         </a>
         <h1 style="color:#fff;text-align:center;font-size:1.5rem;">Administrator sign in</h1>
         <p style="text-align:center;color:rgba(255,255,255,.6);margin-bottom:1.8rem;">Restricted area — staff only.</p>

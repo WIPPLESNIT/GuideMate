@@ -3,7 +3,7 @@
 $errors = $errors ?? [];
 ?>
 <a href="<?= e(url('/login')) ?>" class="brand a-rise" style="margin-bottom:2rem;display:inline-flex;">
-    <span class="brand-mark">◐</span><span class="brand-text">Guide<strong>Mate</strong></span>
+    <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span><span class="brand-text">Guide<strong>Mate</strong></span>
 </a>
 <h1>Reset password</h1>
 <p class="auth-switch">Choose a new password for your account.</p>

@@ -336,7 +336,7 @@ $isCatFiltered = ($category !== 'all');
                         <td class="vehicle-actions-cell col-actions" data-label="Actions" style="text-align:right;vertical-align:middle;">
                             <div class="vehicle-actions-vertical">
                                 <?php if ($isPackage): ?>
-                                    <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical" style="font-weight:700;color:#059669;border-color:#10b981;">Inspect</a>
+                                    <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical btn-action-inspect-package" style="font-weight:700;color:#ffffff;border-color:rgba(255,255,255,0.4);">Inspect</a>
                                 <?php else: ?>
                                     <a href="<?= e(url('/admin/guide-listings/' . (int) $l['id'])) ?>" class="btn btn-ghost btn-sm btn-action-vertical">Inspect</a>
                                 <?php endif; ?>

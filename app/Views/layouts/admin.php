@@ -28,7 +28,7 @@ $adminAvatar = $adminUser ? img_src($adminUser['avatar'] ?? null, 'avatar' . ($a
 <header class="admin-header" id="siteHeader">
     <div class="admin-header-inner">
         <a href="<?= e(url('/admin')) ?>" class="brand brand-light">
-            <span class="brand-mark"></span><span class="brand-text">Guide<strong>Mate</strong></span>
+            <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span><span class="brand-text">Guide<strong>Mate</strong></span>
             <span class="admin-tag">Admin</span>
         </a>
         <div class="admin-user">

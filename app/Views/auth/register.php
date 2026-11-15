@@ -13,7 +13,7 @@ if (!User::isProviderRole((string) $selectedRole)) {
 $providerLabels = User::PROVIDER_LABELS;
 ?>
 <a href="<?= e(url('/')) ?>" class="brand a-rise" style="margin-bottom:1.5rem;display:inline-flex;animation-delay:.05s;">
-    <span class="brand-mark">◐</span><span class="brand-text">Guide<strong>Mate</strong></span>
+    <span class="brand-mark"><img src="<?= e(asset('img/logo-icon.png')) ?>" alt="GuideMate logo" class="brand-logo-img" width="32" height="32"></span><span class="brand-text">Guide<strong>Mate</strong></span>
 </a>
 <h1 class="a-rise" style="animation-delay:.12s;">Create your account</h1>
 <p class="auth-switch a-rise" style="animation-delay:.18s;">Already have one? <a href="<?= e(url('/login')) ?>">Log in</a></p>

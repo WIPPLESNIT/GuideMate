@@ -306,13 +306,8 @@ $commonSpecs = [
                     </div>
                     <div class="field-row">
                         <label for="vf_type">Vehicle Type <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
-                        <select class="input" id="vf_type" name="type" required>
-                            <option value="">-- Select Vehicle Category --</option>
-                            <?php foreach ($types as $t): ?>
-                                <option value="<?= e($t) ?>"><?= e($t) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <small class="hint">Helps tourists filter by transport preference.</small>
+                        <input type="text" class="input" id="vf_type" name="type" placeholder="e.g. Scooter, Sedan, SUV, Van, Motorcycle" required maxlength="50">
+                        <small class="hint">Enter the vehicle type (e.g. Scooter, Sedan, SUV, Van, Motorcycle).</small>
                         <div class="field-error" id="vf_type_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                     </div>
                 </div>
@@ -355,21 +350,86 @@ $commonSpecs = [
             <!-- 3. Vehicle Photos -->
             <div style="margin-bottom:1.5rem;">
                 <h3 style="margin-bottom:0.75rem;border-bottom:1px solid var(--border);padding-bottom:0.4rem;font-size:1.05rem;">3. Vehicle Photos</h3>
-                <div class="field-row">
-                    <label for="vf_image">Primary Cover Photo <span id="vf_image_req" class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
-                    <div id="vf_cover_preview_wrap" style="display:none;margin-bottom:0.75rem;align-items:center;gap:1rem;">
-                        <img id="vf_cover_preview_img" src="" alt="Current Cover" style="width:120px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);">
-                        <div class="hint" style="font-size:0.82rem;">Current cover photo. Choose a new file below if you wish to replace it.</div>
-                    </div>
-                    <input type="file" class="input" id="vf_image" name="image" accept="image/jpeg,image/png,image/webp">
-                    <small class="hint">Clear exterior photo showing vehicle condition. JPG, PNG or WebP up to 5 MB.</small>
-                    <div class="field-error" id="vf_image_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
-                </div>
+                <div class="field-row" style="background:#f8fafc;padding:0.85rem 1rem;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:0.5rem;">
+                    <label style="font-weight:700;font-size:0.92rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;color:var(--text, #0f172a);">
+                        <span>📸 Vehicle Photos (Upload up to 4 photos)</span>
+                        <span style="font-size:0.75rem;font-weight:600;background:#e0f2fe;color:#0284c7;padding:2px 8px;border-radius:12px;">Max 4 Photos</span>
+                    </label>
+                    <span class="hint" style="display:block;margin-bottom:0.75rem;font-size:0.8rem;color:#64748b;">
+                        Upload high-quality JPG, PNG, or WEBP images (up to 5MB each) or paste direct photo URLs. Photo 1 will be used as the primary cover photo.
+                    </span>
 
-                <div class="field-row" style="margin-top:0.75rem;">
-                    <label for="vf_gallery">Additional Photos <small class="hint">(Optional - up to 4 images)</small></label>
-                    <input type="file" class="input" id="vf_gallery" name="gallery[]" accept="image/jpeg,image/png,image/webp" multiple>
-                    <small class="hint">Interior, dashboard, odometer, or extra angle views.</small>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:0.75rem;">
+                        <!-- Slot 0: Primary Cover -->
+                        <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <strong style="font-size:0.8rem;color:#0f172a;">Photo 1 (Cover) <span id="vf_image_req" class="req" style="color:var(--red-600);font-weight:bold;">*</span></strong>
+                                <span style="font-size:0.68rem;background:#dcfce7;color:#166534;font-weight:700;padding:1px 6px;border-radius:4px;">Cover</span>
+                            </div>
+                            <div id="vf_preview_wrap_0" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                <img id="vf_preview_img_0" src="" alt="Photo 1" style="width:100%;height:100%;object-fit:cover;display:none;">
+                                <span id="vf_placeholder_0" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                                <button type="button" id="vf_remove_btn_0" onclick="removeVehiclePhoto(0)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                            </div>
+                            <input type="file" name="photo_file_0" id="vf_file_0" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleVehicleFileChange(0, this)">
+                            <input type="text" name="photo_url_0" id="vf_url_0" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleVehicleUrlChange(0, this.value)">
+                            <input type="hidden" name="existing_photo_0" id="vf_existing_0" value="">
+                            <input type="hidden" name="photo_removed_0" id="vf_removed_0" value="0">
+                            <input type="hidden" name="cover_image" id="vf_cover_image" value="">
+                        </div>
+
+                        <!-- Slot 1: Additional Photo 2 -->
+                        <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <strong style="font-size:0.8rem;color:#0f172a;">Photo 2 (Gallery)</strong>
+                                <span style="font-size:0.68rem;background:#f1f5f9;color:#64748b;font-weight:600;padding:1px 6px;border-radius:4px;">Optional</span>
+                            </div>
+                            <div id="vf_preview_wrap_1" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                <img id="vf_preview_img_1" src="" alt="Photo 2" style="width:100%;height:100%;object-fit:cover;display:none;">
+                                <span id="vf_placeholder_1" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                                <button type="button" id="vf_remove_btn_1" onclick="removeVehiclePhoto(1)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                            </div>
+                            <input type="file" name="photo_file_1" id="vf_file_1" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleVehicleFileChange(1, this)">
+                            <input type="text" name="photo_url_1" id="vf_url_1" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleVehicleUrlChange(1, this.value)">
+                            <input type="hidden" name="existing_photo_1" id="vf_existing_1" value="">
+                            <input type="hidden" name="photo_removed_1" id="vf_removed_1" value="0">
+                        </div>
+
+                        <!-- Slot 2: Additional Photo 3 -->
+                        <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <strong style="font-size:0.8rem;color:#0f172a;">Photo 3 (Gallery)</strong>
+                                <span style="font-size:0.68rem;background:#f1f5f9;color:#64748b;font-weight:600;padding:1px 6px;border-radius:4px;">Optional</span>
+                            </div>
+                            <div id="vf_preview_wrap_2" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                <img id="vf_preview_img_2" src="" alt="Photo 3" style="width:100%;height:100%;object-fit:cover;display:none;">
+                                <span id="vf_placeholder_2" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                                <button type="button" id="vf_remove_btn_2" onclick="removeVehiclePhoto(2)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                            </div>
+                            <input type="file" name="photo_file_2" id="vf_file_2" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleVehicleFileChange(2, this)">
+                            <input type="text" name="photo_url_2" id="vf_url_2" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleVehicleUrlChange(2, this.value)">
+                            <input type="hidden" name="existing_photo_2" id="vf_existing_2" value="">
+                            <input type="hidden" name="photo_removed_2" id="vf_removed_2" value="0">
+                        </div>
+
+                        <!-- Slot 3: Additional Photo 4 -->
+                        <div style="border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <strong style="font-size:0.8rem;color:#0f172a;">Photo 4 (Gallery)</strong>
+                                <span style="font-size:0.68rem;background:#f1f5f9;color:#64748b;font-weight:600;padding:1px 6px;border-radius:4px;">Optional</span>
+                            </div>
+                            <div id="vf_preview_wrap_3" style="position:relative;height:100px;background:#f1f5f9;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid #e2e8f0;">
+                                <img id="vf_preview_img_3" src="" alt="Photo 4" style="width:100%;height:100%;object-fit:cover;display:none;">
+                                <span id="vf_placeholder_3" style="font-size:0.75rem;color:#94a3b8;text-align:center;padding:4px;">📷 No photo uploaded</span>
+                                <button type="button" id="vf_remove_btn_3" onclick="removeVehiclePhoto(3)" style="display:none;position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;align-items:center;justify-content:center;" title="Remove Photo">&times;</button>
+                            </div>
+                            <input type="file" name="photo_file_3" id="vf_file_3" class="file-input" accept=".jpg,.jpeg,.png,.webp" style="font-size:0.75rem;width:100%;" onchange="handleVehicleFileChange(3, this)">
+                            <input type="text" name="photo_url_3" id="vf_url_3" class="input" placeholder="…or photo URL" style="font-size:0.78rem;padding:0.35rem 0.5rem;" oninput="handleVehicleUrlChange(3, this.value)">
+                            <input type="hidden" name="existing_photo_3" id="vf_existing_3" value="">
+                            <input type="hidden" name="photo_removed_3" id="vf_removed_3" value="0">
+                        </div>
+                    </div>
+                    <div class="field-error" id="vf_image_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.5rem;font-weight:600;"></div>
                 </div>
             </div>
 
@@ -432,10 +492,7 @@ $commonSpecs = [
     var priceIn = document.getElementById('vf_price');
     var locationIn = document.getElementById('vf_location');
     var addressIn = document.getElementById('vf_address');
-    var imageIn = document.getElementById('vf_image');
     var imageReq = document.getElementById('vf_image_req');
-    var coverPreviewWrap = document.getElementById('vf_cover_preview_wrap');
-    var coverPreviewImg = document.getElementById('vf_cover_preview_img');
     var customSpecIn = document.getElementById('vf_custom_spec');
     var descIn = document.getElementById('vf_description');
     var descCounter = document.getElementById('vf_desc_counter');
@@ -445,6 +502,109 @@ $commonSpecs = [
     var commonSpecs = <?= json_encode($commonSpecs) ?>;
     var allVehicles = <?= json_encode($vehicles) ?>;
     var validTypes = <?= json_encode($types) ?>;
+
+    function resolveImageUrl(path) {
+        if (!path) return '';
+        path = String(path).trim();
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:image/') || path.startsWith('data:')) {
+            return path;
+        }
+        var base = (window.APP_BASE_URL !== undefined ? window.APP_BASE_URL : <?= json_encode(rtrim(url('/'), '/')) ?>) || '';
+        if (base && (path === base || path.startsWith(base + '/'))) {
+            return path.startsWith('/') ? path : '/' + path;
+        }
+        var clean = path.replace(/^\/+/, '');
+        return (base ? base + '/' : '/') + clean;
+    }
+
+    window.handleVehicleFileChange = function(slot, input) {
+        if (!input.files || !input.files[0]) return;
+        var file = input.files[0];
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            setVehicleSlotPreview(slot, e.target.result);
+            var remIn = document.getElementById('vf_removed_' + slot);
+            if (remIn) remIn.value = '0';
+            clearFieldError('image');
+        };
+        reader.readAsDataURL(file);
+    };
+
+    window.handleVehicleUrlChange = function(slot, val) {
+        val = (val || '').trim();
+        var remIn = document.getElementById('vf_removed_' + slot);
+        if (val) {
+            setVehicleSlotPreview(slot, val);
+            if (remIn) remIn.value = '0';
+            if (slot === 0) {
+                var cov = document.getElementById('vf_cover_image');
+                if (cov) cov.value = val;
+            }
+            clearFieldError('image');
+        } else {
+            var exist = document.getElementById('vf_existing_' + slot);
+            if (exist && exist.value) {
+                setVehicleSlotPreview(slot, exist.value);
+            } else {
+                clearVehicleSlotPreview(slot);
+            }
+        }
+    };
+
+    window.removeVehiclePhoto = function(slot) {
+        var fileIn = document.getElementById('vf_file_' + slot);
+        if (fileIn) fileIn.value = '';
+        var urlIn = document.getElementById('vf_url_' + slot);
+        if (urlIn) urlIn.value = '';
+        var existingIn = document.getElementById('vf_existing_' + slot);
+        if (existingIn) existingIn.value = '';
+        var remIn = document.getElementById('vf_removed_' + slot);
+        if (remIn) remIn.value = '1';
+        if (slot === 0) {
+            var cov = document.getElementById('vf_cover_image');
+            if (cov) cov.value = '';
+        }
+        clearVehicleSlotPreview(slot);
+    };
+
+    function setVehicleSlotPreview(slot, src) {
+        var img = document.getElementById('vf_preview_img_' + slot);
+        var ph = document.getElementById('vf_placeholder_' + slot);
+        var btn = document.getElementById('vf_remove_btn_' + slot);
+        if (img && ph && btn) {
+            var resolved = resolveImageUrl(src);
+            img.onload = function() {
+                img.style.display = 'block';
+                ph.style.display = 'none';
+                btn.style.display = 'flex';
+            };
+            img.onerror = function() {
+                img.style.display = 'none';
+                ph.textContent = '⚠️ Image not found';
+                ph.style.display = 'block';
+                btn.style.display = 'flex';
+            };
+            img.src = resolved;
+            img.style.display = 'block';
+            ph.style.display = 'none';
+            btn.style.display = 'flex';
+        }
+    }
+
+    function clearVehicleSlotPreview(slot) {
+        var img = document.getElementById('vf_preview_img_' + slot);
+        var ph = document.getElementById('vf_placeholder_' + slot);
+        var btn = document.getElementById('vf_remove_btn_' + slot);
+        if (img && ph && btn) {
+            img.onload = null;
+            img.onerror = null;
+            img.src = '';
+            img.style.display = 'none';
+            ph.textContent = '📷 No photo uploaded';
+            ph.style.display = 'block';
+            btn.style.display = 'none';
+        }
+    }
 
     var fieldErrorIds = {
         make: 'vf_make_error',
@@ -469,7 +629,7 @@ $commonSpecs = [
         price_per_day: priceIn,
         location: locationIn,
         address: addressIn,
-        image: imageIn,
+        image: document.getElementById('vf_file_0'),
         custom_spec: customSpecIn,
         description: descIn
     };
@@ -547,22 +707,6 @@ $commonSpecs = [
         }
     });
 
-    if (imageIn) {
-        imageIn.addEventListener('change', function () {
-            clearFieldError('image');
-            if (imageIn.files && imageIn.files[0]) {
-                var file = imageIn.files[0];
-                var ext = file.name.split('.').pop().toLowerCase();
-                var allowed = ['jpg', 'jpeg', 'png', 'webp'];
-                if (allowed.indexOf(ext) === -1) {
-                    setFieldError('image', 'Invalid image format (.' + ext + '). Only JPG, PNG, and WebP are allowed.');
-                } else if (file.size > 5 * 1024 * 1024) {
-                    setFieldError('image', 'Cover photo must be 5 MB or smaller (selected file is ' + (file.size / (1024 * 1024)).toFixed(1) + ' MB).');
-                }
-            }
-        });
-    }
-
     // Comprehensive client-side form validation
     function validateClientForm() {
         clearAllErrors();
@@ -603,10 +747,13 @@ $commonSpecs = [
 
         var typeVal = (typeIn.value || '').trim();
         if (typeVal === '') {
-            errors.type = 'Please select a vehicle type category.';
+            errors.type = 'Vehicle type is required (e.g. Scooter, Sedan, SUV, Van).';
             if (!firstInvalidInput) firstInvalidInput = typeIn;
-        } else if (validTypes.indexOf(typeVal) === -1) {
-            errors.type = 'Please select a valid vehicle type category.';
+        } else if (typeVal.length < 2) {
+            errors.type = 'Vehicle type must be at least 2 characters.';
+            if (!firstInvalidInput) firstInvalidInput = typeIn;
+        } else if (typeVal.length > 50) {
+            errors.type = 'Vehicle type must not exceed 50 characters.';
             if (!firstInvalidInput) firstInvalidInput = typeIn;
         }
 
@@ -638,24 +785,33 @@ $commonSpecs = [
             if (!firstInvalidInput) firstInvalidInput = locationIn;
         }
 
-        // Image check
-        var isEdit = vehicleIdIn.value && vehicleIdIn.value.trim() !== '';
-        if (!isEdit) {
-            if (!imageIn.files || imageIn.files.length === 0) {
-                errors.image = 'A primary cover photo of the vehicle is required (JPG, PNG, or WebP up to 5 MB).';
-                if (!firstInvalidInput) firstInvalidInput = imageIn;
-            }
+        // Image check: Slot 0 (Cover) is required
+        var file0 = document.getElementById('vf_file_0');
+        var url0 = document.getElementById('vf_url_0');
+        var exist0 = document.getElementById('vf_existing_0');
+        var hasCover = (file0 && file0.files && file0.files.length > 0)
+            || (url0 && url0.value && url0.value.trim() !== '')
+            || (exist0 && exist0.value && exist0.value.trim() !== '');
+
+        if (!hasCover) {
+            errors.image = 'A primary cover photo of the vehicle is required (JPG, PNG, or WebP up to 5 MB).';
+            if (!firstInvalidInput) firstInvalidInput = (file0 || url0);
         }
-        if (imageIn.files && imageIn.files[0]) {
-            var file = imageIn.files[0];
-            var ext = file.name.split('.').pop().toLowerCase();
-            var allowed = ['jpg', 'jpeg', 'png', 'webp'];
-            if (allowed.indexOf(ext) === -1) {
-                errors.image = 'Invalid image format (.' + ext + '). Only JPG, PNG, and WebP are allowed.';
-                if (!firstInvalidInput) firstInvalidInput = imageIn;
-            } else if (file.size > 5 * 1024 * 1024) {
-                errors.image = 'Cover photo must be 5 MB or smaller.';
-                if (!firstInvalidInput) firstInvalidInput = imageIn;
+
+        // Validate file extensions and sizes for all 4 slots
+        for (var i = 0; i < 4; i++) {
+            var fIn = document.getElementById('vf_file_' + i);
+            if (fIn && fIn.files && fIn.files[0]) {
+                var fObj = fIn.files[0];
+                var ext = fObj.name.split('.').pop().toLowerCase();
+                var allowed = ['jpg', 'jpeg', 'png', 'webp'];
+                if (allowed.indexOf(ext) === -1) {
+                    errors.image = 'Invalid image format for Photo ' + (i + 1) + ' (.' + ext + '). Only JPG, PNG, and WebP are allowed.';
+                    if (!firstInvalidInput) firstInvalidInput = fIn;
+                } else if (fObj.size > 5 * 1024 * 1024) {
+                    errors.image = 'Photo ' + (i + 1) + ' must be 5 MB or smaller.';
+                    if (!firstInvalidInput) firstInvalidInput = fIn;
+                }
             }
         }
 
@@ -701,12 +857,17 @@ $commonSpecs = [
         modalSubtitle.textContent = 'Provide complete and accurate details about your rental unit.';
         submitBtn.textContent = 'Submit for Approval';
         submitBtn.onclick = null;
-        imageReq.style.display = '';
-        imageIn.required = true;
-        coverPreviewWrap.style.display = 'none';
-        coverPreviewImg.src = '';
+        if (imageReq) imageReq.style.display = '';
         rejectedBanner.style.display = 'none';
         approvedBanner.style.display = 'none';
+
+        for (var i = 0; i < 4; i++) {
+            removeVehiclePhoto(i);
+            var remIn = document.getElementById('vf_removed_' + i);
+            if (remIn) remIn.value = '0';
+            var existingIn = document.getElementById('vf_existing_' + i);
+            if (existingIn) existingIn.value = '';
+        }
 
         var checkboxes = document.querySelectorAll('.vf_spec_checkbox');
         checkboxes.forEach(function (cb) { cb.checked = false; });
@@ -739,16 +900,44 @@ $commonSpecs = [
         descIn.value = vehicle.description || '';
         updateDescCounter();
 
-        // Photos
-        imageReq.style.display = 'none';
-        imageIn.required = false;
+        // Photos: Slot 0 = Primary cover, Slots 1-3 = Gallery photos
+        if (imageReq) imageReq.style.display = 'none';
+        var photos = [];
         if (vehicle.image) {
-            var rawImg = vehicle.image;
-            var cleanSrc = rawImg.indexOf('/') === 0 ? rawImg.substring(1) : rawImg;
-            coverPreviewImg.src = '<?= e(url("/")) ?>' + cleanSrc;
-            coverPreviewWrap.style.display = 'flex';
+            photos.push(vehicle.image);
         } else {
-            coverPreviewWrap.style.display = 'none';
+            photos.push('');
+        }
+        if (Array.isArray(vehicle.gallery)) {
+            vehicle.gallery.forEach(function (g) {
+                if (!g) return;
+                var p = (typeof g === 'object' && g.image_path) ? g.image_path : String(g);
+                if (p) photos.push(p);
+            });
+        }
+
+        for (var i = 0; i < 4; i++) {
+            var fileIn = document.getElementById('vf_file_' + i);
+            if (fileIn) fileIn.value = '';
+            var urlIn = document.getElementById('vf_url_' + i);
+            var existingIn = document.getElementById('vf_existing_' + i);
+            var remIn = document.getElementById('vf_removed_' + i);
+            if (remIn) remIn.value = '0';
+            var rawPhoto = photos[i] || '';
+            if (existingIn) existingIn.value = rawPhoto;
+            if (rawPhoto) {
+                if (urlIn) {
+                    urlIn.value = (rawPhoto.startsWith('http://') || rawPhoto.startsWith('https://')) ? rawPhoto : '';
+                }
+                setVehicleSlotPreview(i, rawPhoto);
+                if (i === 0) {
+                    var covIn = document.getElementById('vf_cover_image');
+                    if (covIn) covIn.value = rawPhoto;
+                }
+            } else {
+                if (urlIn) urlIn.value = '';
+                clearVehicleSlotPreview(i);
+            }
         }
 
         // Specs
