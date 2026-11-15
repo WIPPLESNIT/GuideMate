@@ -344,7 +344,24 @@ foreach ($users as $u) {
                         <?php else: ?>
                             <span class="pill pill-cancelled" <?= !empty($u['suspension_reason']) ? 'title="Reason: ' . e($u['suspension_reason']) . '" style="cursor:help;"' : '' ?>>Suspended</span>
                             <?php if (isset($pendingAppeals[(int) $u['id']])): ?>
-                                <span class="pill pill-pending" style="margin-top:3px;display:inline-block;cursor:pointer;" title="Appeal: <?= e($pendingAppeals[(int) $u['id']]['appeal_message']) ?>">Appeal Pending</span>
+                                <?php $appeal = $pendingAppeals[(int) $u['id']]; ?>
+                                <span class="pill pill-pending btn-view-appeal"
+                                      style="margin-top:3px;display:inline-block;cursor:pointer;"
+                                      title="Click to review appeal: <?= e($appeal['appeal_message']) ?>"
+                                      data-user-id="<?= (int) $u['id'] ?>"
+                                      data-user-name="<?= e($u['name']) ?>"
+                                      data-user-email="<?= e($u['email']) ?>"
+                                      data-user-role="<?= e($roleLabels[$role] ?? ucfirst($role)) ?>"
+                                      data-user-avatar="<?= e(img_src($u['avatar'] ?? null, 'avatar' . $u['id'])) ?>"
+                                      data-suspension-reason="<?= e($u['suspension_reason'] ?? $appeal['suspension_reason'] ?? 'Violation of Terms of Service') ?>"
+                                      data-suspended-at="<?= !empty($u['suspended_at']) ? e(date('M j, Y g:i A', strtotime($u['suspended_at']))) : '' ?>"
+                                      data-appeal-id="<?= (int) $appeal['id'] ?>"
+                                      data-appeal-message="<?= e($appeal['appeal_message']) ?>"
+                                      data-appeal-date="<?= e(date('M j, Y g:i A', strtotime($appeal['created_at']))) ?>"
+                                      data-unsuspend-url="<?= e(url('/admin/users/' . $u['id'] . '/unsuspend')) ?>"
+                                      data-reject-url="<?= e(url('/admin/users/' . $u['id'] . '/reject-appeal')) ?>">
+                                    Appeal Pending
+                                </span>
                             <?php endif; ?>
                         <?php endif; ?>
                     </td>
@@ -389,6 +406,30 @@ foreach ($users as $u) {
                                     <span class="action-item-label">Edit User</span>
                                 </button>
                                 <a href="<?= e(url('/admin/users/' . $u['id'] . '/edit')) ?>" style="display:none;" aria-hidden="true">Edit User</a>
+
+                                <!-- Review Appeal (appears only when user status is Appeal Pending) -->
+                                <?php if (isset($pendingAppeals[(int) $u['id']])): ?>
+                                    <?php $appeal = $pendingAppeals[(int) $u['id']]; ?>
+                                    <button type="button"
+                                            class="user-action-item user-action-appeal btn-view-appeal"
+                                            role="menuitem"
+                                            title="Review submitted appeal from <?= e($u['name']) ?>"
+                                            data-user-id="<?= (int) $u['id'] ?>"
+                                            data-user-name="<?= e($u['name']) ?>"
+                                            data-user-email="<?= e($u['email']) ?>"
+                                            data-user-role="<?= e($roleLabels[$role] ?? ucfirst($role)) ?>"
+                                            data-user-avatar="<?= e(img_src($u['avatar'] ?? null, 'avatar' . $u['id'])) ?>"
+                                            data-suspension-reason="<?= e($u['suspension_reason'] ?? $appeal['suspension_reason'] ?? 'Violation of Terms of Service') ?>"
+                                            data-suspended-at="<?= !empty($u['suspended_at']) ? e(date('M j, Y g:i A', strtotime($u['suspended_at']))) : '' ?>"
+                                            data-appeal-id="<?= (int) $appeal['id'] ?>"
+                                            data-appeal-message="<?= e($appeal['appeal_message']) ?>"
+                                            data-appeal-date="<?= e(date('M j, Y g:i A', strtotime($appeal['created_at']))) ?>"
+                                            data-unsuspend-url="<?= e(url('/admin/users/' . $u['id'] . '/unsuspend')) ?>"
+                                            data-reject-url="<?= e(url('/admin/users/' . $u['id'] . '/reject-appeal')) ?>">
+                                        <span class="action-item-icon" aria-hidden="true"><?= admin_icon('eye', 15) ?></span>
+                                        <span class="action-item-label">Review Appeal</span>
+                                    </button>
+                                <?php endif; ?>
 
                                 <!-- Documents (for service providers) -->
                                 <?php if (\App\Models\User::isProviderRole($role)): ?>
@@ -560,10 +601,11 @@ foreach ($users as $u) {
 
                 <div class="field-row" style="margin-bottom:1rem;">
                     <label for="modal_user_password" style="display:block;font-size:0.83rem;font-weight:600;color:#cbd5e1;margin-bottom:0.35rem;">Password <span style="color:#ef4444;">*</span></label>
-                    <div style="position:relative;">
-                        <input class="input" type="password" id="modal_user_password" name="password" placeholder="Minimum 8 characters" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 2.5rem 0.6rem 0.85rem;font-size:0.88rem;">
-                        <button type="button" id="toggleModalPassword" aria-label="Toggle password visibility" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px;font-size:0.95rem;">
-                            👁
+                    <div class="input-wrap" style="position:relative;">
+                        <input class="input has-toggle" type="password" id="modal_user_password" name="password" placeholder="Minimum 8 characters" required style="width:100%;box-sizing:border-box;background:#0d1e24;color:#ffffff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.6rem 2.5rem 0.6rem 0.85rem;font-size:0.88rem;">
+                        <button type="button" class="toggle-password" id="toggleModalPassword" aria-label="Show password" title="Show password" tabindex="0" style="position:absolute;right:10px;top:50%;transform:translateY(-50%) !important;background:none;border:none;color:#94a3b8;cursor:pointer;padding:6px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;line-height:1;z-index:2;">
+                            <svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            <svg class="eye-closed" style="display:none;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
                         </button>
                     </div>
                 </div>
@@ -740,6 +782,85 @@ foreach ($users as $u) {
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Review Appeal Modal -->
+<div class="gm-modal" id="reviewAppealModal" hidden aria-hidden="true">
+    <div class="gm-modal-backdrop" data-close-appeal-modal></div>
+    <div class="gm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reviewAppealModalTitle" style="max-width:560px;background:#11252c;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,0.7),0 0 0 1px rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);overflow:hidden;">
+        <div class="gm-modal-head" style="padding:1.1rem 1.4rem;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.02);">
+            <div style="display:flex;align-items:center;gap:.75rem;">
+                <div style="width:36px;height:36px;border-radius:8px;background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.3);display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex-shrink:0;">
+                    ⚖️
+                </div>
+                <div>
+                    <h3 id="reviewAppealModalTitle" style="margin:0;color:#ffffff;font-size:1.12rem;font-weight:700;">Review Account Appeal</h3>
+                    <small style="color:#94a3b8;font-size:.8rem;margin-top:2px;display:block;">Review appeal statement and take administrative action</small>
+                </div>
+            </div>
+            <button type="button" class="gm-modal-close" data-close-appeal-modal aria-label="Close" style="color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;background:none;border:none;padding:0 4px;line-height:1;">&times;</button>
+        </div>
+
+        <div class="gm-modal-body" style="padding:1.25rem 1.4rem;max-height:calc(88vh - 120px);overflow-y:auto;">
+            <!-- User Summary Card -->
+            <div style="display:flex;align-items:center;gap:0.85rem;background:#0d1e24;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.85rem 1rem;margin-bottom:1.1rem;">
+                <img id="appealUserAvatar" src="" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                        <span id="appealUserName" style="font-weight:700;color:#ffffff;font-size:0.95rem;"></span>
+                        <span id="appealUserRole" class="pill pill-pending" style="font-size:0.75rem;padding:2px 8px;"></span>
+                        <span class="pill pill-cancelled" style="font-size:0.75rem;padding:2px 8px;">Suspended</span>
+                        <span class="pill pill-pending" style="font-size:0.75rem;padding:2px 8px;">Appeal Pending</span>
+                    </div>
+                    <div id="appealUserEmail" style="color:#94a3b8;font-size:0.83rem;margin-top:3px;word-break:break-all;"></div>
+                </div>
+            </div>
+
+            <!-- Suspension Reason Box -->
+            <div id="appealSuspensionBox" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:0.75rem 0.95rem;margin-bottom:1.1rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+                    <strong style="color:#fca5a5;font-size:0.82rem;text-transform:uppercase;letter-spacing:0.03em;">Original Suspension Reason</strong>
+                    <span id="appealSuspendedDate" style="color:rgba(255,255,255,0.45);font-size:0.78rem;"></span>
+                </div>
+                <div id="appealSuspensionReason" style="color:#ffffff;font-size:0.88rem;line-height:1.45;"></div>
+            </div>
+
+            <!-- User's Appeal Statement -->
+            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:0.9rem 1rem;margin-bottom:1.1rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.45rem;">
+                    <strong style="color:#fbbf24;font-size:0.82rem;text-transform:uppercase;letter-spacing:0.03em;">User's Appeal Explanation</strong>
+                    <span id="appealSubmittedDate" style="color:rgba(255,255,255,0.5);font-size:0.78rem;"></span>
+                </div>
+                <p id="appealUserMessage" style="margin:0;color:#fef3c7;font-size:0.9rem;line-height:1.55;white-space:pre-wrap;word-break:break-word;"></p>
+            </div>
+
+            <p class="hint" style="font-size:0.82rem;color:#94a3b8;margin:0;line-height:1.4;">
+                Reactivating the account immediately restores login access and marks this appeal as approved. Rejecting the appeal keeps the account suspended.
+            </p>
+        </div>
+
+        <div class="gm-modal-foot" style="border-top:1px solid rgba(255,255,255,0.08);padding:0.9rem 1.4rem;display:flex;justify-content:space-between;align-items:center;gap:0.75rem;margin:0;background:rgba(255,255,255,0.02);flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost" data-close-appeal-modal style="background:none;border:1px solid rgba(255,255,255,0.2);color:#cbd5e1;padding:0.55rem 1rem;border-radius:8px;font-size:0.85rem;cursor:pointer;">Close</button>
+            
+            <div style="display:flex;align-items:center;gap:0.6rem;">
+                <!-- Reject Form -->
+                <form id="appealRejectForm" method="post" action="" onsubmit="return confirm('Reject this user\'s appeal? The user will remain suspended.');" style="margin:0;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn-ghost" style="border-color:rgba(239,68,68,0.35);color:#f87171;background:rgba(239,68,68,0.08);padding:0.55rem 0.95rem;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">
+                        Reject Appeal
+                    </button>
+                </form>
+
+                <!-- Reactivate Form -->
+                <form id="appealUnsuspendForm" method="post" action="" onsubmit="return confirm('Approve appeal and reactivate this user account? The user will immediately be able to log in again.');" style="margin:0;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn-primary" style="background:#059669;color:#ffffff;border:none;padding:0.55rem 1.15rem;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:0.4rem;">
+                        <span>✓</span> Approve &amp; Reactivate
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1418,6 +1539,78 @@ foreach ($users as $u) {
         });
     }
 
+    // Review Appeal Modal Handling
+    var appealModal = document.getElementById('reviewAppealModal');
+    var appealUserName = document.getElementById('appealUserName');
+    var appealUserEmail = document.getElementById('appealUserEmail');
+    var appealUserRole = document.getElementById('appealUserRole');
+    var appealUserAvatar = document.getElementById('appealUserAvatar');
+    var appealSuspensionReason = document.getElementById('appealSuspensionReason');
+    var appealSuspendedDate = document.getElementById('appealSuspendedDate');
+    var appealSubmittedDate = document.getElementById('appealSubmittedDate');
+    var appealUserMessage = document.getElementById('appealUserMessage');
+    var appealUnsuspendForm = document.getElementById('appealUnsuspendForm');
+    var appealRejectForm = document.getElementById('appealRejectForm');
+
+    function openAppealModal(data) {
+        closeUserMenu();
+        if (!appealModal) return;
+
+        if (appealUserName) appealUserName.textContent = data.userName || '';
+        if (appealUserEmail) appealUserEmail.textContent = data.userEmail || '';
+        if (appealUserRole) appealUserRole.textContent = data.userRole || '';
+        if (appealUserAvatar) appealUserAvatar.src = data.userAvatar || '';
+        if (appealSuspensionReason) appealSuspensionReason.textContent = data.suspensionReason || 'Violation of Terms of Service';
+        if (appealSuspendedDate) appealSuspendedDate.textContent = data.suspendedAt ? ('Suspended on ' + data.suspendedAt) : '';
+        if (appealSubmittedDate) appealSubmittedDate.textContent = data.appealDate ? ('Submitted on ' + data.appealDate) : '';
+        if (appealUserMessage) appealUserMessage.textContent = data.appealMessage || '';
+
+        if (appealUnsuspendForm) appealUnsuspendForm.action = data.unsuspendUrl || '';
+        if (appealRejectForm) appealRejectForm.action = data.rejectUrl || '';
+
+        appealModal.hidden = false;
+        appealModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeAppealModal() {
+        if (!appealModal) return;
+        appealModal.hidden = true;
+        appealModal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.querySelectorAll('.btn-view-appeal').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openAppealModal({
+                userId: btn.getAttribute('data-user-id'),
+                userName: btn.getAttribute('data-user-name'),
+                userEmail: btn.getAttribute('data-user-email'),
+                userRole: btn.getAttribute('data-user-role'),
+                userAvatar: btn.getAttribute('data-user-avatar'),
+                suspensionReason: btn.getAttribute('data-suspension-reason'),
+                suspendedAt: btn.getAttribute('data-suspended-at'),
+                appealId: btn.getAttribute('data-appeal-id'),
+                appealMessage: btn.getAttribute('data-appeal-message'),
+                appealDate: btn.getAttribute('data-appeal-date'),
+                unsuspendUrl: btn.getAttribute('data-unsuspend-url'),
+                rejectUrl: btn.getAttribute('data-reject-url')
+            });
+        });
+    });
+
+    if (appealModal) {
+        appealModal.querySelectorAll('[data-close-appeal-modal]').forEach(function (el) {
+            el.addEventListener('click', closeAppealModal);
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !appealModal.hidden) {
+                closeAppealModal();
+            }
+        });
+    }
+
     // Add User Modal Handling
     var openAddUserBtn = document.getElementById('openAddUserModalBtn');
     var addUserModal = document.getElementById('addUserModal');
@@ -1430,6 +1623,18 @@ foreach ($users as $u) {
     function openAddUserModal() {
         if (!addUserModal) return;
         if (addUserForm) addUserForm.reset();
+        if (modalUserPassword) {
+            modalUserPassword.type = 'password';
+            modalUserPassword.setAttribute('type', 'password');
+        }
+        if (toggleModalPasswordBtn) {
+            var eyeOpen = toggleModalPasswordBtn.querySelector('.eye-open');
+            var eyeClosed = toggleModalPasswordBtn.querySelector('.eye-closed');
+            if (eyeOpen) eyeOpen.style.display = 'block';
+            if (eyeClosed) eyeClosed.style.display = 'none';
+            toggleModalPasswordBtn.setAttribute('aria-label', 'Show password');
+            toggleModalPasswordBtn.setAttribute('title', 'Show password');
+        }
         if (addUserErrors) {
             addUserErrors.style.display = 'none';
             addUserErrors.innerHTML = '';
@@ -1448,6 +1653,18 @@ foreach ($users as $u) {
         if (!addUserModal) return;
         addUserModal.hidden = true;
         addUserModal.setAttribute('aria-hidden', 'true');
+        if (modalUserPassword) {
+            modalUserPassword.type = 'password';
+            modalUserPassword.setAttribute('type', 'password');
+        }
+        if (toggleModalPasswordBtn) {
+            var eyeOpen = toggleModalPasswordBtn.querySelector('.eye-open');
+            var eyeClosed = toggleModalPasswordBtn.querySelector('.eye-closed');
+            if (eyeOpen) eyeOpen.style.display = 'block';
+            if (eyeClosed) eyeClosed.style.display = 'none';
+            toggleModalPasswordBtn.setAttribute('aria-label', 'Show password');
+            toggleModalPasswordBtn.setAttribute('title', 'Show password');
+        }
     }
 
     if (openAddUserBtn) {
@@ -1469,16 +1686,70 @@ foreach ($users as $u) {
         });
     }
 
-    if (toggleModalPasswordBtn && modalUserPassword) {
-        toggleModalPasswordBtn.addEventListener('click', function () {
-            if (modalUserPassword.type === 'password') {
-                modalUserPassword.type = 'text';
-                toggleModalPasswordBtn.textContent = '🙈';
-            } else {
-                modalUserPassword.type = 'password';
-                toggleModalPasswordBtn.textContent = '👁';
-            }
-        });
+    // Initialize password toggle for modal using the unified system toggle handler
+    if (typeof window.initPasswordToggles === 'function') {
+        window.initPasswordToggles(addUserModal);
+    } else if (addUserModal) {
+        (window.initPasswordToggles = function (root) {
+            var container = root || document;
+            container.querySelectorAll('.toggle-password').forEach(function (btn) {
+                if (btn.dataset.toggleBound === '1') { return; }
+                btn.dataset.toggleBound = '1';
+
+                if (!btn.hasAttribute('tabindex') || btn.getAttribute('tabindex') === '-1') {
+                    btn.setAttribute('tabindex', '0');
+                }
+
+                function toggleVisibility(e) {
+                    if (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                    var wrap = btn.closest('.input-wrap') || btn.parentElement;
+                    if (!wrap) { return; }
+                    var input = wrap.querySelector('input');
+                    if (!input) { return; }
+
+                    var wasPassword = (input.type === 'password');
+                    var nextType = wasPassword ? 'text' : 'password';
+
+                    var currentVal = input.value;
+                    input.type = nextType;
+                    input.setAttribute('type', nextType);
+                    if (input.value !== currentVal) {
+                        input.value = currentVal;
+                    }
+
+                    var label = wasPassword ? 'Hide password' : 'Show password';
+                    btn.setAttribute('aria-label', label);
+                    btn.setAttribute('title', label);
+
+                    var eyeOpen = btn.querySelector('.eye-open');
+                    var eyeClosed = btn.querySelector('.eye-closed');
+                    if (eyeOpen && eyeClosed) {
+                        eyeOpen.style.display = wasPassword ? 'none' : 'block';
+                        eyeClosed.style.display = wasPassword ? 'block' : 'none';
+                    }
+
+                    try {
+                        input.focus();
+                        if (typeof input.setSelectionRange === 'function') {
+                            var len = input.value.length;
+                            input.setSelectionRange(len, len);
+                        }
+                    } catch (err) {}
+                }
+
+                btn.addEventListener('click', toggleVisibility);
+                btn.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleVisibility(e);
+                    }
+                });
+            });
+        })(addUserModal);
     }
 
     if (addUserForm) {

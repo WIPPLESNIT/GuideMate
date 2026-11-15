@@ -104,7 +104,7 @@ $incRental = $packageData['rental'] ?? ($packageInclusions['rental'] ?? null);
                         <!-- Live Tourist View (Image 1) -->
                         <span>PACKAGE SHOWCASE</span>
                     </div>
-                    <span style="font-size:0.75rem;color:#c4b5fd;font-weight:600;">Updates in real time</span>
+                    <!-- <span style="font-size:0.75rem;color:#c4b5fd;font-weight:600;">Updates in real time</span> -->
                 </div>
 
                 <!-- Showcase Cover Photo with Badges -->
@@ -113,7 +113,7 @@ $incRental = $packageData['rental'] ?? ($packageInclusions['rental'] ?? null);
                     <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.2) 60%, rgba(0,0,0,0.4) 100%);"></div>
 
                     <!-- Top Floating Action Pill Controls (Preview Controls) -->
-                    <div style="position:absolute;top:1rem;left:1rem;right:1rem;display:flex;justify-content:space-between;align-items:center;">
+                    <!-- <div style="position:absolute;top:1rem;left:1rem;right:1rem;display:flex;justify-content:space-between;align-items:center;">
                         <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:rgba(15,23,42,0.7);color:#ffffff;backdrop-filter:blur(6px);font-size:0.9rem;">
                             ←
                         </span>
@@ -125,7 +125,7 @@ $incRental = $packageData['rental'] ?? ($packageInclusions['rental'] ?? null);
                                 ⚙
                             </span>
                         </div>
-                    </div>
+                    </div> -->
 
                     <!-- Bottom Floating Badges (Only New Expedition badge) -->
                     <div style="position:absolute;bottom:1.25rem;left:1.25rem;right:1.25rem;display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">

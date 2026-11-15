@@ -215,7 +215,7 @@ $newBtnAttrs = 'href="' . e(url('/dashboard/listings?create=1')) . '" data-open-
                     <textarea class="input" id="nl_included" name="included" rows="3" placeholder="<?= e(__('g_included_ph', "e.g. Guide fee\nPickup from hotel\nSnorkeling gear\nLife vest")) ?>"><?= e(old('included')) ?></textarea>
                 </div>
                 <div class="field-row">
-                    <label for="nl_not_included"><?= e(__('g_not_included_label', 'Not included — optional extras (one item per line)')) ?></label>
+                    <label for="nl_not_included"><?= e(__('g_not_included_label', 'Available Add-ons & Services (one item per line)')) ?></label>
                     <textarea class="input" id="nl_not_included" name="not_included" rows="2" placeholder="<?= e(__('g_not_included_ph', 'e.g. Lunch\nPark entrance fee (₱100)')) ?>"><?= e(old('not_included')) ?></textarea>
                 </div>
 

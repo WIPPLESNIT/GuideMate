@@ -9,8 +9,8 @@
  * @var array<int,array<string,mixed>> $gallery
  */
 $hStatus = (string) ($hotel['status'] ?? 'pending');
-$amenities = !empty($hotel['included']) ? array_map('trim', explode(',', (string) $hotel['included'])) : [];
-$notIncluded = !empty($hotel['not_included']) ? array_map('trim', explode(',', (string) $hotel['not_included'])) : [];
+$amenities = !empty($hotel['included']) ? array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $hotel['included'])))) : [];
+$notIncluded = !empty($hotel['not_included']) ? array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $hotel['not_included'])))) : [];
 $thumb = !empty($hotel['cover_image']) ? $hotel['cover_image'] : 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80';
 ?>
 <div style="margin-bottom:1.5rem;">
@@ -76,7 +76,7 @@ $thumb = !empty($hotel['cover_image']) ? $hotel['cover_image'] : 'https://images
                 </div>
 
                 <?php if ($amenities !== []): ?>
-                    <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;">Included Amenities</h3>
+                    <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;"><?= e(__('h_amenities_title', 'Property Amenities & Highlights')) ?></h3>
                     <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.5rem;">
                         <?php foreach ($amenities as $a): ?>
                             <span style="background:rgba(255,255,255,0.06);color:#e2e8f0;padding:0.35rem 0.75rem;border-radius:20px;font-size:0.875rem;border:1px solid var(--border);">
@@ -87,11 +87,11 @@ $thumb = !empty($hotel['cover_image']) ? $hotel['cover_image'] : 'https://images
                 <?php endif; ?>
 
                 <?php if ($notIncluded !== []): ?>
-                    <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;">House Rules / Not Included</h3>
+                    <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;"><?= e(__('h_rules_title', 'House Rules & Optional Add-ons')) ?></h3>
                     <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.5rem;">
                         <?php foreach ($notIncluded as $ni): ?>
-                            <span style="background:rgba(239,68,68,0.1);color:#fca5a5;padding:0.35rem 0.75rem;border-radius:20px;font-size:0.875rem;border:1px solid rgba(239,68,68,0.25);">
-                                ✕ <?= e($ni) ?>
+                            <span style="background:rgba(255,255,255,0.06);color:#e2e8f0;padding:0.35rem 0.75rem;border-radius:20px;font-size:0.875rem;border:1px solid var(--border);">
+                                • <?= e($ni) ?>
                             </span>
                         <?php endforeach; ?>
                     </div>

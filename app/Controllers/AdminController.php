@@ -1496,6 +1496,30 @@ final class AdminController extends Controller
         redirect('/admin/users');
     }
 
+    public function rejectAppeal(string $id): void
+    {
+        $this->verifyCsrf();
+        $user = User::find((int) $id);
+        if ($user === null) {
+            flash('error', 'User not found.');
+            redirect('/admin/users');
+        }
+
+        $pendingAppeal = AccountAppeal::pendingForUser((int) $id);
+        if ($pendingAppeal !== null) {
+            $notes = trim((string) $this->input('admin_notes', 'Appeal reviewed and rejected by administrator.'));
+            AccountAppeal::updateStatus((int) $pendingAppeal['id'], AccountAppeal::STATUS_REJECTED, $notes, (int) AdminAuth::id());
+        }
+
+        AuditLog::recordAction('user.appeal_reject', 'user', (int) $id, [
+            'name' => $user['name'],
+            'email' => $user['email'],
+        ]);
+
+        flash('info', "Appeal for '{$user['name']}' has been rejected. The account remains suspended.");
+        redirect('/admin/users');
+    }
+
     public function disputes(): void
     {
         $this->view('admin/disputes', [

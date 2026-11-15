@@ -53,11 +53,11 @@ $vStatus = (string) ($vehicle['status'] ?? 'pending');
                     </div>
                 <?php endif; ?>
 
-                <h3 class="admin-vehicle-section-title" style="margin:1.25rem 0 0;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.45rem;">Description &amp; Terms</h3>
+                <h3 class="admin-vehicle-section-title" style="margin:1.25rem 0 0;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.45rem;">Rental Requirements &amp; Policies</h3>
                 <div class="admin-vehicle-desc" style="line-height:1.7;color:#ffffff;white-space:pre-line;word-break:break-word;overflow-wrap:break-word;max-width:100%;margin:0.5rem 0 1.5rem 0;text-align:left;"><?php if (!empty(trim((string) ($vehicle['description'] ?? '')))): ?><?= e(trim((string) $vehicle['description'])) ?><?php else: ?><em class="admin-vehicle-desc-empty" style="color:rgba(255,255,255,0.45);font-style:italic;">No description provided.</em><?php endif; ?></div>
 
                 <?php if ($specs !== []): ?>
-                    <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;">Features &amp; Inclusions</h3>
+                    <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;">What’s Included</h3>
                     <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
                         <?php foreach ($specs as $s): ?>
                             <span style="background:#f1f5f9;color:#334155;padding:0.35rem 0.75rem;border-radius:20px;font-size:0.875rem;border:1px solid var(--border);">

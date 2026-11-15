@@ -72,7 +72,7 @@ $val = fn(string $k, string $d = '') => e($editing ? (string) ($listing[$k] ?? $
                             <textarea class="input" id="included" name="included" rows="4" placeholder="<?= e(__('g_included_ph', "e.g. Guide fee\nPickup from hotel\nSnorkeling gear\nLife vest")) ?>"><?= $val('included') ?></textarea>
                         </div>
                         <div class="field-row">
-                            <label for="not_included"><?= e(__('g_not_included_label', 'Not included — optional extras (one item per line)')) ?></label>
+                            <label for="not_included"><?= e(__('g_not_included_label', 'Available Add-ons & Services (one item per line)')) ?></label>
                             <textarea class="input" id="not_included" name="not_included" rows="3" placeholder="<?= e(__('g_not_included_ph', 'e.g. Lunch\nPark entrance fee (₱100)')) ?>"><?= $val('not_included') ?></textarea>
                             <span class="hint"><?= e(__('g_not_included_hint', 'Only costs listed here may be requested separately. Everything else must be covered by the booking price.')) ?></span>
                         </div>

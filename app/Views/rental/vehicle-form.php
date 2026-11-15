@@ -214,11 +214,11 @@ $commonSpecs = [
                             </div>
                         </div>
 
-                        <!-- Section: Specs & Features -->
+                        <!-- Section: What's Included -->
                         <div style="margin-bottom:2rem;">
-                            <h3 style="margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;">4. Inclusions &amp; Features</h3>
+                            <h3 style="margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;">What’s Included</h3>
 
-                            <div class="hint" style="margin-bottom:0.75rem;">Check all features that apply to this vehicle:</div>
+                            <div class="hint" style="margin-bottom:0.75rem;">Select all features and items included in the rental price at no extra charge:</div>
                             <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:0.6rem;background:#f8fafc;padding:1rem;border-radius:8px;border:1px solid var(--border);">
                                 <?php foreach ($commonSpecs as $spec):
                                     $checked = in_array($spec, $currentSpecs, true);
@@ -231,14 +231,14 @@ $commonSpecs = [
                             </div>
 
                             <div class="field-row" style="margin-top:1rem;">
-                                <label for="v_custom_spec">Custom Inclusions / Extra Feature <small class="hint">(Optional)</small></label>
+                                <label for="v_custom_spec">Additional Inclusions <small class="hint">(Optional)</small></label>
                                 <input class="input" id="v_custom_spec" name="custom_spec" placeholder="e.g. Free Airport Delivery, Top Box 45L">
                             </div>
                         </div>
 
-                        <!-- Section: Description & Terms -->
+                        <!-- Section: Rental Requirements & Policies -->
                         <div style="margin-bottom:2rem;">
-                            <h3 style="margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;">5. Description &amp; Requirements</h3>
+                            <h3 style="margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;">Rental Requirements &amp; Policies</h3>
 
                             <div class="field-row">
                                 <label for="v_description">Vehicle Description &amp; Rental Terms <span class="req" style="color:var(--red-600);">*</span></label>

@@ -61,7 +61,7 @@ export const SOCIAL_AUTH = {
     // Instant demo sign-in works out-of-the-box. To enable real Google Cloud OAuth,
     // paste your Web Client ID here and set GOOGLE_OAUTH_CLIENT_SECRET in the backend .env
     // (Previous: '594984195783-95p4qciig7ghg2jtok9a709ov8k0embh.apps.googleusercontent.com')
-    web: '',
+    web: '594984195783-95p4qciig7ghg2jtok9a709ov8k0embh.apps.googleusercontent.com',
   },
   // Paste your Facebook App ID here to switch Facebook from demo to the real
   // backend-mediated login (the actual OAuth uses the backend .env secret).

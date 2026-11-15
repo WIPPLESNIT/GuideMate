@@ -3,8 +3,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  Modal,
   Dimensions,
   ImageBackground,
   KeyboardAvoidingView,
@@ -21,10 +19,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HumanVerification from '../../components/HumanVerification';
 import { AppToast } from '../../components/ui';
-import { hasBiometricLogin, login as loginUser, loginWithBackendOAuth, loginWithBiometrics, loginWithSocial, loginWithSocialAccount } from '../../lib/authStore';
+import { hasBiometricLogin, login as loginUser, loginWithBackendOAuth, loginWithBiometrics, loginWithSocial } from '../../lib/authStore';
 import { getSavedName } from '../../lib/biometric';
 import { usePreferences } from '../../lib/preferences';
-import { DEFAULT_GOOGLE_ACCOUNTS, getSavedGoogleAccounts, GoogleAccountProfile, isProviderConfigured, saveGoogleAccount, SocialProvider } from '../../lib/socialAuth';
+import { isProviderConfigured, SocialProvider } from '../../lib/socialAuth';
 
 const { height } = Dimensions.get('window');
 
@@ -43,11 +41,6 @@ export default function LoginScreen() {
   const [bioAvailable, setBioAvailable] = useState(false);
   const [savedName, setSavedName] = useState('');
   const [socialBusy, setSocialBusy] = useState<SocialProvider | null>(null);
-  const [googleModalVisible, setGoogleModalVisible] = useState(false);
-  const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountProfile[]>(DEFAULT_GOOGLE_ACCOUNTS);
-  const [addingGoogleAccount, setAddingGoogleAccount] = useState(false);
-  const [newGoogleName, setNewGoogleName] = useState('');
-  const [newGoogleEmail, setNewGoogleEmail] = useState('');
   const [logoutToastDismissed, setLogoutToastDismissed] = useState(false);
 
   const { t } = usePreferences();
@@ -126,20 +119,9 @@ export default function LoginScreen() {
   };
 
   const handleGooglePress = async () => {
+    if (socialBusy) return;
     setError('');
-    try {
-      const list = await getSavedGoogleAccounts();
-      setGoogleAccounts(list);
-    } catch {}
-    setAddingGoogleAccount(false);
-    setNewGoogleName('');
-    setNewGoogleEmail('');
-    setGoogleModalVisible(true);
-  };
-
-  const selectGoogleAccount = async (acc: GoogleAccountProfile) => {
     setSocialBusy('google');
-    setGoogleModalVisible(false);
     try {
       if (isProviderConfigured('google')) {
         try {
@@ -147,33 +129,27 @@ export default function LoginScreen() {
           router.replace('/(tabs)');
           return;
         } catch (oauthErr) {
-          console.warn('[SocialAuth] Falling back to account demo login:', oauthErr);
+          const msg = oauthErr instanceof Error ? oauthErr.message : String(oauthErr);
+          if (/not configured|could not reach|503/i.test(msg)) {
+            console.warn('[SocialAuth] Backend OAuth unconfigured, falling back to instant login:', msg);
+            await loginWithSocial('google');
+            router.replace('/(tabs)');
+            return;
+          }
+          throw oauthErr;
         }
+      } else {
+        await loginWithSocial('google');
+        router.replace('/(tabs)');
       }
-      await loginWithSocialAccount('google', acc);
-      router.replace('/(tabs)');
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Google sign-in failed.';
-      if (!/cancel/i.test(msg)) setError(msg);
+      const msg = e instanceof Error ? e.message : 'Google sign-in failed. Please try again.';
+      if (!/cancel/i.test(msg)) {
+        setError(msg);
+      }
     } finally {
       setSocialBusy(null);
     }
-  };
-
-  const handleCreateGoogleAccount = async () => {
-    if (!newGoogleEmail.trim()) {
-      Alert.alert('Email Required', 'Please enter your Google account email.');
-      return;
-    }
-    const email = newGoogleEmail.trim().toLowerCase();
-    const name = newGoogleName.trim() || email.split('@')[0];
-    const newProfile: GoogleAccountProfile = {
-      id: `google-${Date.now()}`,
-      name,
-      email,
-    };
-    await saveGoogleAccount(newProfile);
-    await selectGoogleAccount(newProfile);
   };
 
   const handleSocial = async (provider: SocialProvider) => {
@@ -381,111 +357,6 @@ export default function LoginScreen() {
       </KeyboardAvoidingView>
 
       
-      {/* ── Google Account Chooser Modal ── */}
-      <Modal
-        visible={googleModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setGoogleModalVisible(false)}
-      >
-        <View style={styles.googleBackdrop}>
-          <View style={[styles.googleCard, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: theme.dividerLine }]}>
-            {/* Header */}
-            <View style={styles.googleHeader}>
-              <Ionicons name="logo-google" size={32} color="#DB4437" />
-              <Text style={[styles.googleTitle, { color: theme.textMain }]}>Choose an account</Text>
-              <Text style={[styles.googleSub, { color: theme.textSub }]}>to continue to GuideMate</Text>
-            </View>
-
-            {!addingGoogleAccount ? (
-              <ScrollView style={styles.accountsList} showsVerticalScrollIndicator={false}>
-                {googleAccounts.map((acc, idx) => (
-                  <TouchableOpacity
-                    key={acc.id || acc.email + idx}
-                    style={[styles.accountRow, { borderBottomColor: theme.dividerLine }]}
-                    onPress={() => selectGoogleAccount(acc)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.avatarCircle, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
-                      <Text style={[styles.avatarLetter, { color: theme.accent }]}>
-                        {(acc.name || acc.email)[0].toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.accountTextWrap}>
-                      <Text style={[styles.accountName, { color: theme.textMain }]} numberOfLines={1}>
-                        {acc.name}
-                      </Text>
-                      <Text style={[styles.accountEmail, { color: theme.textSub }]} numberOfLines={1}>
-                        {acc.email}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={theme.textSub} />
-                  </TouchableOpacity>
-                ))}
-
-                {/* Add another account button */}
-                <TouchableOpacity
-                  style={[styles.accountRow, { borderBottomColor: 'transparent' }]}
-                  onPress={() => setAddingGoogleAccount(true)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.avatarCircle, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
-                    <Ionicons name="person-add-outline" size={18} color={theme.accent} />
-                  </View>
-                  <View style={styles.accountTextWrap}>
-                    <Text style={[styles.accountName, { color: theme.accent }]}>Use another account</Text>
-                  </View>
-                </TouchableOpacity>
-              </ScrollView>
-            ) : (
-              <View style={styles.newAccountForm}>
-                <Text style={[styles.formLabel, { color: theme.textSub }]}>Full Name</Text>
-                <TextInput
-                  style={[styles.modalInput, { backgroundColor: theme.inputBg, color: theme.textMain, borderColor: theme.dividerLine }]}
-                  placeholder="e.g. Marc Repuesto"
-                  placeholderTextColor={theme.textSub}
-                  value={newGoogleName}
-                  onChangeText={setNewGoogleName}
-                />
-
-                <Text style={[styles.formLabel, { color: theme.textSub, marginTop: 12 }]}>Google Email Address</Text>
-                <TextInput
-                  style={[styles.modalInput, { backgroundColor: theme.inputBg, color: theme.textMain, borderColor: theme.dividerLine }]}
-                  placeholder="e.g. user@gmail.com"
-                  placeholderTextColor={theme.textSub}
-                  value={newGoogleEmail}
-                  onChangeText={setNewGoogleEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-
-                <View style={styles.formButtonRow}>
-                  <TouchableOpacity
-                    style={[styles.formCancelBtn, { borderColor: theme.dividerLine }]}
-                    onPress={() => setAddingGoogleAccount(false)}
-                  >
-                    <Text style={[styles.formBtnText, { color: theme.textSub }]}>Back</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.formSubmitBtn, { backgroundColor: theme.accent }]}
-                    onPress={handleCreateGoogleAccount}
-                  >
-                    <Text style={[styles.formBtnText, { color: '#FFFFFF' }]}>Continue</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Close / Cancel */}
-            <TouchableOpacity
-              style={[styles.modalCloseBtn, { borderTopColor: theme.dividerLine }]}
-              onPress={() => setGoogleModalVisible(false)}
-            >
-              <Text style={[styles.modalCloseText, { color: theme.textSub }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       <AppToast
         key={logoutFlag}
@@ -669,127 +540,6 @@ const styles = StyleSheet.create({
   dividerText: {
     fontSize: 12,
     marginHorizontal: 10,
-  },
-  googleBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  googleCard: {
-    width: '100%',
-    maxWidth: 380,
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingTop: 24,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  googleHeader: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  googleTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    marginTop: 10,
-    letterSpacing: -0.3,
-  },
-  googleSub: {
-    fontSize: 13,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  accountsList: {
-    maxHeight: 280,
-    paddingHorizontal: 16,
-  },
-  accountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  avatarLetter: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  accountTextWrap: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  accountName: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  accountEmail: {
-    fontSize: 12.5,
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  newAccountForm: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-  },
-  formLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-  formButtonRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 18,
-  },
-  formCancelBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  formSubmitBtn: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  formBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  modalCloseBtn: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  modalCloseText: {
-    fontSize: 14,
-    fontWeight: '700',
   },
   socialButton: {
     flexDirection: 'row',

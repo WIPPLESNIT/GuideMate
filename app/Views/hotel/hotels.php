@@ -309,14 +309,14 @@ $errors = $errors ?? [];
 
             <div class="field-row">
                 <label for="hf_included" style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:0.35rem;">
-                    Property Amenities &amp; Highlights (one per line)
+                    <?= e(__('h_amenities_label', 'Property Amenities & Highlights (one per line)')) ?>
                 </label>
                 <textarea id="hf_included" name="included" class="input" rows="3" placeholder="Free High-Speed Wi-Fi&#10;Outdoor Swimming Pool&#10;Complimentary Buffet Breakfast&#10;Full-Service Spa &amp; Wellness Center&#10;24/7 Front Desk" style="width:100%;resize:vertical;"></textarea>
             </div>
 
             <div class="field-row">
                 <label for="hf_not_included" style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:0.35rem;">
-                    House Rules &amp; Optional Add-ons (one per line)
+                    <?= e(__('h_rules_label', 'House Rules & Optional Add-ons (one per line)')) ?>
                 </label>
                 <textarea id="hf_not_included" name="not_included" class="input" rows="2" placeholder="Airport Transfer (₱800)&#10;Extra Bed (₱1,200/night)&#10;No Smoking Indoors" style="width:100%;resize:vertical;"></textarea>
             </div>

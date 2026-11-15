@@ -117,7 +117,7 @@ $sidePhoto2 = $galleryPaths[1] ?? $galleryPaths[0] ?? $mainPhoto;
             <!-- Inclusions and Specifications Box -->
             <div class="inclusion-box mt-3">
                 <div class="inclusion-col">
-                    <h3>What's included</h3>
+                    <h3>What’s Included</h3>
                     <ul class="inclusion-list">
                         <?php if (!empty($specs)): ?>
                             <?php foreach ($specs as $s): ?>
@@ -132,12 +132,12 @@ $sidePhoto2 = $galleryPaths[1] ?? $galleryPaths[0] ?? $mainPhoto;
                     </ul>
                 </div>
                 <div class="inclusion-col">
-                    <h3>Available Add-ons &amp; Services</h3>
+                    <h3>Rental Requirements &amp; Policies</h3>
                     <ul class="inclusion-list inclusion-list-muted">
                         <li><strong>Vehicle:</strong> <?= e($vehicle['make']) ?> <?= e($vehicle['model']) ?> (<?= (int) $vehicle['year'] ?>)</li>
                         <li><strong>Category:</strong> <?= e($vehicle['type']) ?></li>
-                        <li><strong>License:</strong> Valid Philippine or International Driver's License</li>
-                        <li><strong>Security:</strong> Government ID or passport held during rental</li>
+                        <li><strong>Driver’s License:</strong> Valid Philippine or International Driver's License</li>
+                        <li><strong>Security Deposit / ID:</strong> Government ID or passport held during rental</li>
                         <li><strong>Fuel Policy:</strong> Same-to-same fuel level on return</li>
                     </ul>
                 </div>

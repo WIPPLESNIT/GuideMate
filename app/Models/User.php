@@ -102,8 +102,8 @@ final class User
         // back to a generic label if the provider gave us nothing. The name is
         // NOT the email, so showing it keeps the account confidential.
         $label = trim((string) $name);
-        if ($label === '') {
-            $label = $provider === 'facebook' ? 'Facebook User' : 'Google User';
+        if ($label === '' || strcasecmp($label, 'google') === 0 || strcasecmp($label, 'google user') === 0) {
+            $label = $provider === 'facebook' ? 'Facebook User' : 'User';
         }
         // Non-identifying placeholder email; not a real, reachable address.
         $email = $provider . '_' . bin2hex(random_bytes(10)) . '@social.guidemate.local';
@@ -118,17 +118,17 @@ final class User
     }
 
     /**
-     * Backfill a social account's display name when it's still the generic
-     * placeholder ("Google User" / "Facebook User"). Never overwrites a name
-     * the user may have already customised.
+     * Backfill a social account's display name when it's still a generic
+     * placeholder ("Google", "Google User", "Facebook User", or "User").
+     * Never overwrites a name the user may have already customised.
      */
     public static function renameIfPlaceholder(int $id, string $currentName, string $newName): void
     {
         $newName = trim($newName);
-        if ($newName === '') {
+        if ($newName === '' || strcasecmp($newName, 'google') === 0 || strcasecmp($newName, 'google user') === 0) {
             return;
         }
-        if (!preg_match('/^(Google|Facebook) User$/', trim($currentName))) {
+        if (!preg_match('/^(Google|Google User|Facebook|Facebook User|User)$/i', trim($currentName))) {
             return;
         }
         Database::run('UPDATE users SET name = ? WHERE id = ?', [$newName, $id]);
@@ -139,10 +139,21 @@ final class User
      */
     public static function updateProfile(int $id, array $data): void
     {
-        Database::run(
-            'UPDATE users SET name = ?, phone = ?, location = ?, bio = ? WHERE id = ?',
-            [$data['name'], $data['phone'], $data['location'], $data['bio'], $id]
-        );
+        $phone = $data['phone'] ?? null;
+        $location = $data['location'] ?? null;
+        $bio = $data['bio'] ?? null;
+
+        if (isset($data['email']) && $data['email'] !== '') {
+            Database::run(
+                'UPDATE users SET name = ?, email = ?, phone = ?, location = ?, bio = ? WHERE id = ?',
+                [$data['name'], $data['email'], $phone, $location, $bio, $id]
+            );
+        } else {
+            Database::run(
+                'UPDATE users SET name = ?, phone = ?, location = ?, bio = ? WHERE id = ?',
+                [$data['name'], $phone, $location, $bio, $id]
+            );
+        }
     }
 
     /**

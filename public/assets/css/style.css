@@ -636,12 +636,47 @@ input[type="checkbox"].is-invalid { outline: 2px solid #DC2626; outline-offset: 
     outline: 2px solid var(--teal-500, #059669);
     outline-offset: 1px;
 }
-.admin-auth .toggle-password {
-    color: rgba(255, 255, 255, 0.6);
+.admin-auth .toggle-password,
+.admin-body .toggle-password,
+#addUserModal .toggle-password,
+#toggleModalPassword {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%) !important;
+    color: rgba(255, 255, 255, 0.65);
+    background: transparent;
+    border: none;
+    padding: 6px;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 2;
+    transition: color 0.15s ease, background-color 0.15s ease;
 }
-.admin-auth .toggle-password:hover {
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.1);
+.admin-auth .toggle-password:hover,
+.admin-body .toggle-password:hover,
+#addUserModal .toggle-password:hover,
+#toggleModalPassword:hover,
+.admin-auth .toggle-password:active,
+.admin-body .toggle-password:active,
+#addUserModal .toggle-password:active,
+#toggleModalPassword:active {
+    color: #ffffff !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    transform: translateY(-50%) !important;
+}
+.admin-auth .toggle-password:focus-visible,
+.admin-body .toggle-password:focus-visible,
+#addUserModal .toggle-password:focus-visible,
+#toggleModalPassword:focus-visible {
+    outline: 2px solid var(--teal-500, #059669);
+    outline-offset: 1px;
+    transform: translateY(-50%) !important;
 }
 
 
@@ -1618,6 +1653,16 @@ input[type="checkbox"].is-invalid { outline: 2px solid #DC2626; outline-offset: 
 .user-action-item.user-action-unrestrict:hover {
     background: rgba(56, 189, 248, 0.15);
     color: #bae6fd;
+}
+.user-action-item.user-action-appeal {
+    color: #fbbf24;
+}
+.user-action-item.user-action-appeal .action-item-icon {
+    color: #fbbf24;
+}
+.user-action-item.user-action-appeal:hover {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fef08a;
 }
 tr.is-menu-open {
     position: relative;
@@ -2657,7 +2702,7 @@ tr.is-menu-open {
     position: sticky;
     top: 88px;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow: visible;
 }
 .booking-box .price {
     font-size: 1.85rem;
@@ -2763,6 +2808,166 @@ tr.is-menu-open {
     border-radius: 10px;
     border: 1.5px solid var(--line);
     cursor: pointer;
+}
+/* Hotel Room Custom Dropdown */
+.booking-box .hotel-room-select-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+.booking-box .hotel-room-select-wrap select.hotel-room-native-select {
+    position: absolute !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    border: 0 !important;
+    padding: 0 !important;
+    clip: rect(0, 0, 0, 0) !important;
+    overflow: hidden !important;
+}
+.booking-box .hotel-room-trigger {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0.72rem 0.85rem;
+    font-size: 0.88rem;
+    line-height: 1.35;
+    border-radius: 10px;
+    border: 1.5px solid var(--line);
+    background: #fff;
+    color: var(--ink-900);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    text-align: left;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    font-family: inherit;
+    outline: none;
+}
+.booking-box .hotel-room-trigger:focus-visible,
+.booking-box .hotel-room-select-wrap.is-open .hotel-room-trigger {
+    border-color: var(--teal-500);
+    box-shadow: 0 0 0 3px rgba(20, 128, 143, 0.15);
+}
+.booking-box .hotel-room-trigger-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+.booking-box .hotel-room-chevron {
+    flex-shrink: 0;
+    color: var(--ink-400, #94a3b8);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.18s ease;
+}
+.booking-box .hotel-room-select-wrap.is-open .hotel-room-chevron {
+    transform: rotate(180deg);
+    color: var(--teal-600);
+}
+.booking-box .hotel-room-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    max-height: 250px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0.35rem;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+}
+.booking-box .hotel-room-select-wrap.is-open .hotel-room-menu {
+    display: flex;
+    animation: gmDropdownFade 0.14s cubic-bezier(0, 0, 0.2, 1);
+}
+.booking-box .hotel-room-opt {
+    padding: 0.65rem 0.75rem;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    transition: background 0.12s ease, color 0.12s ease;
+    box-sizing: border-box;
+    width: 100%;
+    outline: none;
+    text-decoration: none;
+    user-select: none;
+}
+.booking-box .hotel-room-opt:hover,
+.booking-box .hotel-room-opt:focus-visible,
+.booking-box .hotel-room-opt.is-focused {
+    background: var(--sand-200, #f1f5f9);
+}
+.booking-box .hotel-room-opt.is-selected {
+    background: #F0FDF4;
+    color: #166534;
+}
+.booking-box .hotel-room-opt.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.booking-box .hotel-room-opt-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.booking-box .hotel-room-opt-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--ink-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.booking-box .hotel-room-opt.is-selected .hotel-room-opt-name {
+    color: #166534;
+}
+.booking-box .hotel-room-opt-meta {
+    font-size: 0.78rem;
+    color: var(--ink-500, #64748B);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.booking-box .hotel-room-opt.is-selected .hotel-room-opt-meta {
+    color: #15803D;
+}
+.booking-box .hotel-room-opt-price {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--teal-700, #0F766E);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.booking-box .hotel-room-opt.is-selected .hotel-room-opt-price {
+    color: #166534;
 }
 .booking-box input.input {
     width: 100%;
@@ -6527,4 +6732,301 @@ a.stat-clickable:focus-visible {
 }
 .btn-new-travel-package:active {
     transform: none !important;
+}
+
+/* ==========================================================================
+   Profile Edit Modal Overlay
+   Modern centered popup modal with darkened/blurred backdrop
+   ========================================================================== */
+.profile-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s;
+}
+
+.profile-modal-overlay.is-active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.profile-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.52);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    cursor: pointer;
+    touch-action: none;
+}
+
+.profile-modal-dialog {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 580px;
+    max-height: calc(100vh - 3rem);
+    max-height: calc(100dvh - 3rem);
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 25px 60px -12px rgba(15, 23, 42, 0.32), 0 0 0 1px rgba(15, 23, 42, 0.06);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: scale(0.96) translateY(12px);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.profile-modal-overlay.is-active .profile-modal-dialog {
+    transform: scale(1) translateY(0);
+}
+
+.profile-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem 1.15rem;
+    border-bottom: 1px solid var(--line, #e3eae5);
+    background: #ffffff;
+    flex-shrink: 0;
+}
+
+.profile-modal-title-wrap h2 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--ink-900, #0e1a13);
+    line-height: 1.25;
+}
+
+.profile-modal-subtitle {
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    color: var(--ink-500, #5a6b60);
+    line-height: 1.4;
+}
+
+.profile-modal-close-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--line, #e3eae5);
+    background: #ffffff;
+    color: var(--ink-500, #5a6b60);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.4rem;
+    line-height: 1;
+    padding: 0;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+}
+
+.profile-modal-close-btn:hover {
+    background: var(--sand-200, #e9f1ea);
+    color: var(--ink-900, #0e1a13);
+    border-color: var(--ink-300, #93a399);
+}
+
+.profile-modal-close-btn:focus-visible {
+    outline: 2px solid var(--coral-500, #1faa4e);
+    outline-offset: 2px;
+}
+
+.profile-modal-form,
+.profile-modal-dialog > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    margin: 0;
+}
+
+.profile-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 1.4rem 1.5rem 1.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--ink-300, #cbd5e1) transparent;
+}
+
+.profile-modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.profile-modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.profile-modal-body::-webkit-scrollbar-thumb {
+    background: var(--ink-300, #cbd5e1);
+    border-radius: 999px;
+}
+
+.profile-modal-body::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-500, #94a3b8);
+}
+
+.profile-modal-avatar-section {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--line, #e3eae5);
+}
+
+.profile-modal-avatar-preview {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #ffffff;
+    box-shadow: 0 4px 14px rgba(14, 26, 19, 0.12), 0 0 0 1px var(--line, #e3eae5);
+    flex-shrink: 0;
+    background: var(--sand-100, #f6f9f6);
+}
+
+.profile-modal-avatar-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.profile-modal-avatar-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--ink-900, #0e1a13);
+    margin: 0;
+}
+
+.profile-modal-avatar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.profile-modal-avatar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 999px;
+    border: 1px solid var(--line, #e3eae5);
+    background: #ffffff;
+    color: var(--ink-700, #29382f);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.profile-modal-avatar-btn:hover {
+    background: var(--sand-100, #f6f9f6);
+    border-color: var(--coral-500, #1faa4e);
+    color: var(--coral-500, #1faa4e);
+}
+
+.profile-modal-avatar-hint {
+    font-size: 0.78rem;
+    color: var(--ink-500, #5a6b60);
+    margin: 0;
+}
+
+.profile-modal-field {
+    margin-bottom: 1.15rem;
+}
+
+.profile-modal-field:last-child {
+    margin-bottom: 0;
+}
+
+.profile-modal-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--ink-900, #0e1a13);
+}
+
+.profile-modal-label .req {
+    color: #ef4444;
+    margin-left: 2px;
+}
+
+.profile-modal-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.profile-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1.1rem 1.5rem;
+    border-top: 1px solid var(--line, #e3eae5);
+    background: var(--sand-100, #f6f9f6);
+    border-radius: 0 0 18px 18px;
+    flex-shrink: 0;
+}
+
+html.profile-modal-open,
+body.profile-modal-open {
+    overflow: hidden !important;
+    height: 100% !important;
+    overscroll-behavior: none !important;
+}
+
+@media (max-width: 600px) {
+    .profile-modal-overlay {
+        padding: 0.75rem;
+    }
+    .profile-modal-dialog {
+        max-height: calc(100vh - 1.5rem);
+        max-height: calc(100dvh - 1.5rem);
+        border-radius: 16px;
+    }
+    .profile-modal-header {
+        padding: 1rem 1.2rem;
+    }
+    .profile-modal-body {
+        padding: 1.2rem;
+    }
+    .profile-modal-grid-2 {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+    .profile-modal-grid-2 .profile-modal-field {
+        margin-bottom: 1.15rem;
+    }
+    .profile-modal-footer {
+        padding: 1rem 1.2rem;
+        flex-direction: column-reverse;
+        gap: 0.5rem;
+    }
+    .profile-modal-footer .btn {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
+    }
 }

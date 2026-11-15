@@ -1136,9 +1136,15 @@
             }
             btn.dataset.toggleBound = '1';
 
-            btn.addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
+            if (!btn.hasAttribute('tabindex') || btn.getAttribute('tabindex') === '-1') {
+                btn.setAttribute('tabindex', '0');
+            }
+
+            function toggleVisibility(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
 
                 var wrap = btn.closest('.input-wrap') || btn.parentElement;
                 if (!wrap) { return; }
@@ -1146,14 +1152,19 @@
                 var input = wrap.querySelector('input');
                 if (!input) { return; }
 
-                var wasPassword = (input.type === 'password' || input.getAttribute('type') === 'password');
+                var wasPassword = (input.type === 'password');
                 var nextType = wasPassword ? 'text' : 'password';
 
+                var currentVal = input.value;
                 input.type = nextType;
                 input.setAttribute('type', nextType);
+                if (input.value !== currentVal) {
+                    input.value = currentVal;
+                }
 
-                btn.setAttribute('aria-label', wasPassword ? 'Hide password' : 'Show password');
-                btn.setAttribute('title', wasPassword ? 'Hide password' : 'Show password');
+                var label = wasPassword ? 'Hide password' : 'Show password';
+                btn.setAttribute('aria-label', label);
+                btn.setAttribute('title', label);
 
                 var eyeOpen = btn.querySelector('.eye-open');
                 var eyeClosed = btn.querySelector('.eye-closed');
@@ -1162,7 +1173,22 @@
                     eyeClosed.style.display = wasPassword ? 'block' : 'none';
                 }
 
-                try { input.focus(); } catch (err) {}
+                try {
+                    input.focus();
+                    if (typeof input.setSelectionRange === 'function') {
+                        var len = input.value.length;
+                        input.setSelectionRange(len, len);
+                    }
+                } catch (err) {}
+            }
+
+            btn.addEventListener('click', toggleVisibility);
+            btn.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleVisibility(e);
+                }
             });
         });
     }

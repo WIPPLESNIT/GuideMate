@@ -20,18 +20,21 @@ final class ProfileController extends Controller
             ? GuideDocument::forUser((int) $user['id'])
             : [];
 
+        $errors = errors();
+        $openEditModal = isset($_GET['edit']) || !empty($errors);
+
         $this->view('profile/show', [
             'title' => 'My Profile',
             'user' => $user,
             'documents' => $documents,
+            'errors' => $errors,
+            'openEditModal' => $openEditModal,
         ]);
     }
 
     public function edit(): void
     {
         $user = Auth::user();
-        // Providers (guides, rental & hotel partners) review their admin-verified
-        // documents right here on Profile — the Verification menu item was removed.
         $documents = User::isProviderRole((string) ($user['role'] ?? ''))
             ? GuideDocument::forUser((int) $user['id'])
             : [];
@@ -41,17 +44,28 @@ final class ProfileController extends Controller
             'user' => $user,
             'documents' => $documents,
             'errors' => errors(),
+            'openEditModal' => true,
         ]);
     }
 
     public function update(): void
     {
         $this->verifyCsrf();
+        $user = Auth::user();
         $userId = (int) Auth::id();
 
-        $errors = $this->requireFields(['name']);
+        $errors = $this->requireFields(['name', 'email']);
+        $newEmail = trim((string) $this->input('email', ''));
+        if ($newEmail !== '') {
+            if (!filter_var($newEmail, FILTER_VALIDATE_EMAIL)) {
+                $errors['email'] = 'Please enter a valid email address.';
+            } elseif (User::emailExists($newEmail, $userId)) {
+                $errors['email'] = 'That email address is already in use.';
+            }
+        }
+
         if ($errors !== []) {
-            flash_keep_old($errors, [], '/profile/edit');
+            flash_keep_old($errors, $this->all(), '/profile?edit=1');
         }
 
         // Optional profile photo upload (images only).
@@ -60,12 +74,13 @@ final class ProfileController extends Controller
             try {
                 $avatarPath = Upload::store($_FILES['avatar'], 'avatars/' . $userId, ['jpg', 'jpeg', 'png', 'webp']);
             } catch (RuntimeException $e) {
-                flash_keep_old(['avatar' => $e->getMessage()], [], '/profile/edit');
+                flash_keep_old(['avatar' => $e->getMessage()], $this->all(), '/profile?edit=1');
             }
         }
 
         User::updateProfile($userId, [
             'name' => (string) $this->input('name', ''),
+            'email' => $newEmail !== '' ? $newEmail : (string) ($user['email'] ?? ''),
             'phone' => (string) $this->input('phone', ''),
             'location' => (string) $this->input('location', ''),
             'bio' => (string) $this->input('bio', ''),
@@ -75,7 +90,9 @@ final class ProfileController extends Controller
             User::updateAvatar($userId, $avatarPath);
         }
 
-        flash('success', 'Profile updated.');
+        Auth::refreshUser();
+
+        flash('success', 'Profile updated successfully.');
         redirect('/profile');
     }
 }

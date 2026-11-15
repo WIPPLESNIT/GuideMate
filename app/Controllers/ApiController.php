@@ -352,23 +352,43 @@ final class ApiController extends Controller
         $social = App::config('social') ?? [];
         $demo = (bool) ($social['demo'] ?? true);
         $token = trim((string) ($body['token'] ?? ''));
+        $claimedName = trim((string) ($body['name'] ?? ''));
+        $claimedEmail = trim((string) ($body['email'] ?? ''));
 
         if ($token !== '') {
-            // A real provider token was supplied â€” always verify it server-side.
-            $subject = $provider === 'google'
-                ? $this->verifyGoogleToken($token, (array) ($social['google_client_ids'] ?? []))
-                : $this->verifyFacebookToken($token);
-            if ($subject === null) {
-                $this->json(['error' => 'Could not verify your ' . ucfirst($provider) . ' sign-in. Please try again.'], 401);
-                return;
+            // A real provider token was supplied — always verify it server-side.
+            if ($provider === 'google') {
+                $googleProfile = $this->verifyGoogleToken($token, (array) ($social['google_client_ids'] ?? []));
+                if ($googleProfile === null) {
+                    $this->json(['error' => 'Could not verify your Google sign-in. Please try again.'], 401);
+                    return;
+                }
+                $subject = $googleProfile['sub'];
+                $tokenName = $this->displayNameFromClaims(
+                    $googleProfile['name'] ?? '',
+                    $googleProfile['given_name'] ?? '',
+                    $googleProfile['family_name'] ?? '',
+                    $googleProfile['email'] ?? ''
+                );
+                $name = ($tokenName !== '' && $tokenName !== 'User') ? $tokenName : ($claimedName ?: $tokenName);
+            } else {
+                $subject = $this->verifyFacebookToken($token);
+                if ($subject === null) {
+                    $this->json(['error' => 'Could not verify your Facebook sign-in. Please try again.'], 401);
+                    return;
+                }
+                $name = $claimedName ?: 'Facebook User';
             }
         } elseif ($demo) {
-            // No token: fall back to the anonymous demo identity.
+            // No token: fall back to the demo identity.
             $subject = trim((string) ($body['subject'] ?? ''));
             if ($subject === '') {
                 $this->json(['error' => 'Missing demo subject.'], 422);
                 return;
             }
+            $name = $claimedName !== ''
+                ? $claimedName
+                : ($claimedEmail !== '' ? $this->displayNameFromClaims('', '', '', $claimedEmail) : 'User');
             // Namespace demo ids so they can never collide with real ones.
             $subject = 'demo_' . $subject;
         } else {
@@ -383,8 +403,11 @@ final class ApiController extends Controller
                 return;
             }
             $userId = (int) $existing['id'];
+            if (!empty($name)) {
+                User::renameIfPlaceholder($userId, (string) ($existing['name'] ?? ''), $name);
+            }
         } else {
-            $userId = User::createOAuthUser($provider, $subject);
+            $userId = User::createOAuthUser($provider, $subject, $name);
         }
 
         $user = User::find($userId);
@@ -402,10 +425,12 @@ final class ApiController extends Controller
 
     /**
      * Verify a Google ID token via Google's tokeninfo endpoint. Returns the
-     * stable subject id ("sub") only when the token is valid and (if client ids
+     * verified claims array only when the token is valid and (if client ids
      * are configured) was issued for one of our apps.
+     *
+     * @return array{sub: string, name: string, given_name: string, family_name: string, email: string}|null
      */
-    private function verifyGoogleToken(string $idToken, array $clientIds): ?string
+    private function verifyGoogleToken(string $idToken, array $clientIds): ?array
     {
         $resp = $this->httpGetJson('https://oauth2.googleapis.com/tokeninfo?id_token=' . urlencode($idToken));
         if ($resp === null || empty($resp['sub'])) {
@@ -417,7 +442,13 @@ final class ApiController extends Controller
         if ($clientIds !== [] && !in_array((string) ($resp['aud'] ?? ''), $clientIds, true)) {
             return null;
         }
-        return (string) $resp['sub'];
+        return [
+            'sub' => (string) $resp['sub'],
+            'name' => (string) ($resp['name'] ?? ''),
+            'given_name' => (string) ($resp['given_name'] ?? ''),
+            'family_name' => (string) ($resp['family_name'] ?? ''),
+            'email' => (string) ($resp['email'] ?? ''),
+        ];
     }
 
     /**
@@ -494,7 +525,9 @@ final class ApiController extends Controller
         $asJson = (string) ($_GET['format'] ?? '') === 'json'
             || str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
 
-        if ($clientId === '' || $secret === '' || $redirect === '') {
+        $stateSecret = $secret !== '' ? $secret : hash('sha256', (string) (App::config('app.key') ?? 'guidemate_oauth_secret'));
+
+        if ($clientId === '' || $redirect === '') {
             if ($asJson) {
                 $this->json(['error' => 'Google sign-in is not configured on the server yet.'], 503);
                 return;
@@ -520,7 +553,7 @@ final class ApiController extends Controller
             'n' => bin2hex(random_bytes(8)),
             's' => $sessionId,
         ]));
-        $sig = $this->b64urlEncode(hash_hmac('sha256', $payload, $secret, true));
+        $sig = $this->b64urlEncode(hash_hmac('sha256', $payload, $stateSecret, true));
         $state = $payload . '.' . $sig;
 
         $params = http_build_query([
@@ -895,11 +928,12 @@ final class ApiController extends Controller
      */
     private function decodeOAuthState(string $state, string $secret): ?array
     {
-        if ($secret === '' || !str_contains($state, '.')) {
+        $stateSecret = $secret !== '' ? $secret : hash('sha256', (string) (App::config('app.key') ?? 'guidemate_oauth_secret'));
+        if (!str_contains($state, '.')) {
             return null;
         }
         [$payload, $sig] = explode('.', $state, 2);
-        $expected = $this->b64urlEncode(hash_hmac('sha256', $payload, $secret, true));
+        $expected = $this->b64urlEncode(hash_hmac('sha256', $payload, $stateSecret, true));
         if (!hash_equals($expected, $sig)) {
             return null;
         }
@@ -991,24 +1025,24 @@ final class ApiController extends Controller
     private function displayNameFromClaims(string $name, string $given, string $family, string $email): string
     {
         $name = trim($name);
-        if ($name !== '') {
+        if ($name !== '' && strcasecmp($name, 'google') !== 0 && strcasecmp($name, 'google user') !== 0) {
             return $name;
         }
         $combined = trim(trim($given) . ' ' . trim($family));
-        if ($combined !== '') {
+        if ($combined !== '' && strcasecmp($combined, 'google') !== 0 && strcasecmp($combined, 'google user') !== 0) {
             return $combined;
         }
         $local = strtolower(trim((string) strstr($email . '@', '@', true)));
-        if ($local === '') {
-            return '';
+        if ($local !== '') {
+            // Split on dots/underscores/hyphens/plus/digits and title-case each word.
+            $words = preg_split('/[._\-+0-9]+/', $local) ?: [];
+            $words = array_filter(array_map('trim', $words), static fn ($w) => $w !== '');
+            if (!empty($words)) {
+                return implode(' ', array_map(static fn ($w) => ucfirst($w), $words));
+            }
+            return ucfirst($local);
         }
-        // Split on dots/underscores/hyphens/plus/digits and title-case each word.
-        $words = preg_split('/[._\-+0-9]+/', $local) ?: [];
-        $words = array_filter(array_map('trim', $words), static fn ($w) => $w !== '');
-        if (empty($words)) {
-            return '';
-        }
-        return implode(' ', array_map(static fn ($w) => ucfirst($w), $words));
+        return 'User';
     }
 
     /**

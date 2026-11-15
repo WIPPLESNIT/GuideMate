@@ -3,6 +3,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
+import { Platform } from 'react-native';
 import { API_BASE_URL, SOCIAL_AUTH } from '../config';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -143,7 +144,7 @@ export async function prepareGoogleAuthUrl(): Promise<{
 export async function backendOAuthSignIn(provider: SocialProvider): Promise<string> {
   const label = PROVIDER_LABEL[provider];
 
-  if (provider === 'google') {
+  if (provider === 'google' && Platform.OS !== 'web') {
     return new Promise((resolve, reject) => {
       if (googleWaiter) {
         googleWaiter.reject(new Error('Google sign-in is already in progress.'));

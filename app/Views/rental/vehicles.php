@@ -433,10 +433,10 @@ $commonSpecs = [
                 </div>
             </div>
 
-            <!-- 4. Inclusions & Features -->
+            <!-- What's Included -->
             <div style="margin-bottom:1.5rem;">
-                <h3 style="margin-bottom:0.75rem;border-bottom:1px solid var(--border);padding-bottom:0.4rem;font-size:1.05rem;">4. Inclusions &amp; Features</h3>
-                <div class="hint" style="margin-bottom:0.5rem;font-size:0.85rem;">Check all features that apply to this vehicle:</div>
+                <h3 style="margin-bottom:0.75rem;border-bottom:1px solid var(--border);padding-bottom:0.4rem;font-size:1.05rem;">What’s Included</h3>
+                <div class="hint" style="margin-bottom:0.5rem;font-size:0.85rem;">Select all features and items included in the rental price at no extra charge:</div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(210px, 1fr));gap:0.5rem;background:#f8fafc;padding:0.9rem;border-radius:8px;border:1px solid var(--border);">
                     <?php foreach ($commonSpecs as $spec): ?>
                         <label style="display:flex;align-items:center;gap:0.45rem;font-size:0.85rem;cursor:pointer;">
@@ -447,15 +447,15 @@ $commonSpecs = [
                 </div>
 
                 <div class="field-row" style="margin-top:0.75rem;">
-                    <label for="vf_custom_spec">Custom Inclusions / Extra Feature <small class="hint">(Optional)</small></label>
+                    <label for="vf_custom_spec">Additional Inclusions <small class="hint">(Optional)</small></label>
                     <input class="input" id="vf_custom_spec" name="custom_spec" placeholder="e.g. Free Airport Delivery, Top Box 45L" maxlength="100">
                     <div class="field-error" id="vf_custom_spec_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                 </div>
             </div>
 
-            <!-- 5. Description & Requirements -->
+            <!-- Rental Requirements & Policies -->
             <div style="margin-bottom:1.5rem;">
-                <h3 style="margin-bottom:0.75rem;border-bottom:1px solid var(--border);padding-bottom:0.4rem;font-size:1.05rem;">5. Description &amp; Requirements</h3>
+                <h3 style="margin-bottom:0.75rem;border-bottom:1px solid var(--border);padding-bottom:0.4rem;font-size:1.05rem;">Rental Requirements &amp; Policies</h3>
                 <div class="field-row">
                     <label for="vf_description">Vehicle Description &amp; Rental Terms <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
                     <textarea class="input" id="vf_description" name="description" rows="4" placeholder="Describe the vehicle condition, driving requirements (e.g. valid driver's license, security deposit if applicable), delivery options, and operating guidelines..." required minlength="20" maxlength="5000"></textarea>

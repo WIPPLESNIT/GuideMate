@@ -26,11 +26,6 @@ $status = (string) ($targetUser['guide_status'] ?? 'none');
                 · Status: <span class="pill <?= $statusPill[$status] ?? 'pill-pending' ?>"><?= e(ucfirst($status)) ?></span>
             </p>
         </div>
-        <div style="display:flex;gap:0.5rem;">
-            <a href="<?= e(url('/admin/users/' . $targetUser['id'] . '/edit')) ?>" class="btn btn-ghost">
-                Manage User Verification
-            </a>
-        </div>
     </div>
 </div>
 

@@ -237,6 +237,7 @@ $router->post('/admin/users/{id}/revoke', [AdminController::class, 'revokeGuide'
 $router->post('/admin/users/{id}/toggle', [AdminController::class, 'toggleUser'], ['admin']);
 $router->post('/admin/users/{id}/suspend', [AdminController::class, 'suspendUser'], ['admin']);
 $router->post('/admin/users/{id}/unsuspend', [AdminController::class, 'unsuspendUser'], ['admin']);
+$router->post('/admin/users/{id}/reject-appeal', [AdminController::class, 'rejectAppeal'], ['admin']);
 $router->post('/admin/users/{id}/warn', [AdminController::class, 'warnProvider'], ['admin']);
 $router->post('/admin/users/{id}/clear-warning', [AdminController::class, 'clearGuideWarning'], ['admin']);
 $router->get('/admin/guides', [AdminController::class, 'guides'], ['admin']);

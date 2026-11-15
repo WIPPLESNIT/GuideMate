@@ -435,6 +435,7 @@ export default function ListingDetailScreen() {
   };
 
   const isHotel = listing?.category === 'Hotels' || (listing as any)?.category_slug === 'hotels';
+  const isRental = listing?.category === 'Rentals' || (listing as any)?.category_slug === 'rentals' || listing?.category === 'rental';
   const hasSchedule = !isHotel && schedules.length > 0;
   const isPerGroup = (listing?.price_unit || '').toLowerCase().includes('group');
 
@@ -1247,15 +1248,28 @@ export default function ListingDetailScreen() {
             </>
           ) : null}
 
-          <Text style={[styles.sectionTitle, { color: theme.textMain }]}>About this experience</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textMain }]}>
+            {isHotel ? 'About this hotel' : isRental ? 'About this rental' : 'About this experience'}
+          </Text>
           <Text style={[styles.about, { color: theme.textSub }]}>
             {listing.description || listing.summary || 'No description provided yet.'}
           </Text>
 
           {listing.included ? (
             <>
-              <Text style={[styles.sectionTitle, { color: theme.textMain }]}>{"What's included"}</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textMain }]}>
+                {isHotel ? 'Property Amenities & Highlights' : isRental ? 'What’s Included' : "What's included"}
+              </Text>
               <Text style={[styles.about, { color: theme.textSub }]}>{listing.included}</Text>
+            </>
+          ) : null}
+
+          {listing.not_included ? (
+            <>
+              <Text style={[styles.sectionTitle, { color: theme.textMain }]}>
+                {isHotel ? 'House Rules & Optional Add-ons' : isRental ? 'Rental Requirements & Policies' : 'Available Add-ons & Services'}
+              </Text>
+              <Text style={[styles.about, { color: theme.textSub }]}>{listing.not_included}</Text>
             </>
           ) : null}
 

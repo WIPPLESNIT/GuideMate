@@ -20,6 +20,7 @@ $host = host_labels($listing['owner_role'] ?? null);
 
 $isHotel = ($listing['category_slug'] ?? '') === 'hotels';
 $isPackage = ($listing['category_slug'] ?? '') === 'packages' || ($listing['category_slug'] ?? '') === 'travel-packages';
+$isRental = ($listing['category_slug'] ?? '') === 'rentals' || ($listing['category'] ?? '') === 'rental';
 $hotelRooms = $hotelRooms ?? ($isHotel ? \App\Models\HotelRoom::forListing((int) $listing['id']) : []);
 $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $listing['id']) : null;
 ?>
@@ -191,7 +192,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                                             <div>
                                                 <?php if ($isAvail): ?>
                                                     <button type="button" class="btn btn-primary" onclick="selectRoomForBooking(<?= $room['id'] ?>, '<?= e(addslashes($room['name'])) ?>', <?= (float) $room['price_per_night'] ?>, <?= $depositPct ?>, <?= (int) ($room['max_guests'] ?? 2) ?>)">
-                                                        ⚡ Select Room
+                                                        Select Room
                                                     </button>
                                                 <?php else: ?>
                                                     <button type="button" class="btn btn-ghost" disabled style="opacity:0.5;cursor:not-allowed;">
@@ -231,7 +232,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                 <div class="inclusion-box mt-3">
                     <?php if (!empty($listing['included'])): ?>
                         <div class="inclusion-col">
-                            <h3>What's included</h3>
+                            <h3><?= $isHotel ? e(__('h_amenities_title', 'Property Amenities & Highlights')) : ($isRental ? 'What’s Included' : "What's included") ?></h3>
                             <ul class="inclusion-list">
                                 <?php foreach (preg_split('/\r\n|\r|\n/', (string) $listing['included']) ?: [] as $line):
                                     $line = trim($line);
@@ -244,7 +245,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                     <?php endif; ?>
                     <?php if (!empty($listing['not_included'])): ?>
                         <div class="inclusion-col">
-                            <h3>Available Add-ons & Services</h3>
+                            <h3><?= $isHotel ? e(__('h_rules_title', 'House Rules & Optional Add-ons')) : ($isRental ? 'Rental Requirements & Policies' : 'Available Add-ons & Services') ?></h3>
                             <ul class="inclusion-list inclusion-list-muted">
                                 <?php foreach (preg_split('/\r\n|\r|\n/', (string) $listing['not_included']) ?: [] as $line): ?>
                                     <?php if (trim($line) !== ''): ?><li><?= e(trim($line)) ?></li><?php endif; ?>
@@ -398,18 +399,65 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                         <?= csrf_field() ?>
                         
                         <div class="field-row">
-                            <label for="hotel_room_id">Select Room Type</label>
-                            <select class="input" id="hotel_room_id" name="room_id" required onchange="onHotelRoomChange()">
-                                <?php foreach ($hotelRooms as $r): ?>
-                                    <option value="<?= $r['id'] ?>" 
-                                            data-price="<?= (float) $r['price_per_night'] ?>" 
-                                            data-deposit="<?= (int) ($r['deposit_percentage'] ?? 20) ?>" 
-                                            data-max="<?= (int) ($r['max_guests'] ?? 2) ?>" 
-                                            <?= ($r['status'] ?? '') !== 'available' ? 'disabled' : '' ?>>
-                                        <?= e($r['name']) ?> — <?= money($r['price_per_night']) ?>/nt <?= ($r['status'] ?? '') !== 'available' ? ' (' . e(str_replace('_', ' ', $r['status'])) . ')' : '' ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <label for="hotel_room_trigger" id="hotel_room_id_label">Select Room Type</label>
+                            <div class="hotel-room-select-wrap" id="hotelRoomSelectWrap">
+                                <select class="input hotel-room-native-select" id="hotel_room_id" name="room_id" required onchange="onHotelRoomChange()" tabindex="-1" aria-hidden="true">
+                                    <?php foreach ($hotelRooms as $r): ?>
+                                        <option value="<?= $r['id'] ?>" 
+                                                data-name="<?= e($r['name']) ?>"
+                                                data-price="<?= (float) $r['price_per_night'] ?>" 
+                                                data-price-fmt="<?= money($r['price_per_night']) ?>"
+                                                data-deposit="<?= (int) ($r['deposit_percentage'] ?? 20) ?>" 
+                                                data-max="<?= (int) ($r['max_guests'] ?? 2) ?>" 
+                                                <?= ($r['status'] ?? '') !== 'available' ? 'disabled' : '' ?>>
+                                            <?= e($r['name']) ?> — <?= money($r['price_per_night']) ?>/nt <?= ($r['status'] ?? '') !== 'available' ? ' (' . e(str_replace('_', ' ', $r['status'])) . ')' : '' ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+
+                                <button type="button" 
+                                        class="hotel-room-trigger" 
+                                        id="hotel_room_trigger" 
+                                        aria-haspopup="listbox" 
+                                        aria-expanded="false" 
+                                        aria-controls="hotel_room_menu"
+                                        aria-labelledby="hotel_room_id_label hotel_room_trigger_text">
+                                    <span class="hotel-room-trigger-text" id="hotel_room_trigger_text">Select a room</span>
+                                    <span class="hotel-room-chevron" aria-hidden="true">
+                                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </span>
+                                </button>
+
+                                <div class="hotel-room-menu" id="hotel_room_menu" role="listbox" aria-labelledby="hotel_room_id_label" tabindex="-1">
+                                    <?php foreach ($hotelRooms as $r): 
+                                        $isAvail = ($r['status'] ?? '') === 'available';
+                                    ?>
+                                        <div class="hotel-room-opt <?= !$isAvail ? 'is-disabled' : '' ?>" 
+                                             role="option" 
+                                             id="room_opt_<?= $r['id'] ?>"
+                                             data-id="<?= $r['id'] ?>"
+                                             data-name="<?= e($r['name']) ?>"
+                                             data-price="<?= (float) $r['price_per_night'] ?>"
+                                             data-price-fmt="<?= money($r['price_per_night']) ?>"
+                                             data-deposit="<?= (int) ($r['deposit_percentage'] ?? 20) ?>"
+                                             data-max="<?= (int) ($r['max_guests'] ?? 2) ?>"
+                                             data-available="<?= $isAvail ? '1' : '0' ?>"
+                                             aria-disabled="<?= !$isAvail ? 'true' : 'false' ?>"
+                                             tabindex="<?= $isAvail ? '0' : '-1' ?>">
+                                            <div class="hotel-room-opt-info">
+                                                <span class="hotel-room-opt-name"><?= e($r['name']) ?></span>
+                                                <span class="hotel-room-opt-meta">
+                                                    Up to <?= (int) ($r['max_guests'] ?? 2) ?> guests · <?= (int) ($r['deposit_percentage'] ?? 20) ?>% deposit
+                                                    <?= !$isAvail ? ' · (' . e(str_replace('_', ' ', $r['status'])) . ')' : '' ?>
+                                                </span>
+                                            </div>
+                                            <span class="hotel-room-opt-price"><?= money($r['price_per_night']) ?>/nt</span>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="form-grid-2">
@@ -509,12 +557,152 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
 <div style="height:3rem;"></div>
 
 <script>
+// Hotel Room Custom Dropdown Management
+function initHotelRoomDropdown() {
+    var wrap = document.getElementById('hotelRoomSelectWrap');
+    var trigger = document.getElementById('hotel_room_trigger');
+    var menu = document.getElementById('hotel_room_menu');
+    var select = document.getElementById('hotel_room_id');
+    if (!wrap || !trigger || !menu || !select) return;
+
+    function openMenu() {
+        wrap.classList.add('is-open');
+        trigger.setAttribute('aria-expanded', 'true');
+        var selected = menu.querySelector('.hotel-room-opt.is-selected');
+        if (selected) {
+            try { selected.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+        }
+    }
+
+    function closeMenu() {
+        wrap.classList.remove('is-open');
+        trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    trigger.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (wrap.classList.contains('is-open')) {
+            closeMenu();
+        } else {
+            openMenu();
+        }
+    });
+
+    trigger.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!wrap.classList.contains('is-open')) {
+                openMenu();
+            }
+            var target = menu.querySelector('.hotel-room-opt.is-selected') || menu.querySelector('.hotel-room-opt:not(.is-disabled)');
+            if (target) {
+                target.focus();
+            }
+        } else if (e.key === 'Escape') {
+            closeMenu();
+        }
+    });
+
+    var options = menu.querySelectorAll('.hotel-room-opt');
+    options.forEach(function (opt) {
+        opt.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (opt.getAttribute('data-available') !== '1') return;
+            var roomId = opt.getAttribute('data-id');
+            select.value = roomId;
+            syncHotelCustomSelect(roomId);
+            onHotelRoomChange();
+            closeMenu();
+            trigger.focus();
+        });
+
+        opt.addEventListener('keydown', function (e) {
+            var availOpts = Array.from(menu.querySelectorAll('.hotel-room-opt:not(.is-disabled)'));
+            var idx = availOpts.indexOf(opt);
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                var next = availOpts[idx + 1] || availOpts[0];
+                if (next) next.focus();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                var prev = availOpts[idx - 1] || availOpts[availOpts.length - 1];
+                if (prev) prev.focus();
+            } else if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                opt.click();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeMenu();
+                trigger.focus();
+            } else if (e.key === 'Tab') {
+                closeMenu();
+            }
+        });
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!wrap.contains(e.target)) {
+            closeMenu();
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && wrap.classList.contains('is-open')) {
+            closeMenu();
+            trigger.focus();
+        }
+    });
+}
+
+function syncHotelCustomSelect(roomId) {
+    var select = document.getElementById('hotel_room_id');
+    var triggerText = document.getElementById('hotel_room_trigger_text');
+    var menu = document.getElementById('hotel_room_menu');
+    if (!select || !triggerText || !menu) return;
+
+    var targetId = roomId !== undefined && roomId !== null ? String(roomId) : String(select.value);
+    var options = menu.querySelectorAll('.hotel-room-opt');
+    var found = null;
+
+    options.forEach(function (opt) {
+        var optId = String(opt.getAttribute('data-id'));
+        if (optId === targetId) {
+            opt.classList.add('is-selected');
+            opt.setAttribute('aria-selected', 'true');
+            found = opt;
+        } else {
+            opt.classList.remove('is-selected');
+            opt.setAttribute('aria-selected', 'false');
+        }
+    });
+
+    if (!found && options.length > 0) {
+        for (var i = 0; i < options.length; i++) {
+            if (options[i].getAttribute('data-available') === '1') {
+                found = options[i];
+                found.classList.add('is-selected');
+                found.setAttribute('aria-selected', 'true');
+                select.value = found.getAttribute('data-id');
+                break;
+            }
+        }
+    }
+
+    if (found) {
+        var name = found.getAttribute('data-name');
+        var priceFmt = found.getAttribute('data-price-fmt');
+        triggerText.textContent = name + ' — ' + priceFmt + '/nt';
+    }
+}
+
 // Select a room from the available rooms cards and sync with sidebar widget
 function selectRoomForBooking(roomId, roomName, price, depositPct, maxGuests) {
     var select = document.getElementById('hotel_room_id');
     if (select) {
         select.value = roomId;
     }
+    syncHotelCustomSelect(roomId);
     var guestsInput = document.getElementById('hotel_guests');
     if (guestsInput && maxGuests) {
         guestsInput.max = maxGuests;
@@ -530,6 +718,10 @@ function selectRoomForBooking(roomId, roomName, price, depositPct, maxGuests) {
 }
 
 function onHotelRoomChange() {
+    var select = document.getElementById('hotel_room_id');
+    if (select) {
+        syncHotelCustomSelect(select.value);
+    }
     recalculateHotelTotal();
 }
 
@@ -618,6 +810,8 @@ function recalculateHotelTotal() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    initHotelRoomDropdown();
+    syncHotelCustomSelect();
     recalculateHotelTotal();
 });
 
