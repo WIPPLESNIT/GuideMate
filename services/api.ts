@@ -250,6 +250,11 @@ export type ApiBooking = {
   package_details?: any;
   package_booking_ref?: string | null;
   package_overall_status?: string | null;
+  has_cancellation?: boolean;
+  cancelled_items?: any[];
+  alternative_options?: any;
+  package_summary?: any;
+  audit_logs?: any[];
   provider_statuses?: any[];
   payment_method?: string;
   payment_reference?: string;
@@ -292,6 +297,9 @@ export type CancellationPolicyMeta = {
  * 3. Or after the hotel checkout date (for hotels) or visit date (for attractions) has passed.
  */
 export function isBookingCompleted(b: ApiBooking): boolean {
+  if (b.package_overall_status === 'action_required' || b.has_cancellation) {
+    return false;
+  }
   if (b.hotel_status === 'completed' || b.status === 'completed') {
     return true;
   }
@@ -875,6 +883,58 @@ export const cancelRental = (rentalId: number, reason?: string) =>
     method: 'POST',
     body: { reason },
   });
+
+export const getPackageAlternatives = (ref: string, itemId: number) =>
+  api<{ success: boolean; alternatives: any[]; cancelled_item: any }>(
+    `/api/packages/bookings/${encodeURIComponent(ref)}/alternatives/${itemId}`
+  );
+
+export const replacePackageService = (
+  ref: string,
+  payload: { item_id: number; provider_id: number; service_id: number; room_id?: number }
+) =>
+  api<{ success: boolean; message: string; summary?: any }>(
+    `/api/packages/bookings/${encodeURIComponent(ref)}/replace`,
+    {
+      method: 'POST',
+      body: payload,
+    }
+  );
+
+export const reschedulePackageService = (
+  ref: string,
+  payload: { item_id: number; new_date: string; new_time?: string; notes?: string }
+) =>
+  api<{ success: boolean; message: string; summary?: any }>(
+    `/api/packages/bookings/${encodeURIComponent(ref)}/reschedule`,
+    {
+      method: 'POST',
+      body: payload,
+    }
+  );
+
+export const continuePackageWithoutService = (ref: string, payload: { item_id: number }) =>
+  api<{ success: boolean; message: string; refund_amount?: number; new_total?: number; summary?: any }>(
+    `/api/packages/bookings/${encodeURIComponent(ref)}/continue-without`,
+    {
+      method: 'POST',
+      body: payload,
+    }
+  );
+
+export const getPackageCancelSummary = (ref: string) =>
+  api<{ success: boolean; cancel_summary: any }>(
+    `/api/packages/bookings/${encodeURIComponent(ref)}/cancel-summary`
+  );
+
+export const cancelFullPackage = (ref: string, reason?: string) =>
+  api<{ success: boolean; message: string; refund_amount?: number }>(
+    `/api/packages/bookings/${encodeURIComponent(ref)}/cancel-full`,
+    {
+      method: 'POST',
+      body: { reason },
+    }
+  );
 
 export type ApiVoucher = {
   code: string;

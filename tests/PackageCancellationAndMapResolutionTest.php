@@ -203,24 +203,28 @@ $rentalCheck = Database::first("SELECT status FROM rental_requests WHERE id = ?"
 $itemsCheck = Database::all("SELECT service_type, status FROM package_booking_items WHERE package_booking_ref = ?", [$pkgRef]);
 
 assertTest(
-    ($parentCheck['status'] ?? '') === 'cancelled' && ($parentCheck['package_overall_status'] ?? '') === 'cancelled',
-    'Parent package booking status changed to Cancelled'
+    ($parentCheck['package_overall_status'] ?? '') === 'action_required',
+    'Parent package overall status changed to Action Required'
 );
 assertTest(
     ($hotelCheck['status'] ?? '') === 'cancelled' && ($hotelCheck['hotel_status'] ?? '') === 'cancelled',
     'Hotel reservation status changed to Cancelled'
 );
 assertTest(
-    ($rentalCheck['status'] ?? '') === 'cancelled',
-    'Associated vehicle rental request automatically changed to Cancelled'
+    in_array($rentalCheck['status'] ?? '', ['pending', 'approved'], true),
+    'Associated vehicle rental request remains active (pending/approved, not cancelled)'
 );
-$allItemsCancelled = true;
+$hotelItemCancelled = false;
+$otherItemsActive = true;
 foreach ($itemsCheck as $it) {
-    if ($it['status'] !== 'cancelled') {
-        $allItemsCancelled = false;
+    if ($it['service_type'] === 'hotel') {
+        if ($it['status'] === 'cancelled') $hotelItemCancelled = true;
+    } else {
+        if (!in_array($it['status'], ['pending', 'confirmed'], true)) $otherItemsActive = false;
     }
 }
-assertTest($allItemsCancelled, 'All package service items automatically synchronized to Cancelled');
+assertTest($hotelItemCancelled, 'Hotel package service item marked Cancelled');
+assertTest($otherItemsActive, 'Other provider items (guide and rental) remain active (pending/confirmed)');
 
 // ---------------------------------------------------------------------
 // TEST 4: Standalone Individual Bookings are NOT Affected
@@ -318,10 +322,14 @@ PackageBookingService::onRentalUpdated($rental2Id, 'cancelled', 3);
 $parent2Check = Database::first("SELECT status, package_overall_status FROM bookings WHERE id = ?", [$parent2Id]);
 $hotel2Check = Database::first("SELECT status, hotel_status FROM bookings WHERE id = ?", [$hotel2Id]);
 $rental2Check = Database::first("SELECT status FROM rental_requests WHERE id = ?", [$rental2Id]);
+$rentalItemCheck = Database::first("SELECT status FROM package_booking_items WHERE rental_request_id = ?", [$rental2Id]);
+$hotelItemCheck = Database::first("SELECT status FROM package_booking_items WHERE sub_booking_id = ?", [$hotel2Id]);
 
-assertTest(($parent2Check['status'] ?? '') === 'cancelled', 'When Rental cancels, Parent package becomes Cancelled');
-assertTest(($hotel2Check['status'] ?? '') === 'cancelled', 'When Rental cancels, Hotel reservation becomes Cancelled');
+assertTest(($parent2Check['package_overall_status'] ?? '') === 'action_required', 'When Rental cancels, Package overall status becomes action_required (not cancelled)');
+assertTest(($hotel2Check['status'] ?? '') === 'confirmed', 'When Rental cancels, Hotel reservation remains confirmed');
 assertTest(($rental2Check['status'] ?? '') === 'cancelled', 'When Rental cancels, Rental request becomes Cancelled');
+assertTest(($hotelItemCheck['status'] ?? '') === 'confirmed', 'Hotel package booking item remains confirmed');
+assertTest(($rentalItemCheck['status'] ?? '') === 'cancelled', 'Rental package booking item becomes cancelled');
 
 // ---------------------------------------------------------------------
 // TEST 6: Guide Cancels Travel Package Booking
@@ -378,10 +386,14 @@ PackageBookingService::onBookingUpdated($parent3Id, 'cancelled', $guideId);
 $parent3Check = Database::first("SELECT status, package_overall_status FROM bookings WHERE id = ?", [$parent3Id]);
 $hotel3Check = Database::first("SELECT status, hotel_status FROM bookings WHERE id = ?", [$hotel3Id]);
 $rental3Check = Database::first("SELECT status FROM rental_requests WHERE id = ?", [$rental3Id]);
+$guide3ItemCheck = Database::first("SELECT status FROM package_booking_items WHERE package_booking_ref = ? AND service_type = 'guide'", [$pkgRef3]);
+$hotel3ItemCheck = Database::first("SELECT status FROM package_booking_items WHERE package_booking_ref = ? AND service_type = 'hotel'", [$pkgRef3]);
 
-assertTest(($parent3Check['status'] ?? '') === 'cancelled', 'When Guide cancels, Parent package becomes Cancelled');
-assertTest(($hotel3Check['status'] ?? '') === 'cancelled', 'When Guide cancels, Hotel reservation becomes Cancelled');
-assertTest(($rental3Check['status'] ?? '') === 'cancelled', 'When Guide cancels, Rental request becomes Cancelled');
+assertTest(($parent3Check['package_overall_status'] ?? '') === 'action_required', 'When Guide cancels, Parent package overall status becomes action_required');
+assertTest(($guide3ItemCheck['status'] ?? '') === 'cancelled', 'When Guide cancels, Guide item becomes Cancelled');
+assertTest(($hotel3Check['status'] ?? '') === 'confirmed', 'When Guide cancels, Hotel reservation remains Confirmed');
+assertTest(($hotel3ItemCheck['status'] ?? '') === 'confirmed', 'When Guide cancels, Hotel package item remains Confirmed');
+assertTest(($rental3Check['status'] ?? '') === 'approved', 'When Guide cancels, Rental request remains Approved');
 
 // Clean up test records
 Database::run("DELETE FROM package_booking_items WHERE package_booking_ref IN (?, ?, ?, ?)", [$pkgRef, $dummyPkgRef, $pkgRef2, $pkgRef3]);

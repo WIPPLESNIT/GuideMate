@@ -18,16 +18,21 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EmptyState, ScreenTitle } from '../../components/ui';
-import { clearSession, restoreSession } from '../../lib/authStore';
+import { clearSession, restoreSession, SessionUser } from '../../lib/authStore';
 import { usePreferences } from '../../lib/preferences';
 import { useTheme } from '../../lib/theme';
 import {
   ApiBooking,
   cancelBooking,
+  cancelFullPackage,
+  continuePackageWithoutService,
   getBookings,
+  getPackageAlternatives,
   isUnauthorized,
   PaymentMethod,
   payBookingBalance,
+  replacePackageService,
+  reschedulePackageService,
   resolveImage,
 } from '../../services/api';
 
@@ -95,6 +100,10 @@ const STATUS_LABEL: Record<string, string> = {
  * - Active or upcoming trips continue to appear in the non-history section.
  */
 function isTripHistory(b: ApiBooking): boolean {
+  if (b.package_overall_status === 'action_required' || b.has_cancellation) {
+    return false;
+  }
+
   const isPkg = Boolean(
     b.kind === 'package' ||
     b.is_package ||
@@ -146,6 +155,7 @@ export default function TripsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loggedIn, setLoggedIn] = useState(true);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'package' | 'hotel' | 'activity' | 'attraction'>('all');
@@ -168,6 +178,145 @@ export default function TripsScreen() {
   // Booking details & receipt modal state
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<ApiBooking | null>(null);
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+
+  // Package Alternatives State
+  const [pkgAlternativeTab, setPkgAlternativeTab] = useState<'none' | 'replace' | 'reschedule' | 'continue-without' | 'cancel-full'>('none');
+  const [pkgAlternativesList, setPkgAlternativesList] = useState<any[]>([]);
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false);
+  const [pkgRescheduleDate, setPkgRescheduleDate] = useState('');
+  const [pkgRescheduleTime, setPkgRescheduleTime] = useState('');
+  const [pkgRescheduleNotes, setPkgRescheduleNotes] = useState('');
+  const [pkgCancelReason, setPkgCancelReason] = useState('');
+  const [isSubmittingPkgOption, setIsSubmittingPkgOption] = useState(false);
+
+  const handleLoadAlternatives = async (pkgRef: string, itemId: number) => {
+    setLoadingAlternatives(true);
+    try {
+      const res = await getPackageAlternatives(pkgRef, itemId);
+      setPkgAlternativesList(res.alternatives || []);
+    } catch (err: any) {
+      Alert.alert('Notice', err?.message || 'Could not load alternatives at this time.');
+    } finally {
+      setLoadingAlternatives(false);
+    }
+  };
+
+  const handleSelectReplacement = async (pkgRef: string, itemId: number, alt: any) => {
+    Alert.alert(
+      'Confirm Replacement',
+      `Replace with "${alt.title || alt.room_name}" (${formatPrice(alt.price)})? Only this service will be replaced; your other confirmed bookings remain intact.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            setIsSubmittingPkgOption(true);
+            try {
+              const res = await replacePackageService(pkgRef, {
+                item_id: itemId,
+                provider_id: alt.provider_id,
+                service_id: alt.listing_id || alt.vehicle_id || alt.provider_id,
+                room_id: alt.room_id || 0,
+              });
+              Alert.alert('Service Replaced', res.message || 'Service replaced successfully. Your package is updated.');
+              setSelectedPackageDetails(null);
+              setPkgAlternativeTab('none');
+              await load();
+            } catch (err: any) {
+              Alert.alert('Replacement Failed', err?.message || 'Could not replace service.');
+            } finally {
+              setIsSubmittingPkgOption(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReschedule = async (pkgRef: string, itemId: number) => {
+    if (!pkgRescheduleDate) {
+      Alert.alert('Required', 'Please enter a new date for this service.');
+      return;
+    }
+    setIsSubmittingPkgOption(true);
+    try {
+      const res = await reschedulePackageService(pkgRef, {
+        item_id: itemId,
+        new_date: pkgRescheduleDate,
+        new_time: pkgRescheduleTime,
+        notes: pkgRescheduleNotes,
+      });
+      Alert.alert('Rescheduled', res.message || 'Reschedule request submitted successfully.');
+      setSelectedPackageDetails(null);
+      setPkgAlternativeTab('none');
+      await load();
+    } catch (err: any) {
+      Alert.alert('Reschedule Failed', err?.message || 'Could not submit reschedule request.');
+    } finally {
+      setIsSubmittingPkgOption(false);
+    }
+  };
+
+  const handleContinueWithout = async (pkgRef: string, itemId: number, refundAmt: number) => {
+    Alert.alert(
+      'Continue Without Service',
+      `Drop this cancelled service? A partial refund of ${formatPrice(refundAmt)} will be credited to your account. Your remaining confirmed services will continue as planned.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm & Continue',
+          onPress: async () => {
+            setIsSubmittingPkgOption(true);
+            try {
+              const res = await continuePackageWithoutService(pkgRef, { item_id: itemId });
+              Alert.alert('Service Dropped', res.message || 'Service removed. Partial refund initiated.');
+              setSelectedPackageDetails(null);
+              setPkgAlternativeTab('none');
+              await load();
+            } catch (err: any) {
+              Alert.alert('Action Failed', err?.message || 'Could not proceed without service.');
+            } finally {
+              setIsSubmittingPkgOption(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelFullPackage = async (pkgRef: string, totalAmt: number) => {
+    if (isSubmittingPkgOption) return;
+    Alert.alert(
+      'Cancel Entire Travel Package',
+      `Cancelling this package will also cancel all associated provider bookings (including hotel reservations and vehicle rentals), and a full refund of ${formatPrice(totalAmt)} will be processed according to cancellation policies.\n\nDo you want to proceed?`,
+      [
+        { text: 'Keep Package', style: 'cancel' },
+        {
+          text: 'Confirm Cancellation',
+          style: 'destructive',
+          onPress: async () => {
+            setIsSubmittingPkgOption(true);
+            try {
+              const res = await cancelFullPackage(pkgRef, pkgCancelReason || 'Cancelled by traveler');
+              Alert.alert('Package Cancelled', res.message || 'Full travel package cancelled. Associated hotel reservations and vehicle rentals have been cancelled.');
+              setSelectedPackageDetails(prev => prev ? {
+                ...prev,
+                status: 'cancelled',
+                package_overall_status: 'cancelled',
+                has_cancellation: false,
+              } : null);
+              setPkgAlternativeTab('none');
+              await load();
+            } catch (err: any) {
+              Alert.alert('Cancellation Failed', err?.message || 'Could not cancel entire package.');
+            } finally {
+              setIsSubmittingPkgOption(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleCancelBooking = (booking: ApiBooking) => {
     if (!booking) return;
@@ -301,6 +450,7 @@ export default function TripsScreen() {
     // restoreSession both returns the cached user AND re-applies the auth token,
     // so authenticated calls work even right after an app reload.
     const session = await restoreSession();
+    setCurrentUser(session);
     if (!session) {
       setLoggedIn(false);
       setLoading(false);
@@ -978,20 +1128,23 @@ export default function TripsScreen() {
 
   const renderPackageItem = (item: ApiBooking, isCompleted: boolean) => {
     const overallStatus = (item.package_overall_status || item.status || 'pending').toLowerCase();
-    const isPkgCompleted = overallStatus === 'completed' || isCompleted;
+    const isCancelled = overallStatus === 'cancelled' || overallStatus === 'refunded' || item.status === 'cancelled' || item.status === 'refunded';
+    const isPkgCompleted = !isCancelled && (overallStatus === 'completed' || isCompleted || Boolean(item.is_completed));
+    const isActionRequired = !isCancelled && !isPkgCompleted && (overallStatus === 'action_required' || Boolean(item.has_cancellation));
     const statusColorVal =
+      isCancelled ? '#DC2626' :
+      isActionRequired ? '#D97706' :
       isPkgCompleted ? '#059669' :
       overallStatus === 'confirmed' ? '#059669' :
       overallStatus === 'partially_confirmed' ? '#2563EB' :
-      overallStatus === 'cancelled' || overallStatus === 'refunded' ? '#DC2626' :
       '#D97706';
     const statusLabelText =
+      isCancelled ? (overallStatus === 'refunded' || item.status === 'refunded' ? 'Refunded' : 'Cancelled') :
+      isActionRequired ? 'Action Required' :
       item.status_label || (
         isPkgCompleted ? 'Completed' :
         overallStatus === 'confirmed' ? 'Confirmed' :
         overallStatus === 'partially_confirmed' ? 'Awaiting Providers Confirmation' :
-        overallStatus === 'cancelled' ? 'Cancelled' :
-        overallStatus === 'refunded' ? 'Refunded' :
         'Pending Confirmations'
       );
     const pkgRefText = item.package_booking_ref || `BK-${item.id}`;
@@ -1054,6 +1207,16 @@ export default function TripsScreen() {
           </View>
         </View>
 
+        {/* Warning Banner if Action Required */}
+        {isActionRequired ? (
+          <View style={{ marginHorizontal: 12, marginTop: 10, padding: 8, borderRadius: 8, backgroundColor: isDark ? 'rgba(217, 119, 6, 0.2)' : '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="warning" size={16} color="#D97706" />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FBBF24' : '#92400E', flex: 1 }}>
+              Service provider cancelled. Tap to review options.
+            </Text>
+          </View>
+        ) : null}
+
         {/* Provider Services Status Breakdown */}
         {(() => {
           const guideItem = item.provider_statuses?.find((p: any) => p.service_type === 'guide');
@@ -1070,6 +1233,8 @@ export default function TripsScreen() {
           const getStatusBadge = (st: string) => {
             if (st === 'completed') return { text: 'Completed', color: '#10B981', bg: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7' };
             if (st === 'confirmed' || st === 'approved' || st === 'contacted' || st === 'checked_in') return { text: 'Confirmed', color: '#059669', bg: isDark ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5' };
+            if (st === 'rescheduled') return { text: 'Rescheduled', color: '#2563EB', bg: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF' };
+            if (st === 'removed') return { text: 'Removed', color: '#64748B', bg: isDark ? 'rgba(100, 116, 139, 0.2)' : '#F1F5F9' };
             if (st === 'cancelled') return { text: 'Cancelled', color: '#DC2626', bg: isDark ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2' };
             if (st === 'rejected' || st === 'declined') return { text: 'Declined', color: '#DC2626', bg: isDark ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2' };
             return { text: 'Pending', color: '#D97706', bg: isDark ? 'rgba(217, 119, 6, 0.2)' : '#FEF3C7' };
@@ -2237,34 +2402,357 @@ export default function TripsScreen() {
                 const vehicleSt = vehicleItem?.rental_request_status || vehicleItem?.status || (hasVehicle && overallStatus === 'completed' ? 'completed' : (details?.rental_request_status === 'approved' ? 'confirmed' : 'pending'));
                 const vehicleObj = details?.rental || details?.rentalDetail;
 
+                const isCancelled = overallStatus === 'cancelled' || overallStatus === 'refunded' || selectedPackageDetails.status === 'cancelled' || selectedPackageDetails.status === 'refunded';
+
+                const hotelIsActive = (hotelItem ? hotelItem.status !== 'removed' : Boolean(details?.hotel_included || details?.accommodation));
+                const vehicleIsActive = (vehicleItem ? vehicleItem.status !== 'removed' : Boolean(details?.rental_included || details?.rental));
+
                 const guideCompleted = guideSt === 'completed';
-                const hotelCompleted = !hasHotel || hotelSt === 'completed';
-                const vehicleCompleted = !hasVehicle || vehicleSt === 'completed';
+                const hotelCompleted = !hotelIsActive || hotelSt === 'completed';
+                const vehicleCompleted = !vehicleIsActive || vehicleSt === 'completed';
                 const isAllCompleted = guideCompleted && hotelCompleted && vehicleCompleted;
 
                 const guideConfirmed = guideSt === 'confirmed' || guideSt === 'completed';
-                const hotelConfirmed = !hasHotel || hotelSt === 'confirmed' || hotelSt === 'checked_in' || hotelSt === 'completed';
-                const vehicleConfirmed = !hasVehicle || vehicleSt === 'confirmed' || vehicleSt === 'approved' || vehicleSt === 'contacted' || vehicleSt === 'completed';
+                const hotelConfirmed = !hotelIsActive || hotelSt === 'confirmed' || hotelSt === 'checked_in' || hotelSt === 'completed';
+                const vehicleConfirmed = !vehicleIsActive || vehicleSt === 'confirmed' || vehicleSt === 'approved' || vehicleSt === 'contacted' || vehicleSt === 'completed';
 
-                const isAnyCancelled = guideSt === 'cancelled' || guideSt === 'rejected' || (hasHotel && (hotelSt === 'cancelled' || hotelSt === 'rejected')) || (hasVehicle && (vehicleSt === 'cancelled' || vehicleSt === 'rejected'));
                 const isAllConfirmed = guideConfirmed && hotelConfirmed && vehicleConfirmed;
-                const isPartiallyConfirmed = !isAllConfirmed && (guideConfirmed || (hasHotel && hotelConfirmed) || (hasVehicle && vehicleConfirmed));
+                const isPartiallyConfirmed = !isAllConfirmed && !isAllCompleted && (guideConfirmed || (hotelIsActive && hotelConfirmed) || (vehicleIsActive && vehicleConfirmed));
 
-                const approvalsBadgeText = isAnyCancelled
-                  ? 'CANCELLED'
-                  : (isAllCompleted ? 'ALL COMPLETED' : (isAllConfirmed ? 'ALL CONFIRMED' : (isPartiallyConfirmed ? 'PARTIALLY CONFIRMED' : 'PENDING APPROVALS')));
-                const approvalsBadgeBg = isAnyCancelled
+                const isPkgCompleted = !isCancelled && (overallStatus === 'completed' || Boolean(selectedPackageDetails.is_completed) || isAllCompleted);
+                const isActionReq = !isCancelled && !isPkgCompleted && (overallStatus === 'action_required' || Boolean(selectedPackageDetails.has_cancellation));
+
+                const isHost = currentUser?.role === 'guide' || Boolean(selectedPackageDetails.guide_id && currentUser?.id === selectedPackageDetails.guide_id);
+                const isTraveler = !isHost;
+
+                const approvalsBadgeText = isCancelled
+                  ? (overallStatus === 'refunded' || selectedPackageDetails.status === 'refunded' ? 'REFUNDED' : 'CANCELLED')
+                  : (isActionReq
+                    ? 'ACTION REQUIRED'
+                    : (isPkgCompleted
+                      ? 'ALL COMPLETED'
+                      : (isAllConfirmed ? 'ALL CONFIRMED' : (isPartiallyConfirmed ? 'PARTIALLY CONFIRMED' : 'PENDING APPROVALS'))));
+                const approvalsBadgeBg = isCancelled
                   ? '#FEF2F2'
-                  : (isAllCompleted ? '#DCFCE7' : (isAllConfirmed ? '#ECFDF5' : '#EFF6FF'));
-                const approvalsBadgeColor = isAnyCancelled
+                  : (isActionReq
+                    ? (isDark ? 'rgba(217, 119, 6, 0.25)' : '#FEF3C7')
+                    : (isPkgCompleted
+                      ? '#DCFCE7'
+                      : (isAllConfirmed ? '#ECFDF5' : '#EFF6FF')));
+                const approvalsBadgeColor = isCancelled
                   ? '#DC2626'
-                  : (isAllCompleted ? '#10B981' : (isAllConfirmed ? '#059669' : (isPartiallyConfirmed ? '#2563EB' : '#D97706')));
+                  : (isActionReq
+                    ? '#D97706'
+                    : (isPkgCompleted
+                      ? '#10B981'
+                      : (isAllConfirmed ? '#059669' : (isPartiallyConfirmed ? '#2563EB' : '#D97706'))));
+
+                const cancelledItem = (selectedPackageDetails.cancelled_items && selectedPackageDetails.cancelled_items.length > 0)
+                  ? selectedPackageDetails.cancelled_items[0]
+                  : (selectedPackageDetails.provider_statuses?.find((p: any) => p.status === 'cancelled' || p.status === 'rejected') || {
+                      id: 0,
+                      provider_name: 'Provider',
+                      service_name: 'Service',
+                      service_type: 'hotel',
+                      cancellation_reason: 'Provider unavailable for scheduled date',
+                      allocated_amount: 0,
+                    });
+
+                const pkgTotalAmt = Number(selectedPackageDetails.total_amount) || 0;
+                const cancelledAllocatedAmt = Number(cancelledItem?.allocated_amount) || 0;
+                const pkgNewTotalAmt = Math.max(0, pkgTotalAmt - cancelledAllocatedAmt);
+
+                let cancelledScheduleText = formatDate(selectedPackageDetails.booking_date);
+                if (cancelledItem?.service_type === 'hotel') {
+                  cancelledScheduleText = `Stay: ${formatDate(cancelledItem.hotel_check_in || selectedPackageDetails.check_in_date || selectedPackageDetails.booking_date)} to ${formatDate(cancelledItem.hotel_check_out || selectedPackageDetails.check_out_date || selectedPackageDetails.booking_date)}`;
+                } else if (cancelledItem?.service_type === 'vehicle') {
+                  cancelledScheduleText = `Pickup: ${formatDate(cancelledItem.rental_pickup_date || selectedPackageDetails.booking_date)} (${cancelledItem.rental_days_count || 1} day(s))`;
+                }
 
                 const inclusionsList: any[] = Array.isArray(details?.inclusions) ? details.inclusions : [];
                 const tourActivities = inclusionsList.filter((inc: any) => inc.type === 'attraction' || inc.type === 'activity');
 
                 return (
                   <>
+                    {/* Cancellation Alert Banner: Only shown for active packages needing action */}
+                    {!isCancelled && isActionReq ? (
+                      <View style={{ marginBottom: 14, padding: 14, borderRadius: 12, backgroundColor: isDark ? 'rgba(217, 119, 6, 0.15)' : '#FFFBEB', borderWidth: 1.5, borderColor: '#F59E0B' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                          <Ionicons name="warning" size={22} color="#D97706" style={{ marginTop: 1 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: isDark ? '#FBBF24' : '#92400E' }}>
+                              {cancelledItem?.provider_name ? `${cancelledItem.provider_name} has cancelled ${cancelledItem.service_name || 'service'}` : 'A service provider has cancelled'}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: isDark ? '#FDE68A' : '#78350F', marginTop: 2, lineHeight: 16 }}>
+                              Reason: {cancelledItem?.cancellation_reason || 'Provider unavailable for scheduled date'}
+                            </Text>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FCD34D' : '#B45309', marginTop: 4 }}>
+                              Affected Schedule: {cancelledScheduleText}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#FDE68A', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#6EE7B7' : '#065F46' }}>
+                            Good news: Your other confirmed services remain active and unaffected.
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* Alternative Service Options: Only shown for active packages needing action */}
+                    {!isCancelled && isActionReq ? (
+                      <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#FFFFFF', borderColor: '#F59E0B', borderWidth: 1.5, marginBottom: 14, padding: 14 }]}>
+                        <View style={{ marginBottom: 10 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>
+                            {isHost ? 'Manage Disrupted Service' : 'Package Disruption Options'}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.textSub, marginTop: 2, lineHeight: 15 }}>
+                            {isHost ? (
+                              'As the package host, select Option A to substitute with an available provider in the same category or Option B to reschedule the service date.'
+                            ) : (
+                              'A service provider has cancelled. You can select Option C to proceed with remaining services and receive a partial refund, or Option D to cancel the entire package with a 100% full refund.'
+                            )}
+                          </Text>
+                        </View>
+
+                        {/* HOST ONLY: Option A & Option B */}
+                        {isHost ? (
+                          <>
+                        {/* Option A: Replace (FIRST) */}
+                        <View style={{ borderRadius: 12, borderWidth: 1.5, borderColor: isDark ? '#334155' : '#E2E8F0', backgroundColor: colors.card, padding: 12, marginBottom: 10 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                              <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669' }}>A</Text>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>Option A: Replace Cancelled Service</Text>
+                                <Text style={{ fontSize: 10, color: colors.textSub }}>Substitute with another available provider</Text>
+                              </View>
+                            </View>
+                            <TouchableOpacity
+                              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.primary }}
+                              onPress={() => {
+                                if (pkgAlternativeTab === 'replace') {
+                                  setPkgAlternativeTab('none');
+                                } else {
+                                  setPkgAlternativeTab('replace');
+                                  handleLoadAlternatives(pkgRef, cancelledItem?.id || 0);
+                                }
+                              }}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>
+                                {pkgAlternativeTab === 'replace' ? 'Hide' : 'Browse'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {pkgAlternativeTab === 'replace' ? (
+                            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: isDark ? '#334155' : '#E2E8F0' }}>
+                              {loadingAlternatives ? (
+                                <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 12 }} />
+                              ) : pkgAlternativesList.length === 0 ? (
+                                <Text style={{ fontSize: 11, color: colors.textSub, textAlign: 'center', paddingVertical: 8 }}>
+                                  No direct alternatives found. You may also select Option B (Reschedule) or Option C (Continue Without).
+                                </Text>
+                              ) : (
+                                <View style={{ gap: 8 }}>
+                                  {pkgAlternativesList.map((alt: any, aIdx: number) => (
+                                    <View key={aIdx} style={{ padding: 10, borderRadius: 8, borderWidth: 1, borderColor: isDark ? '#334155' : '#E2E8F0', backgroundColor: isDark ? '#1E2330' : '#F8FAFC', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                      <View style={{ flex: 1, marginRight: 8 }}>
+                                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>{alt.title || alt.room_name}</Text>
+                                        <Text style={{ fontSize: 10, color: colors.textSub }}>{alt.provider_name} • {alt.area || alt.location || 'Cebu'}</Text>
+                                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#059669', marginTop: 2 }}>{formatPrice(alt.price)}</Text>
+                                      </View>
+                                      <TouchableOpacity
+                                        style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: colors.primary }}
+                                        disabled={isSubmittingPkgOption}
+                                        onPress={() => handleSelectReplacement(pkgRef, cancelledItem?.id || 0, alt)}
+                                      >
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Select</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                            </View>
+                          ) : null}
+                        </View>
+
+                        {/* Option B: Reschedule (SECOND) */}
+                        <View style={{ borderRadius: 12, borderWidth: 1.5, borderColor: isDark ? '#334155' : '#E2E8F0', backgroundColor: colors.card, padding: 12, marginBottom: 10 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                              <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#2563EB' }}>B</Text>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>Option B: Reschedule Cancelled Service</Text>
+                                <Text style={{ fontSize: 10, color: colors.textSub }}>Propose an alternative date/schedule</Text>
+                              </View>
+                            </View>
+                            <TouchableOpacity
+                              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: isDark ? '#475569' : '#CBD5E1', backgroundColor: 'transparent' }}
+                              onPress={() => setPkgAlternativeTab(pkgAlternativeTab === 'reschedule' ? 'none' : 'reschedule')}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>
+                                {pkgAlternativeTab === 'reschedule' ? 'Hide' : 'Reschedule'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {pkgAlternativeTab === 'reschedule' ? (
+                            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: isDark ? '#334155' : '#E2E8F0', gap: 8 }}>
+                              <View>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSub, marginBottom: 4 }}>New Date *</Text>
+                                <TextInput
+                                  style={{ borderWidth: 1, borderColor: isDark ? '#475569' : '#CBD5E1', borderRadius: 8, padding: 8, fontSize: 12, color: colors.text, backgroundColor: isDark ? '#1E2330' : '#FFFFFF' }}
+                                  placeholder="YYYY-MM-DD"
+                                  placeholderTextColor={colors.textMute}
+                                  value={pkgRescheduleDate}
+                                  onChangeText={setPkgRescheduleDate}
+                                />
+                              </View>
+                              <View>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSub, marginBottom: 4 }}>New Time (Optional)</Text>
+                                <TextInput
+                                  style={{ borderWidth: 1, borderColor: isDark ? '#475569' : '#CBD5E1', borderRadius: 8, padding: 8, fontSize: 12, color: colors.text, backgroundColor: isDark ? '#1E2330' : '#FFFFFF' }}
+                                  placeholder="e.g. 09:00 AM"
+                                  placeholderTextColor={colors.textMute}
+                                  value={pkgRescheduleTime}
+                                  onChangeText={setPkgRescheduleTime}
+                                />
+                              </View>
+                              <View>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSub, marginBottom: 4 }}>Notes for Provider (Optional)</Text>
+                                <TextInput
+                                  style={{ borderWidth: 1, borderColor: isDark ? '#475569' : '#CBD5E1', borderRadius: 8, padding: 8, fontSize: 12, color: colors.text, backgroundColor: isDark ? '#1E2330' : '#FFFFFF' }}
+                                  placeholder="e.g. Adjusted check-in coordinated with host"
+                                  placeholderTextColor={colors.textMute}
+                                  value={pkgRescheduleNotes}
+                                  onChangeText={setPkgRescheduleNotes}
+                                />
+                              </View>
+                              <TouchableOpacity
+                                style={{ paddingVertical: 10, borderRadius: 8, backgroundColor: '#2563EB', alignItems: 'center', marginTop: 4 }}
+                                disabled={isSubmittingPkgOption}
+                                onPress={() => handleReschedule(pkgRef, cancelledItem?.id || 0)}
+                              >
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>Submit Reschedule Request</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : null}
+                        </View>
+                        </>
+                      ) : null}
+
+                      {/* TRAVELER ONLY: Option C & Option D */}
+                      {isTraveler ? (
+                        <>
+                        {/* Option C: Continue Without (THIRD) */}
+                        <View style={{ borderRadius: 12, borderWidth: 1.5, borderColor: isDark ? '#334155' : '#E2E8F0', backgroundColor: colors.card, padding: 12, marginBottom: 10 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                              <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#475569' }}>C</Text>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>Option C: Continue Without Service</Text>
+                                <Text style={{ fontSize: 10, color: colors.textSub }}>Drop service & receive partial refund</Text>
+                              </View>
+                            </View>
+                            <TouchableOpacity
+                              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: isDark ? '#475569' : '#CBD5E1', backgroundColor: 'transparent' }}
+                              onPress={() => setPkgAlternativeTab(pkgAlternativeTab === 'continue-without' ? 'none' : 'continue-without')}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>
+                                {pkgAlternativeTab === 'continue-without' ? 'Hide' : 'Review'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {pkgAlternativeTab === 'continue-without' ? (
+                            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: isDark ? '#334155' : '#E2E8F0' }}>
+                              <View style={{ padding: 10, borderRadius: 8, backgroundColor: isDark ? '#1E2330' : '#F8FAFC', marginBottom: 10 }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <Text style={{ fontSize: 11, color: colors.textSub }}>Current Package Total:</Text>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>{formatPrice(pkgTotalAmt)}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <Text style={{ fontSize: 11, color: '#059669', fontWeight: '700' }}>Refund for Removed Service:</Text>
+                                  <Text style={{ fontSize: 11, color: '#059669', fontWeight: '800' }}>- {formatPrice(cancelledAllocatedAmt)}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 6, borderTopWidth: 1, borderTopColor: isDark ? '#334155' : '#CBD5E1' }}>
+                                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>New Package Total:</Text>
+                                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary }}>{formatPrice(pkgNewTotalAmt)}</Text>
+                                </View>
+                              </View>
+                              <TouchableOpacity
+                                style={{ paddingVertical: 10, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center' }}
+                                disabled={isSubmittingPkgOption}
+                                onPress={() => handleContinueWithout(pkgRef, cancelledItem?.id || 0, cancelledAllocatedAmt)}
+                              >
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>Confirm &amp; Continue Package Trip</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        {/* Option D: Cancel Entire Package (FOURTH) */}
+                        <View style={{ borderRadius: 12, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2', padding: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                              <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#DC2626' }}>D</Text>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#991B1B' }}>Option D: Cancel Entire Package</Text>
+                                <Text style={{ fontSize: 10, color: '#B91C1C' }}>Cancel all services & receive 100% full refund</Text>
+                              </View>
+                            </View>
+                            <TouchableOpacity
+                              style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#FECACA', backgroundColor: 'transparent' }}
+                              onPress={() => setPkgAlternativeTab(pkgAlternativeTab === 'cancel-full' ? 'none' : 'cancel-full')}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>
+                                {pkgAlternativeTab === 'cancel-full' ? 'Hide' : 'Cancel Trip'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {pkgAlternativeTab === 'cancel-full' ? (
+                            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#FECACA' }}>
+                              <View style={{ padding: 10, borderRadius: 8, backgroundColor: isDark ? '#1E2330' : '#FFFFFF', borderWidth: 1, borderColor: '#FECACA', marginBottom: 10 }}>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: '#991B1B', marginBottom: 4 }}>Important Consequences:</Text>
+                                <Text style={{ fontSize: 10, color: isDark ? '#FCA5A5' : '#7F1D1D', lineHeight: 14 }}>
+                                  • All remaining active reservations will be terminated.{'\n'}
+                                  • A 100% full refund of {formatPrice(pkgTotalAmt)} will be credited to your account.{'\n'}
+                                  • All participating providers will be released from their bookings.
+                                </Text>
+                              </View>
+                              <TextInput
+                                style={{ borderWidth: 1, borderColor: '#FECACA', borderRadius: 8, padding: 8, fontSize: 12, color: colors.text, backgroundColor: isDark ? '#1E2330' : '#FFFFFF', marginBottom: 8 }}
+                                placeholder="Reason for cancellation (optional)"
+                                placeholderTextColor={colors.textMute}
+                                value={pkgCancelReason}
+                                onChangeText={setPkgCancelReason}
+                              />
+                              <TouchableOpacity
+                                style={{ paddingVertical: 10, borderRadius: 8, backgroundColor: '#DC2626', alignItems: 'center' }}
+                                disabled={isSubmittingPkgOption}
+                                onPress={() => handleCancelFullPackage(pkgRef, pkgTotalAmt)}
+                              >
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>Confirm Full Package Cancellation</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : null}
+                        </View>
+                        </>
+                      ) : null}
+                      </View>
+                    ) : null}
+
                     {/* Provider Booking Approvals Status Card */}
                     <View style={[styles.detailSectionBox, { backgroundColor: isDark ? '#1E2330' : '#F8FAFC', borderColor: colors.border }]}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -2285,8 +2773,8 @@ export default function TripsScreen() {
                               <Text style={{ fontSize: 11, color: colors.textSub }}>{guideName}</Text>
                             </View>
                           </View>
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: guideConfirmed ? '#059669' : (guideSt === 'cancelled' || guideSt === 'rejected' || guideSt === 'declined' ? '#DC2626' : '#D97706') }}>
-                            {guideSt === 'completed' ? '\u2713 Completed' : (guideSt === 'confirmed' ? '\u2713 Confirmed' : (guideSt === 'cancelled' ? '\u2715 Cancelled' : (guideSt === 'rejected' || guideSt === 'declined' ? '\u2715 Declined' : '⏳ Pending')))}
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: guideConfirmed ? '#059669' : (guideSt === 'rescheduled' ? '#2563EB' : (guideSt === 'removed' ? '#64748B' : (guideSt === 'cancelled' || guideSt === 'rejected' || guideSt === 'declined' ? '#DC2626' : '#D97706'))) }}>
+                            {guideSt === 'completed' ? '\u2713 Completed' : (guideSt === 'confirmed' ? '\u2713 Confirmed' : (guideSt === 'rescheduled' ? '↺ Rescheduled' : (guideSt === 'removed' ? '— Removed' : (guideSt === 'cancelled' ? '\u2715 Cancelled' : (guideSt === 'rejected' || guideSt === 'declined' ? '\u2715 Declined' : '⏳ Pending')))))}
                           </Text>
                         </View>
 
@@ -2300,8 +2788,8 @@ export default function TripsScreen() {
                                 <Text style={{ fontSize: 11, color: colors.textSub }}>{hotelObj?.name || hotelObj?.hotel_name || 'Partner Hotel'}</Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: hotelConfirmed ? '#059669' : (hotelSt === 'cancelled' || hotelSt === 'rejected' || hotelSt === 'declined' ? '#DC2626' : '#D97706') }}>
-                              {hotelSt === 'checked_in' ? '\u2713 Checked In' : (hotelSt === 'completed' ? '\u2713 Completed' : (hotelSt === 'confirmed' ? '\u2713 Confirmed' : (hotelSt === 'cancelled' ? '\u2715 Cancelled' : (hotelSt === 'rejected' || hotelSt === 'declined' ? '\u2715 Declined' : '⏳ Pending'))))}
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: hotelConfirmed ? '#059669' : (hotelSt === 'rescheduled' ? '#2563EB' : (hotelSt === 'removed' ? '#64748B' : (hotelSt === 'cancelled' || hotelSt === 'rejected' || hotelSt === 'declined' ? '#DC2626' : '#D97706'))) }}>
+                              {hotelSt === 'checked_in' ? '\u2713 Checked In' : (hotelSt === 'completed' ? '\u2713 Completed' : (hotelSt === 'confirmed' ? '\u2713 Confirmed' : (hotelSt === 'rescheduled' ? '↺ Rescheduled' : (hotelSt === 'removed' ? '— Removed' : (hotelSt === 'cancelled' ? '\u2715 Cancelled' : (hotelSt === 'rejected' || hotelSt === 'declined' ? '\u2715 Declined' : '⏳ Pending'))))))}
                             </Text>
                           </View>
                         ) : null}
@@ -2316,8 +2804,8 @@ export default function TripsScreen() {
                                 <Text style={{ fontSize: 11, color: colors.textSub }}>{vehicleObj?.name || vehicleObj?.vehicle_name || 'Rental Vehicle'}</Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: vehicleConfirmed ? '#059669' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' || vehicleSt === 'declined' ? '#DC2626' : '#D97706') }}>
-                              {vehicleSt === 'contacted' ? '\u2713 Contacted' : (vehicleSt === 'completed' ? '\u2713 Completed' : ((vehicleSt === 'confirmed' || vehicleSt === 'approved') ? '\u2713 Confirmed' : (vehicleSt === 'cancelled' ? '\u2715 Cancelled' : (vehicleSt === 'rejected' || vehicleSt === 'declined' ? '\u2715 Declined' : '⏳ Pending'))))}
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: vehicleConfirmed ? '#059669' : (vehicleSt === 'rescheduled' ? '#2563EB' : (vehicleSt === 'removed' ? '#64748B' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' || vehicleSt === 'declined' ? '#DC2626' : '#D97706'))) }}>
+                              {vehicleSt === 'contacted' ? '\u2713 Contacted' : (vehicleSt === 'completed' ? '\u2713 Completed' : ((vehicleSt === 'confirmed' || vehicleSt === 'approved') ? '\u2713 Confirmed' : (vehicleSt === 'rescheduled' ? '↺ Rescheduled' : (vehicleSt === 'removed' ? '— Removed' : (vehicleSt === 'cancelled' ? '\u2715 Cancelled' : (vehicleSt === 'rejected' || vehicleSt === 'declined' ? '\u2715 Declined' : '⏳ Pending'))))))}
                             </Text>
                           </View>
                         ) : null}
@@ -2550,6 +3038,24 @@ export default function TripsScreen() {
                       <Ionicons name="receipt-outline" size={16} color="#FFFFFF" />
                       <Text style={[styles.attractionActionText, { color: '#FFFFFF' }]}>View Payment Receipt</Text>
                     </TouchableOpacity>
+
+                    {/* Cancel Package Button: Positioned directly below View Payment Receipt button */}
+                    {!isCancelled && !isPkgCompleted && !isAllCompleted && overallStatus !== 'completed' ? (
+                      <TouchableOpacity
+                        style={[styles.cancelModalBtn, { borderColor: '#EF4444', backgroundColor: isDark ? '#7F1D1D22' : '#FEF2F2', paddingVertical: 12 }]}
+                        disabled={isSubmittingPkgOption}
+                        onPress={() => handleCancelFullPackage(pkgRef, pkgTotalAmt)}
+                      >
+                        {isSubmittingPkgOption ? (
+                          <ActivityIndicator size="small" color="#EF4444" />
+                        ) : (
+                          <>
+                            <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
+                            <Text style={{ color: '#EF4444', fontWeight: '800' }}>Cancel Package</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
 
                     <TouchableOpacity
                       style={[styles.cancelModalBtn, { borderColor: colors.border }]}

@@ -44,8 +44,12 @@ final class PackageBookingService
                     `sub_booking_id` INT UNSIGNED NULL,
                     `rental_request_id` INT UNSIGNED NULL,
                     `allocated_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                    `status` ENUM('pending', 'confirmed', 'cancelled', 'completed') NOT NULL DEFAULT 'pending',
+                    `original_allocated_amount` DECIMAL(10,2) NULL,
+                    `status` ENUM('pending', 'confirmed', 'cancelled', 'rescheduled', 'completed', 'removed') NOT NULL DEFAULT 'pending',
                     `cancellation_reason` VARCHAR(500) NULL,
+                    `rescheduled_date` DATE NULL,
+                    `rescheduled_time` VARCHAR(64) NULL,
+                    `rescheduled_notes` VARCHAR(500) NULL,
                     `responded_at` TIMESTAMP NULL DEFAULT NULL,
                     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -78,7 +82,22 @@ final class PackageBookingService
                 Database::run("ALTER TABLE `package_booking_items` ADD COLUMN `allocated_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER `rental_request_id`");
             } catch (\Throwable) {}
             try {
+                Database::run("ALTER TABLE `package_booking_items` ADD COLUMN `original_allocated_amount` DECIMAL(10,2) NULL AFTER `allocated_amount`");
+            } catch (\Throwable) {}
+            try {
+                Database::run("ALTER TABLE `package_booking_items` MODIFY COLUMN `status` ENUM('pending', 'confirmed', 'cancelled', 'rescheduled', 'completed', 'removed') NOT NULL DEFAULT 'pending'");
+            } catch (\Throwable) {}
+            try {
                 Database::run("ALTER TABLE `package_booking_items` ADD COLUMN `cancellation_reason` VARCHAR(500) NULL AFTER `status`");
+            } catch (\Throwable) {}
+            try {
+                Database::run("ALTER TABLE `package_booking_items` ADD COLUMN `rescheduled_date` DATE NULL AFTER `responded_at`");
+            } catch (\Throwable) {}
+            try {
+                Database::run("ALTER TABLE `package_booking_items` ADD COLUMN `rescheduled_time` VARCHAR(64) NULL AFTER `rescheduled_date`");
+            } catch (\Throwable) {}
+            try {
+                Database::run("ALTER TABLE `package_booking_items` ADD COLUMN `rescheduled_notes` VARCHAR(500) NULL AFTER `rescheduled_time`");
             } catch (\Throwable) {}
             try {
                 Database::run("ALTER TABLE `package_booking_items` ADD COLUMN `responded_at` TIMESTAMP NULL DEFAULT NULL AFTER `cancellation_reason`");
@@ -92,9 +111,12 @@ final class PackageBookingService
                 Database::run("
                     ALTER TABLE `bookings`
                     ADD COLUMN `package_booking_ref` VARCHAR(64) NULL AFTER `notes`,
-                    ADD COLUMN `package_overall_status` ENUM('pending', 'partially_confirmed', 'confirmed', 'cancellation_requested', 'cancelled', 'completed') NULL AFTER `package_booking_ref`,
+                    ADD COLUMN `package_overall_status` ENUM('pending', 'partially_confirmed', 'confirmed', 'action_required', 'rescheduled', 'cancellation_requested', 'cancelled', 'completed') NULL AFTER `package_booking_ref`,
                     ADD INDEX `idx_bookings_pkg_ref` (`package_booking_ref`)
                 ");
+            } catch (\Throwable) {}
+            try {
+                Database::run("ALTER TABLE `bookings` MODIFY COLUMN `package_overall_status` ENUM('pending', 'partially_confirmed', 'confirmed', 'action_required', 'rescheduled', 'cancellation_requested', 'cancelled', 'completed') NULL");
             } catch (\Throwable) {}
 
             // 3. Ensure package reference, package booking ID, and guide ID doc on rental_requests table
@@ -108,10 +130,24 @@ final class PackageBookingService
                 ");
             } catch (\Throwable) {}
 
+            // 4. Create package booking audit logs table
             try {
                 Database::run("
-                    ALTER TABLE `rental_requests`
-                    ADD COLUMN `guide_id_doc` VARCHAR(255) NULL AFTER `package_booking_id`
+                    CREATE TABLE IF NOT EXISTS `package_booking_audit_logs` (
+                        `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                        `package_booking_ref` VARCHAR(64) NOT NULL,
+                        `parent_booking_id` INT UNSIGNED NOT NULL,
+                        `item_id` INT UNSIGNED NULL,
+                        `action_type` VARCHAR(64) NOT NULL,
+                        `actor_id` INT UNSIGNED NULL,
+                        `actor_role` VARCHAR(64) NULL,
+                        `summary` VARCHAR(500) NOT NULL,
+                        `details` TEXT NULL,
+                        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (`id`),
+                        KEY `idx_pkg_audit_ref` (`package_booking_ref`),
+                        KEY `idx_pkg_audit_parent` (`parent_booking_id`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                 ");
             } catch (\Throwable) {}
 
@@ -624,11 +660,11 @@ final class PackageBookingService
             ", [$bookingId]);
         }
 
-        // 2. Mark all items in package_booking_items as completed
+        // 2. Mark non-removed items in package_booking_items as completed
         Database::run("
             UPDATE package_booking_items
             SET status = 'completed', updated_at = NOW()
-            WHERE package_booking_ref = ?
+            WHERE package_booking_ref = ? AND status NOT IN ('removed', 'cancelled')
         ", [$pkgRef]);
 
         // 3. Mark all sub-bookings (hotel reservations) and rental requests as completed
@@ -959,39 +995,80 @@ final class PackageBookingService
 
         $hasRejection = false;
         $hasPending = false;
-        $allConfirmedOrCompleted = count($items) > 0;
-        $allCompleted = count($items) > 0;
+        $activeItems = [];
         $rejectingItem = null;
 
         foreach ($items as $it) {
             $st = (string) ($it['status'] ?? 'pending');
+            if ($st === 'removed') {
+                continue; // Dropped items do not affect ongoing consensus
+            }
+            $activeItems[] = $it;
+
             if ($st === 'cancelled') {
                 $hasRejection = true;
-                $allConfirmedOrCompleted = false;
-                $allCompleted = false;
                 $rejectingItem = $it;
             } elseif ($st === 'pending') {
                 $hasPending = true;
-                $allConfirmedOrCompleted = false;
-                $allCompleted = false;
-            } elseif ($st === 'confirmed') {
-                $allCompleted = false;
-            } elseif ($st === 'completed') {
-                // Individual component completed
             }
         }
 
-        // Consensus logic
+        $allCompleted = count($activeItems) > 0;
+        $allConfirmedOrCompleted = count($activeItems) > 0;
+
+        foreach ($activeItems as $it) {
+            $st = (string) ($it['status'] ?? 'pending');
+            if ($st !== 'completed') {
+                $allCompleted = false;
+            }
+            if (!in_array($st, ['confirmed', 'completed', 'rescheduled'], true)) {
+                $allConfirmedOrCompleted = false;
+            }
+        }
+
+        // Consensus logic: Independent provider cancellation
         if ($hasRejection) {
-            // Rule: If ANY provider cancels, overall package is cancelled and payment is refunded
-            $overallStatus = 'cancelled';
-            self::cascadeCancellation($pkgRef, $parentBookingId, $rejectingItem, $reason);
+            $allCancelled = true;
+            foreach ($activeItems as $it) {
+                if ($it['status'] !== 'cancelled') {
+                    $allCancelled = false;
+                    break;
+                }
+            }
+
+            if ($allCancelled) {
+                $overallStatus = 'cancelled';
+                self::cascadeCancellation($pkgRef, $parentBookingId, $rejectingItem, $reason);
+            } else {
+                // Rule: If one provider cancels, do NOT automatically cancel the entire package or other providers!
+                // Mark overall package status as action_required to allow traveler/guide to select alternatives
+                $overallStatus = 'action_required';
+                Database::run("
+                    UPDATE bookings
+                    SET package_overall_status = 'action_required'
+                    WHERE package_booking_ref = ? OR id = ?
+                ", [$pkgRef, $parentBookingId]);
+
+                if ($rejectingItem !== null) {
+                    self::notifyProviderCancellation($pkgRef, $rejectingItem, $reason);
+                    self::logAudit(
+                        $pkgRef,
+                        $parentBookingId,
+                        (int) $rejectingItem['id'],
+                        'provider_cancelled',
+                        (int) ($rejectingItem['provider_id'] ?? 0),
+                        (string) ($rejectingItem['provider_role'] ?? 'provider'),
+                        "Service provider cancelled " . ucfirst((string) $rejectingItem['service_type']) . " service ({$rejectingItem['service_name']}). Package overall status set to action_required.",
+                        $reason
+                    );
+                }
+            }
         } elseif ($allCompleted) {
             // Rule: Overall package status should ONLY become Completed when ALL required providers have completed their respective services
             $overallStatus = 'completed';
             self::completePackageBooking($pkgRef, $parentBookingId, 0);
         } elseif ($allConfirmedOrCompleted) {
-            // Rule: All required providers have confirmed (or some completed), but not all completed yet -> Package is Confirmed
+            // Rule: All active providers have confirmed (or rescheduled/completed) -> Package is Confirmed
             $overallStatus = 'confirmed';
             self::finalizeConfirmation($pkgRef, $parentBookingId, $items);
             Database::run("
@@ -1002,8 +1079,8 @@ final class PackageBookingService
         } else {
             // Rule: Some confirmed/completed, some pending -> partially confirmed
             $hasAnyConfirmedOrCompleted = false;
-            foreach ($items as $it) {
-                if ($it['status'] === 'confirmed' || $it['status'] === 'completed') {
+            foreach ($activeItems as $it) {
+                if (in_array($it['status'], ['confirmed', 'completed', 'rescheduled'], true)) {
                     $hasAnyConfirmedOrCompleted = true;
                     break;
                 }
@@ -1410,23 +1487,60 @@ final class PackageBookingService
         }
 
         $parent = Database::first("SELECT * FROM bookings WHERE id = ?", [(int) $item['parent_booking_id']]);
-        $parentCancelled = $parent && (in_array($parent['status'], ['cancelled', 'refunded'], true) || ($parent['package_overall_status'] ?? '') === 'cancelled');
-        if ($hasRejection || $parentCancelled) {
-            $overallStatus = 'cancelled';
-            foreach ($items as &$it) {
-                if (($it['status'] ?? '') !== 'completed') {
-                    $it['status'] = 'cancelled';
-                }
+        $parentOverall = (string) ($parent['package_overall_status'] ?? '');
+        $parentStatus = (string) ($parent['status'] ?? '');
+        $parentCancelled = $parent && (in_array($parentStatus, ['cancelled', 'refunded'], true) || $parentOverall === 'cancelled');
+        $parentCompleted = ($parentStatus === 'completed' || $parentOverall === 'completed');
+
+        $hasRejection = false;
+        $hasPending = false;
+        $hasRescheduled = false;
+        $activeItems = [];
+        $cancelledItems = [];
+
+        foreach ($items as $it) {
+            $st = (string) ($it['status'] ?? 'pending');
+            if ($st === 'removed') {
+                continue;
             }
-            unset($it);
-        } elseif ($allCompleted) {
+            $activeItems[] = $it;
+
+            if ($st === 'cancelled') {
+                $hasRejection = true;
+                $cancelledItems[] = $it;
+            } elseif ($st === 'pending') {
+                $hasPending = true;
+            } elseif ($st === 'rescheduled') {
+                $hasRescheduled = true;
+            }
+        }
+
+        $allActiveCompleted = count($activeItems) > 0;
+        $allActiveConfirmed = count($activeItems) > 0;
+        foreach ($activeItems as $it) {
+            if ($it['status'] !== 'completed') {
+                $allActiveCompleted = false;
+            }
+            if (!in_array($it['status'], ['confirmed', 'completed', 'rescheduled'], true)) {
+                $allActiveConfirmed = false;
+            }
+        }
+
+        if ($parentCancelled) {
+            $overallStatus = 'cancelled';
+        } elseif ($parentCompleted || $allActiveCompleted) {
             $overallStatus = 'completed';
-        } elseif ($allConfirmedOrCompleted) {
+            if ($parent && ($parentOverall !== 'completed' || $parentStatus !== 'completed')) {
+                Database::run("UPDATE bookings SET status = 'completed', package_overall_status = 'completed', updated_at = NOW() WHERE package_booking_ref = ? OR id = ?", [$pkgRef, (int) $parent['id']]);
+            }
+        } elseif ($hasRejection || $parentOverall === 'action_required') {
+            $overallStatus = 'action_required';
+        } elseif ($allActiveConfirmed) {
             $overallStatus = 'confirmed';
         } else {
             $hasAnyConfirmedOrCompleted = false;
-            foreach ($items as $it) {
-                if ($it['status'] === 'confirmed' || $it['status'] === 'completed') {
+            foreach ($activeItems as $it) {
+                if (in_array($it['status'], ['confirmed', 'completed', 'rescheduled'], true)) {
                     $hasAnyConfirmedOrCompleted = true;
                     break;
                 }
@@ -1434,12 +1548,1232 @@ final class PackageBookingService
             $overallStatus = $hasAnyConfirmedOrCompleted ? 'partially_confirmed' : 'pending';
         }
 
+        // Fetch audit logs
+        $auditLogs = Database::all("
+            SELECT * FROM package_booking_audit_logs
+            WHERE package_booking_ref = ?
+            ORDER BY id DESC
+        ", [$pkgRef]);
+
         return [
             'package_booking_ref' => $pkgRef,
             'parent_booking_id' => (int) $item['parent_booking_id'],
             'overall_status' => $overallStatus,
             'items' => $items,
+            'active_items' => $activeItems,
+            'cancelled_items' => $cancelledItems,
+            'has_cancellation' => $hasRejection,
+            'alternative_options' => [
+                'replace' => [
+                    'option' => 'A',
+                    'title' => 'Replace the Cancelled Service',
+                    'description' => 'Find and select an alternative provider in the same category.',
+                ],
+                'reschedule' => [
+                    'option' => 'B',
+                    'title' => 'Reschedule the Cancelled Service',
+                    'description' => 'Propose an alternative date and time for the affected service.',
+                ],
+                'continue_without' => [
+                    'option' => 'C',
+                    'title' => 'Continue Without the Cancelled Service',
+                    'description' => 'Drop this service, recalculate cost, and proceed with confirmed services.',
+                ],
+                'cancel_package' => [
+                    'option' => 'D',
+                    'title' => 'Cancel the Entire Travel Package',
+                    'description' => 'Cancel all included services and receive a full refund.',
+                ],
+            ],
+            'audit_logs' => $auditLogs,
             'total_amount' => (float) ($parent['total_amount'] ?? 0),
+            'refund_amount' => (float) ($parent['refund_amount'] ?? 0),
+            'refund_status' => (string) ($parent['refund_status'] ?? 'none'),
+        ];
+    }
+
+    /**
+     * Record an audit log for package booking state transitions.
+     */
+    public static function logAudit(
+        string $pkgRef,
+        int $parentBookingId,
+        ?int $itemId,
+        string $actionType,
+        ?int $actorId,
+        ?string $actorRole,
+        string $summary,
+        ?string $details = null
+    ): void {
+        try {
+            self::ensureTables();
+            Database::insert("
+                INSERT INTO package_booking_audit_logs (
+                    package_booking_ref, parent_booking_id, item_id, action_type,
+                    actor_id, actor_role, summary, details, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ", [
+                $pkgRef,
+                $parentBookingId,
+                $itemId,
+                $actionType,
+                $actorId,
+                $actorRole,
+                $summary,
+                $details
+            ]);
+        } catch (\Throwable) {}
+    }
+
+    /**
+     * Dispatch cancellation notifications immediately to traveler and guide.
+     */
+    public static function notifyProviderCancellation(string $pkgRef, array $cancelledItem, ?string $reason = null): void
+    {
+        $parent = Database::first("
+            SELECT b.*, u.email AS tourist_email, u.name AS tourist_name, u.phone AS tourist_phone,
+                   l.title AS package_title, l.user_id AS guide_owner_id
+            FROM bookings b
+            LEFT JOIN users u ON u.id = b.user_id
+            LEFT JOIN listings l ON l.id = b.listing_id
+            WHERE b.package_booking_ref = ? OR b.id = ?
+            LIMIT 1
+        ", [$pkgRef, (int) ($cancelledItem['parent_booking_id'] ?? 0)]);
+
+        if (!$parent) {
+            return;
+        }
+
+        $packageTitle = (string) ($parent['package_title'] ?? 'Travel Package');
+        $touristEmail = (string) ($parent['tourist_email'] ?? '');
+        $touristId = (int) ($parent['user_id'] ?? 0);
+
+        $providerId = (int) ($cancelledItem['provider_id'] ?? 0);
+        $providerUser = $providerId > 0 ? User::find($providerId) : null;
+        $providerName = $providerUser['name'] ?? ($cancelledItem['provider_name'] ?? ($cancelledItem['service_name'] ?? 'Service Provider'));
+        $serviceType = ucfirst((string) ($cancelledItem['service_type'] ?? 'service'));
+        $serviceName = (string) ($cancelledItem['service_name'] ?? $serviceType);
+        $cancelReason = $reason ?: ($cancelledItem['cancellation_reason'] ?? 'Service provider is unavailable for this date.');
+
+        // Compute affected schedule
+        $schedule = 'Scheduled travel period';
+        if (!empty($cancelledItem['sub_booking_id'])) {
+            $subB = Database::first("SELECT check_in_date, check_out_date, nights FROM bookings WHERE id = ?", [(int) $cancelledItem['sub_booking_id']]);
+            if ($subB && !empty($subB['check_in_date'])) {
+                $checkIn = date('M j, Y', strtotime($subB['check_in_date']));
+                $checkOut = !empty($subB['check_out_date']) ? date('M j, Y', strtotime($subB['check_out_date'])) : $checkIn;
+                $nights = (int) ($subB['nights'] ?? 1);
+                $schedule = "Check-in: {$checkIn} to Check-out: {$checkOut} ({$nights} night(s))";
+            }
+        } elseif (!empty($cancelledItem['rental_request_id'])) {
+            $rr = Database::first("SELECT pickup_date, rental_days FROM rental_requests WHERE id = ?", [(int) $cancelledItem['rental_request_id']]);
+            if ($rr && !empty($rr['pickup_date'])) {
+                $pickup = date('M j, Y', strtotime($rr['pickup_date']));
+                $days = (int) ($rr['rental_days'] ?? 1);
+                $schedule = "Pickup Date: {$pickup} ({$days} day(s))";
+            }
+        } else {
+            $bDate = !empty($parent['check_in_date']) ? $parent['check_in_date'] : ($parent['booking_date'] ?? '');
+            if ($bDate !== '') {
+                $schedule = "Travel Date: " . date('M j, Y', strtotime($bDate));
+            }
+        }
+
+        $subject = "Service Provider Cancellation Notice: {$packageTitle} (#{$pkgRef})";
+        $body = "Notice: Provider {$providerName} has cancelled their {$serviceType} service ('{$serviceName}') for Travel Package '{$packageTitle}' (#{$pkgRef}).\n"
+              . "Affected Schedule: {$schedule}\n"
+              . "Cancellation Reason: {$cancelReason}\n\n"
+              . "Important: Your other confirmed bookings in this travel package remain active and unaffected.\n"
+              . "Available Alternative Options:\n"
+              . "1. Option A: Replace the cancelled service with an available alternative provider\n"
+              . "2. Option B: Reschedule the cancelled service to an alternative date\n"
+              . "3. Option C: Continue the travel package without this service (amount will be refunded)\n"
+              . "4. Option D: Cancel the entire travel package with a full refund\n\n"
+              . "Please visit your bookings page or open the GuideMate app to review and select your preferred option.";
+
+        if ($touristEmail !== '') {
+            NotificationService::send($touristEmail, $subject, $body);
+        }
+        if ($touristId > 0) {
+            self::createAutomatedMessage($touristId, $subject, $body);
+        }
+
+        // Notify Guide/Organizer
+        $guideId = (int) ($parent['guide_owner_id'] ?? 0);
+        if ($guideId <= 0) {
+            $guideItem = Database::first("SELECT provider_id FROM package_booking_items WHERE package_booking_ref = ? AND service_type = 'guide' LIMIT 1", [$pkgRef]);
+            $guideId = (int) ($guideItem['provider_id'] ?? 0);
+        }
+
+        if ($guideId > 0 && $guideId !== $providerId) {
+            $guideUser = User::find($guideId);
+            if ($guideUser && !empty($guideUser['email'])) {
+                NotificationService::send($guideUser['email'], $subject, $body);
+            }
+            self::createAutomatedMessage($guideId, $subject, $body);
+        }
+    }
+
+    /**
+     * Get available replacement services for a cancelled package item (Option A).
+     * Automatically identifies cancelled service category and applies strict filtering:
+     * - Hotel: Located near original hotel, accommodates guest capacity, available for travel dates, active.
+     * - Vehicle: Same rental category, passenger capacity meets requirements, available for dates, active.
+     * - Things to Do / Attractions: Active and approved in same category, capacity meets guests, available on dates.
+     */
+    public static function getAvailableAlternatives(string $pkgRef, int $itemId = 0): array
+    {
+        self::ensureTables();
+
+        $item = null;
+        if ($itemId > 0) {
+            $item = Database::first("SELECT * FROM package_booking_items WHERE id = ? AND package_booking_ref = ?", [$itemId, $pkgRef]);
+        }
+        if (!$item) {
+            $item = Database::first("SELECT * FROM package_booking_items WHERE package_booking_ref = ? AND status = 'cancelled' ORDER BY id ASC LIMIT 1", [$pkgRef]);
+        }
+        if (!$item) {
+            $item = Database::first("SELECT * FROM package_booking_items WHERE package_booking_ref = ? ORDER BY id ASC LIMIT 1", [$pkgRef]);
+        }
+        if (!$item) {
+            return [];
+        }
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+        $guestsCount = max(1, (int) ($parent['guests'] ?? 1));
+        $travelDate = (string) ($parent['booking_date'] ?? date('Y-m-d'));
+        $serviceType = (string) $item['service_type'];
+        $alternatives = [];
+
+        $categoryLabel = match ($serviceType) {
+            'hotel' => 'Hotel and Stay',
+            'vehicle' => 'Vehicle Rental',
+            'things_to_do', 'activity' => 'Things to Do',
+            'attraction', 'attractions' => 'Attractions',
+            default => 'Tour Guide',
+        };
+
+        $provUser = Database::first("SELECT name FROM users WHERE id = ?", [(int) $item['provider_id']]);
+        $cancelledItemDetails = [
+            'id' => (int) $item['id'],
+            'service_type' => $serviceType,
+            'service_category_label' => $categoryLabel,
+            'service_name' => (string) $item['service_name'],
+            'cancellation_reason' => (string) ($item['cancellation_reason'] ?? 'Provider unavailable for scheduled date'),
+            'allocated_amount' => (float) $item['allocated_amount'],
+            'provider_id' => (int) $item['provider_id'],
+            'provider_name' => (string) ($provUser['name'] ?? 'Provider'),
+        ];
+
+        if ($serviceType === 'hotel') {
+            $cancelledHotelArea = '';
+            $checkIn = $travelDate;
+            $checkOut = date('Y-m-d', strtotime($travelDate . ' + 1 day'));
+            if (!empty($item['sub_booking_id'])) {
+                $sub = Database::first("SELECT * FROM bookings WHERE id = ?", [(int) $item['sub_booking_id']]);
+                if ($sub) {
+                    $checkIn = !empty($sub['check_in_date']) ? $sub['check_in_date'] : $travelDate;
+                    $checkOut = !empty($sub['check_out_date']) ? $sub['check_out_date'] : date('Y-m-d', strtotime($checkIn . ' + 1 day'));
+                    if (!empty($sub['listing_id'])) {
+                        $origHotel = Database::first("SELECT area FROM listings WHERE id = ?", [(int) $sub['listing_id']]);
+                        $cancelledHotelArea = (string) ($origHotel['area'] ?? '');
+                    }
+                }
+            }
+
+            // Exclude fully booked, unavailable, inactive, or insufficient-capacity hotels
+            $hotels = Database::all("
+                SELECT l.id, l.title, l.area, l.price, l.user_id AS provider_id, u.name AS provider_name,
+                       (SELECT image_path FROM listing_images WHERE listing_id = l.id ORDER BY is_primary DESC, id ASC LIMIT 1) AS image
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                JOIN users u ON u.id = l.user_id
+                WHERE c.slug = 'hotels'
+                  AND l.status = 'approved'
+                  AND (u.is_active = 1 OR u.is_active IS NULL)
+                  AND l.user_id != ?
+                ORDER BY (CASE WHEN l.area = ? AND ? != '' THEN 0 ELSE 1 END), l.id DESC
+                LIMIT 20
+            ", [(int) $item['provider_id'], $cancelledHotelArea, $cancelledHotelArea]);
+
+            foreach ($hotels as $h) {
+                $rooms = Database::all("
+                    SELECT hr.*
+                    FROM hotel_rooms hr
+                    WHERE hr.listing_id = ?
+                      AND hr.status = 'available'
+                      AND hr.capacity >= ?
+                ", [(int) $h['id'], $guestsCount]);
+
+                if ($rooms === [] && $guestsCount <= 2) {
+                    $rooms = Database::all("
+                        SELECT hr.*
+                        FROM hotel_rooms hr
+                        WHERE hr.listing_id = ?
+                          AND hr.status = 'available'
+                    ", [(int) $h['id']]);
+                }
+
+                foreach ($rooms as $rm) {
+                    $roomId = (int) $rm['id'];
+                    $isBooked = Database::first("
+                        SELECT id FROM bookings
+                        WHERE room_id = ?
+                          AND status NOT IN ('cancelled', 'refunded')
+                          AND hotel_status NOT IN ('cancelled', 'refunded')
+                          AND check_in_date < ?
+                          AND check_out_date > ?
+                        LIMIT 1
+                    ", [$roomId, $checkOut, $checkIn]);
+
+                    if ($isBooked) {
+                        continue;
+                    }
+
+                    $pricePerNight = (float) ($rm['price_per_night'] ?? $h['price']);
+                    $alternatives[] = [
+                        'type' => 'hotel',
+                        'service_category_label' => 'Hotel and Stay',
+                        'provider_id' => (int) $h['provider_id'],
+                        'provider_name' => (string) $h['provider_name'],
+                        'listing_id' => (int) $h['id'],
+                        'room_id' => $roomId,
+                        'title' => (string) $h['title'],
+                        'room_name' => (string) $rm['name'],
+                        'capacity' => (int) ($rm['capacity'] ?? 2),
+                        'area' => (string) $h['area'],
+                        'price' => $pricePerNight,
+                        'image' => (string) ($h['image'] ?? ''),
+                    ];
+                }
+            }
+        } elseif ($serviceType === 'vehicle') {
+            $targetType = '';
+            $pickupDate = $travelDate;
+            $rentalDays = 1;
+            $returnDate = date('Y-m-d', strtotime($travelDate . ' + 1 day'));
+            if (!empty($item['rental_request_id'])) {
+                $req = Database::first("SELECT * FROM rental_requests WHERE id = ?", [(int) $item['rental_request_id']]);
+                if ($req) {
+                    $pickupDate = !empty($req['pickup_date']) ? $req['pickup_date'] : $travelDate;
+                    $rentalDays = max(1, (int) ($req['rental_days'] ?? 1));
+                    $returnDate = date('Y-m-d', strtotime($pickupDate . " + {$rentalDays} day"));
+                    if (!empty($req['vehicle_id'])) {
+                        $origV = Database::first("SELECT COALESCE(type, 'Vehicle') as vehicle_type FROM vehicles WHERE id = ?", [(int) $req['vehicle_id']]);
+                        $targetType = (string) ($origV['vehicle_type'] ?? '');
+                    }
+                }
+            }
+
+            $vehicles = Database::all("
+                SELECT v.*,
+                       COALESCE(v.name, CONCAT(COALESCE(v.make, ''), ' ', COALESCE(v.model, ''))) AS make_model,
+                       COALESCE(v.type, 'Vehicle') AS vehicle_type,
+                       COALESCE(v.price_per_day, 0.0) AS daily_rate,
+                       u.name AS provider_name
+                FROM vehicles v
+                JOIN users u ON u.id = v.user_id
+                WHERE (v.status = 'available' OR v.status = 'approved')
+                  AND (v.is_available = 1 OR v.is_available IS NULL)
+                  AND (u.is_active = 1 OR u.is_active IS NULL)
+                  AND v.user_id != ?
+                ORDER BY (CASE WHEN v.type = ? AND ? != '' THEN 0 ELSE 1 END), v.id DESC
+                LIMIT 20
+            ", [(int) $item['provider_id'], $targetType, $targetType]);
+
+            foreach ($vehicles as $v) {
+                $vId = (int) $v['id'];
+                if (!empty($v['capacity']) && (int) $v['capacity'] < $guestsCount) {
+                    continue;
+                }
+
+                $isReserved = Database::first("
+                    SELECT id FROM rental_requests
+                    WHERE vehicle_id = ?
+                      AND status IN ('approved', 'confirmed', 'contacted', 'pending')
+                      AND pickup_date < ?
+                      AND DATE_ADD(pickup_date, INTERVAL rental_days DAY) > ?
+                    LIMIT 1
+                ", [$vId, $returnDate, $pickupDate]);
+
+                if ($isReserved) {
+                    continue;
+                }
+
+                $title = !empty($v['make_model']) ? trim((string) $v['make_model']) : (!empty($v['name']) ? (string) $v['name'] : 'Vehicle Rental');
+                $vType = (string) ($v['vehicle_type'] ?? $v['type'] ?? 'Vehicle');
+                $dailyRate = (float) ($v['daily_rate'] ?? $v['price_per_day'] ?? 0);
+
+                $alternatives[] = [
+                    'type' => 'vehicle',
+                    'service_category_label' => 'Vehicle Rental',
+                    'provider_id' => (int) $v['user_id'],
+                    'provider_name' => (string) $v['provider_name'],
+                    'vehicle_id' => $vId,
+                    'title' => $title,
+                    'vehicle_type' => $vType,
+                    'capacity' => (int) ($v['capacity'] ?? 4),
+                    'location' => (string) ($v['location'] ?? 'Cebu'),
+                    'price' => $dailyRate,
+                    'image' => (string) ($v['image'] ?? ''),
+                ];
+            }
+        } elseif (in_array($serviceType, ['things_to_do', 'activity', 'attraction', 'attractions'], true)) {
+            $catSlug = str_contains($serviceType, 'attraction') ? 'attractions' : 'things-to-do';
+            $catLabel = str_contains($serviceType, 'attraction') ? 'Attractions' : 'Things to Do';
+
+            $listings = Database::all("
+                SELECT l.id, l.title, l.area, l.price, l.capacity, l.user_id AS provider_id, u.name AS provider_name,
+                       (SELECT image_path FROM listing_images WHERE listing_id = l.id ORDER BY is_primary DESC, id ASC LIMIT 1) AS image
+                FROM listings l
+                JOIN categories c ON c.id = l.category_id
+                JOIN users u ON u.id = l.user_id
+                WHERE (c.slug = ? OR c.slug = 'things-to-do' OR c.slug = 'attractions')
+                  AND l.status = 'approved'
+                  AND (u.is_active = 1 OR u.is_active IS NULL)
+                  AND (l.capacity IS NULL OR l.capacity >= ?)
+                  AND l.user_id != ?
+                ORDER BY l.id DESC
+                LIMIT 20
+            ", [$catSlug, $guestsCount, (int) $item['provider_id']]);
+
+            foreach ($listings as $l) {
+                $lId = (int) $l['id'];
+                if (Booking::isDateBooked($lId, $travelDate)) {
+                    continue;
+                }
+
+                $alternatives[] = [
+                    'type' => $serviceType,
+                    'service_category_label' => $catLabel,
+                    'provider_id' => (int) $l['provider_id'],
+                    'provider_name' => (string) $l['provider_name'],
+                    'listing_id' => $lId,
+                    'title' => (string) $l['title'],
+                    'capacity' => (int) ($l['capacity'] ?? 10),
+                    'area' => (string) $l['area'],
+                    'price' => (float) $l['price'],
+                    'image' => (string) ($l['image'] ?? ''),
+                ];
+            }
+        } elseif ($serviceType === 'guide') {
+            $guides = Database::all("
+                SELECT u.id, u.name, u.email, u.phone, u.avatar, u.location
+                FROM users u
+                WHERE u.role = 'guide' AND (u.is_active = 1 OR u.is_active IS NULL) AND u.id != ?
+                ORDER BY u.id DESC
+                LIMIT 10
+            ", [(int) $item['provider_id']]);
+
+            foreach ($guides as $g) {
+                $alternatives[] = [
+                    'type' => 'guide',
+                    'service_category_label' => 'Tour Guide',
+                    'provider_id' => (int) $g['id'],
+                    'provider_name' => (string) $g['name'],
+                    'title' => 'Licensed Guide ' . (string) $g['name'],
+                    'area' => (string) ($g['location'] ?? 'Cebu'),
+                    'price' => (float) ($item['allocated_amount'] ?? 2500.00),
+                    'avatar' => (string) ($g['avatar'] ?? ''),
+                ];
+            }
+        }
+
+        return [
+            'cancelled_item' => $cancelledItemDetails,
+            'alternatives' => $alternatives,
+        ];
+    }
+
+    /**
+     * Option A: Replace a cancelled service with an alternative provider.
+     */
+    public static function replaceCancelledService(
+        string $pkgRef,
+        int $itemId,
+        int $newProviderId,
+        int $newServiceId,
+        array $options = [],
+        int $actorId = 0
+    ): array {
+        self::ensureTables();
+
+        $item = Database::first("SELECT * FROM package_booking_items WHERE id = ? AND package_booking_ref = ?", [$itemId, $pkgRef]);
+        if (!$item) {
+            throw new RuntimeException("Service item not found.");
+        }
+
+        if ($item['status'] !== 'cancelled') {
+            throw new RuntimeException("Only cancelled service items can be replaced.");
+        }
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+        if (!$parent) {
+            throw new RuntimeException("Package booking not found.");
+        }
+
+        $parentBookingId = (int) $parent['id'];
+        $oldAllocated = (float) $item['allocated_amount'];
+        $serviceType = (string) $item['service_type'];
+
+        $newAllocated = $oldAllocated;
+        $newServiceName = $item['service_name'];
+        $newSubBookingId = $item['sub_booking_id'];
+        $newRentalId = $item['rental_request_id'];
+
+        if ($serviceType === 'hotel') {
+            $hotelListing = Database::first("SELECT * FROM listings WHERE id = ?", [$newServiceId]);
+            if (!$hotelListing) {
+                throw new RuntimeException("Selected replacement hotel listing not found.");
+            }
+            $roomId = (int) ($options['room_id'] ?? 0);
+            $room = $roomId > 0 ? Database::first("SELECT * FROM hotel_rooms WHERE id = ?", [$roomId]) : null;
+            $roomName = $room ? (string) $room['name'] : 'Standard Room';
+            $hotelName = (string) $hotelListing['title'];
+            $newServiceName = "{$hotelName} - {$roomName}";
+
+            $pricePerNight = (float) ($room['price_per_night'] ?? $hotelListing['price']);
+            $nights = max(1, (int) ($parent['nights'] ?? 1));
+            $newAllocated = round($pricePerNight * $nights, 2);
+
+            $newSubBookingId = Database::insert("
+                INSERT INTO bookings (
+                    listing_id, room_id, user_id, booking_date, check_in_date, check_out_date,
+                    nights, guests, total_amount, deposit_amount, balance_amount,
+                    payment_stage, hotel_status, status, notes, package_booking_ref,
+                    package_overall_status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.00, 'deposit_paid', 'confirmed', 'confirmed', ?, ?, 'action_required', NOW(), NOW())
+            ", [
+                (int) $hotelListing['id'],
+                $roomId,
+                (int) $parent['user_id'],
+                $parent['booking_date'],
+                $parent['check_in_date'] ?? $parent['booking_date'],
+                $parent['check_out_date'] ?? $parent['booking_date'],
+                $nights,
+                (int) $parent['guests'],
+                $newAllocated,
+                $newAllocated,
+                json_encode([
+                    'type' => 'package_sub_booking',
+                    'service_type' => 'hotel',
+                    'package_booking_ref' => $pkgRef,
+                    'parent_booking_id' => $parentBookingId,
+                    'hotel_name' => $hotelName,
+                    'room_name' => $roomName,
+                ]),
+                $pkgRef
+            ]);
+        } elseif ($serviceType === 'vehicle') {
+            $vehicle = Database::first("SELECT * FROM vehicles WHERE id = ?", [$newServiceId]);
+            if (!$vehicle) {
+                throw new RuntimeException("Selected replacement vehicle not found.");
+            }
+            $vehicleName = !empty($vehicle['name']) ? (string) $vehicle['name'] : (!empty($vehicle['make']) ? trim($vehicle['make'] . ' ' . ($vehicle['model'] ?? '')) : 'Vehicle Rental');
+            $newServiceName = $vehicleName;
+            $dailyRate = (float) ($vehicle['daily_rate'] ?? $vehicle['price_per_day'] ?? 0);
+            $vehicleType = (string) ($vehicle['type'] ?? $vehicle['vehicle_type'] ?? 'Vehicle');
+            $days = max(1, (int) ($parent['days_count'] ?? 1));
+            $newAllocated = round($dailyRate * $days, 2);
+
+            $newRentalId = Database::insert("
+                INSERT INTO rental_requests (
+                    user_id, vehicle_id, vehicle_name, vehicle_type, location, pickup_date, rental_days,
+                    total_amount, customer_name, customer_email, status, package_booking_ref,
+                    package_booking_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, NOW(), NOW())
+            ", [
+                (int) $parent['user_id'],
+                (int) $vehicle['id'],
+                $vehicleName,
+                (string) $vehicle['vehicle_type'],
+                (string) $vehicle['location'],
+                $parent['booking_date'],
+                $days,
+                $newAllocated,
+                'Tourist',
+                'tourist@guidemate.com',
+                $pkgRef,
+                $parentBookingId
+            ]);
+        } elseif ($serviceType === 'guide') {
+            $guideUser = Database::first("SELECT * FROM users WHERE id = ? AND role = 'guide'", [$newProviderId]);
+            if (!$guideUser) {
+                throw new RuntimeException("Selected replacement guide not found.");
+            }
+            $newServiceName = 'Guided Tour by ' . (string) $guideUser['name'];
+        } elseif (in_array($serviceType, ['things_to_do', 'activity', 'attraction', 'attractions'], true)) {
+            $listing = Database::first("SELECT * FROM listings WHERE id = ?", [$newServiceId]);
+            if (!$listing) {
+                throw new RuntimeException("Selected replacement activity/attraction listing not found.");
+            }
+            $newServiceName = (string) $listing['title'];
+            $price = (float) $listing['price'];
+            $guests = max(1, (int) ($parent['guests'] ?? 1));
+            $newAllocated = round($price * $guests, 2);
+        }
+
+        // Update the item
+        Database::run("
+            UPDATE package_booking_items
+            SET provider_id = ?,
+                service_name = ?,
+                sub_booking_id = ?,
+                rental_request_id = ?,
+                original_allocated_amount = COALESCE(original_allocated_amount, allocated_amount),
+                allocated_amount = ?,
+                status = 'confirmed',
+                cancellation_reason = NULL,
+                responded_at = NOW(),
+                updated_at = NOW()
+            WHERE id = ?
+        ", [
+            $newProviderId,
+            $newServiceName,
+            $newSubBookingId,
+            $newRentalId,
+            $newAllocated,
+            $itemId
+        ]);
+
+        // Adjust parent booking total if difference exists
+        $priceDiff = round($newAllocated - $oldAllocated, 2);
+        if ($priceDiff != 0.0) {
+            Database::run("
+                UPDATE bookings
+                SET total_amount = total_amount + ?
+                WHERE id = ?
+            ", [$priceDiff, $parentBookingId]);
+        }
+
+        // Re-evaluate overall package status
+        $syncRes = self::synchronizeOverallPackageStatus($pkgRef, $serviceType, 'confirm');
+
+        // Audit log
+        self::logAudit(
+            $pkgRef,
+            $parentBookingId,
+            $itemId,
+            'service_replaced',
+            $actorId,
+            'guide',
+            "Host replaced {$serviceType} service with '{$newServiceName}' (Provider #{$newProviderId}). Amount adjusted: ₱" . number_format($priceDiff, 2) . ".",
+            json_encode(['old_allocated' => $oldAllocated, 'new_allocated' => $newAllocated, 'price_diff' => $priceDiff])
+        );
+
+        // Notify traveler
+        $touristUser = User::find((int) $parent['user_id']);
+        if ($touristUser && !empty($touristUser['email'])) {
+            $msg = "Your travel package (#{$pkgRef}) replacement for {$serviceType} service has been confirmed: '{$newServiceName}'. Updated package total: ₱" . number_format((float) ($parent['total_amount'] + $priceDiff), 2);
+            NotificationService::send($touristUser['email'], "Service Replaced: Travel Package #{$pkgRef}", $msg);
+            self::createAutomatedMessage((int) $parent['user_id'], "Service Replaced (#{$pkgRef})", $msg);
+        }
+
+        // Notify new service provider
+        if ($newProviderId > 0 && $newProviderId !== (int) $parent['user_id']) {
+            $newProvUser = User::find($newProviderId);
+            if ($newProvUser && !empty($newProvUser['email'])) {
+                $msg = "You have been selected as the replacement {$serviceType} provider for Travel Package #{$pkgRef}. Service: '{$newServiceName}'. Please check your dashboard.";
+                NotificationService::send($newProvUser['email'], "New Package Booking Assignment: #{$pkgRef}", $msg);
+                self::createAutomatedMessage($newProviderId, "Package Assignment (#{$pkgRef})", $msg);
+            }
+        }
+
+        return [
+            'success' => true,
+            'package_booking_ref' => $pkgRef,
+            'item_id' => $itemId,
+            'service_name' => $newServiceName,
+            'new_allocated_amount' => $newAllocated,
+            'price_difference' => $priceDiff,
+            'overall_status' => $syncRes['overall_status'] ?? 'confirmed',
+            'message' => "Cancelled {$serviceType} service has been successfully replaced with {$newServiceName}.",
+        ];
+    }
+
+    /**
+     * Option B: Reschedule a cancelled service to an alternative date/time.
+     */
+    public static function rescheduleCancelledService(
+        string $pkgRef,
+        int $itemId,
+        string $newDate,
+        ?string $newTime = null,
+        ?string $notes = null,
+        int $actorId = 0
+    ): array {
+        self::ensureTables();
+
+        $item = Database::first("SELECT * FROM package_booking_items WHERE id = ? AND package_booking_ref = ?", [$itemId, $pkgRef]);
+        if (!$item) {
+            throw new RuntimeException("Service item not found.");
+        }
+
+        if ($item['status'] !== 'cancelled') {
+            throw new RuntimeException("Only cancelled service items can be rescheduled.");
+        }
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+        if (!$parent) {
+            throw new RuntimeException("Package booking not found.");
+        }
+
+        if (empty($newDate) || strtotime($newDate) < strtotime('today')) {
+            throw new RuntimeException("Please select a valid future date.");
+        }
+
+        $parentBookingId = (int) $parent['id'];
+        $serviceType = (string) $item['service_type'];
+
+        // Validate selected schedule against affected provider's availability
+        if ($serviceType === 'hotel' && !empty($item['sub_booking_id'])) {
+            $sub = Database::first("SELECT * FROM bookings WHERE id = ?", [(int) $item['sub_booking_id']]);
+            if ($sub && !empty($sub['room_id'])) {
+                $nights = max(1, (int) round((strtotime($sub['check_out_date'] ?? $newDate) - strtotime($sub['check_in_date'] ?? $newDate)) / 86400));
+                $newCheckOut = date('Y-m-d', strtotime($newDate . " + {$nights} days"));
+
+                $overlap = Database::first("
+                    SELECT id FROM bookings
+                    WHERE room_id = ?
+                      AND id != ?
+                      AND status NOT IN ('cancelled', 'refunded')
+                      AND hotel_status NOT IN ('cancelled', 'refunded')
+                      AND check_in_date < ?
+                      AND check_out_date > ?
+                    LIMIT 1
+                ", [(int) $sub['room_id'], (int) $sub['id'], $newCheckOut, $newDate]);
+
+                if ($overlap) {
+                    throw new RuntimeException("The hotel provider is not available on {$newDate}. Please choose another date.");
+                }
+            }
+        } elseif ($serviceType === 'vehicle' && !empty($item['rental_request_id'])) {
+            $req = Database::first("SELECT * FROM rental_requests WHERE id = ?", [(int) $item['rental_request_id']]);
+            if ($req && !empty($req['vehicle_id'])) {
+                $days = max(1, (int) round((strtotime($req['return_date'] ?? $newDate) - strtotime($req['pickup_date'] ?? $newDate)) / 86400));
+                $newReturn = date('Y-m-d', strtotime($newDate . " + {$days} days"));
+
+                $overlap = Database::first("
+                    SELECT id FROM rental_requests
+                    WHERE vehicle_id = ?
+                      AND id != ?
+                      AND status IN ('approved', 'confirmed', 'contacted', 'pending')
+                      AND pickup_date < ?
+                      AND return_date > ?
+                    LIMIT 1
+                ", [(int) $req['vehicle_id'], (int) $req['id'], $newReturn, $newDate]);
+
+                if ($overlap) {
+                    throw new RuntimeException("The rental vehicle is unavailable on {$newDate}. Please select another date.");
+                }
+            }
+        }
+
+        Database::run("
+            UPDATE package_booking_items
+            SET status = 'rescheduled',
+                rescheduled_date = ?,
+                rescheduled_time = ?,
+                rescheduled_notes = ?,
+                cancellation_reason = NULL,
+                responded_at = NOW(),
+                updated_at = NOW()
+            WHERE id = ?
+        ", [$newDate, $newTime, $notes, $itemId]);
+
+        if (!empty($item['sub_booking_id'])) {
+            $nights = max(1, (int) ($parent['nights'] ?? 1));
+            $newCheckOut = date('Y-m-d', strtotime($newDate . " + {$nights} days"));
+            Database::run("
+                UPDATE bookings
+                SET check_in_date = ?, check_out_date = ?, status = 'confirmed', hotel_status = 'confirmed', updated_at = NOW()
+                WHERE id = ?
+            ", [$newDate, $newCheckOut, (int) $item['sub_booking_id']]);
+        }
+
+        if (!empty($item['rental_request_id'])) {
+            Database::run("
+                UPDATE rental_requests
+                SET pickup_date = ?, status = 'approved', updated_at = NOW()
+                WHERE id = ?
+            ", [$newDate, (int) $item['rental_request_id']]);
+        }
+
+        $syncRes = self::synchronizeOverallPackageStatus($pkgRef, $serviceType, 'reschedule');
+
+        self::logAudit(
+            $pkgRef,
+            $parentBookingId,
+            $itemId,
+            'service_rescheduled',
+            $actorId,
+            'guide',
+            "Rescheduled {$serviceType} service to {$newDate}" . ($newTime ? " at {$newTime}" : "") . ".",
+            $notes
+        );
+
+        $providerId = (int) $item['provider_id'];
+        if ($providerId > 0) {
+            $provUser = User::find($providerId);
+            if ($provUser && !empty($provUser['email'])) {
+                $msg = "A rescheduling request has been confirmed for your {$serviceType} service in package #{$pkgRef}. New Date: {$newDate}.";
+                NotificationService::send($provUser['email'], "Service Rescheduled: Package #{$pkgRef}", $msg);
+            }
+            self::createAutomatedMessage($providerId, "Service Rescheduled (#{$pkgRef})", "Service rescheduled to {$newDate}.");
+        }
+
+        // Notify traveler
+        $touristUser = User::find((int) $parent['user_id']);
+        if ($touristUser && !empty($touristUser['email'])) {
+            $msg = "Your host has rescheduled the {$serviceType} service ('{$item['service_name']}') in package #{$pkgRef} to " . date('M j, Y', strtotime($newDate)) . ". Other confirmed bookings remain active.";
+            NotificationService::send($touristUser['email'], "Service Rescheduled: Package #{$pkgRef}", $msg);
+            self::createAutomatedMessage((int) $parent['user_id'], "Service Rescheduled (#{$pkgRef})", $msg);
+        }
+
+        return [
+            'success' => true,
+            'package_booking_ref' => $pkgRef,
+            'item_id' => $itemId,
+            'rescheduled_date' => $newDate,
+            'rescheduled_time' => $newTime,
+            'overall_status' => $syncRes['overall_status'] ?? 'confirmed',
+            'message' => "Successfully rescheduled {$serviceType} service to " . date('M j, Y', strtotime($newDate)) . ".",
+        ];
+    }
+
+    /**
+     * Reschedule an entire travel package by the host (Section 2).
+     * Updates travel date across parent booking, hotel sub-bookings, and rental requests.
+     * Sets Package Status: Pending.
+     * Payment Status: Paid (if already paid - never reset or invalidated).
+     */
+    public static function rescheduleEntirePackage(
+        string $pkgRef,
+        string $newDate,
+        ?string $newTime = null,
+        int $actorId = 0,
+        string $notes = 'Rescheduled by host'
+    ): array {
+        self::ensureTables();
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+        if (!$parent) {
+            throw new RuntimeException("Package booking not found.");
+        }
+
+        if (strtotime($newDate) === false || strtotime($newDate) < strtotime('today')) {
+            throw new RuntimeException("Please select a valid future date.");
+        }
+
+        $parentBookingId = (int) $parent['id'];
+        $oldDate = (string) $parent['booking_date'];
+
+        $nights = 1;
+        $hotelSub = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? AND room_id IS NOT NULL LIMIT 1", [$pkgRef]);
+        if ($hotelSub && !empty($hotelSub['check_in_date']) && !empty($hotelSub['check_out_date'])) {
+            $nights = max(1, (int) round((strtotime($hotelSub['check_out_date']) - strtotime($hotelSub['check_in_date'])) / 86400));
+        }
+        $newCheckOut = date('Y-m-d', strtotime($newDate . " + {$nights} days"));
+
+        $rentalDays = 1;
+        $rentalSub = Database::first("SELECT * FROM rental_requests WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+        if ($rentalSub && !empty($rentalSub['pickup_date']) && !empty($rentalSub['return_date'])) {
+            $rentalDays = max(1, (int) round((strtotime($rentalSub['return_date']) - strtotime($rentalSub['pickup_date'])) / 86400));
+        }
+        $newReturnDate = date('Y-m-d', strtotime($newDate . " + {$rentalDays} days"));
+
+        // 1. Update parent booking: Status Pending, Payment remains Paid
+        $timeClause = $newTime !== null ? ", booking_time = '{$newTime}'" : "";
+        Database::run("
+            UPDATE bookings
+            SET booking_date = ?,
+                status = 'pending',
+                package_overall_status = 'pending',
+                updated_at = NOW()
+                {$timeClause}
+            WHERE id = ?
+        ", [$newDate, $parentBookingId]);
+
+        // 2. Update hotel sub-bookings:
+        Database::run("
+            UPDATE bookings
+            SET booking_date = ?,
+                check_in_date = ?,
+                check_out_date = ?,
+                status = 'pending',
+                hotel_status = 'pending',
+                updated_at = NOW()
+            WHERE package_booking_ref = ? AND id != ?
+        ", [$newDate, $newDate, $newCheckOut, $pkgRef, $parentBookingId]);
+
+        // 3. Update rental requests:
+        Database::run("
+            UPDATE rental_requests
+            SET pickup_date = ?,
+                status = 'pending',
+                updated_at = NOW()
+            WHERE package_booking_ref = ? OR package_booking_id = ?
+        ", [$newDate, $pkgRef, $parentBookingId]);
+
+        // 4. Update package_booking_items:
+        Database::run("
+            UPDATE package_booking_items
+            SET status = 'pending',
+                rescheduled_date = ?,
+                rescheduled_time = ?,
+                rescheduled_notes = ?,
+                updated_at = NOW()
+            WHERE package_booking_ref = ?
+        ", [$newDate, $newTime, $notes, $pkgRef]);
+
+        // 5. Audit log
+        self::logAudit(
+            $pkgRef,
+            $parentBookingId,
+            null,
+            'package_rescheduled',
+            $actorId,
+            'guide',
+            "Host rescheduled travel package travel date from {$oldDate} to {$newDate}. Overall package status set to Pending. Original payment preserved.",
+            $notes
+        );
+
+        // 6. Notify traveler and all providers
+        $packageTitle = (string) ($parent['listing_title'] ?? '');
+        if ($packageTitle === '' && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            $packageTitle = (string) ($l['title'] ?? 'Travel Package');
+        }
+        if ($packageTitle === '') {
+            $packageTitle = 'Travel Package';
+        }
+
+        $hostGuideId = (int) ($parent['guide_id'] ?? 0);
+        if ($hostGuideId <= 0 && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            $hostGuideId = (int) ($l['user_id'] ?? 0);
+        }
+
+        $touristUser = User::find((int) $parent['user_id']);
+        if ($touristUser && !empty($touristUser['email'])) {
+            $msg = "Your host has rescheduled the travel date for '{$packageTitle}' (#{$pkgRef}) to " . date('F j, Y', strtotime($newDate)) . ". Status is now Pending while providers re-confirm. Your existing payment remains active and fully honored.";
+            NotificationService::send($touristUser['email'], "Travel Package Rescheduled: {$packageTitle} (#{$pkgRef})", $msg);
+            self::createAutomatedMessage((int) $parent['user_id'], "Travel Package Rescheduled", $msg);
+        }
+
+        $items = Database::all("SELECT * FROM package_booking_items WHERE package_booking_ref = ?", [$pkgRef]);
+        foreach ($items as $it) {
+            $provId = (int) $it['provider_id'];
+            if ($provId > 0 && $provId !== $hostGuideId) {
+                $pUser = User::find($provId);
+                if ($pUser && !empty($pUser['email'])) {
+                    $msg = "Travel Package #{$pkgRef} ('{$packageTitle}') has been rescheduled to " . date('F j, Y', strtotime($newDate)) . " by the host. Please review and confirm your service for the updated date.";
+                    NotificationService::send($pUser['email'], "Schedule Update: Package #{$pkgRef}", $msg);
+                }
+            }
+        }
+
+        return [
+            'success' => true,
+            'message' => "Travel Package rescheduled to " . date('F j, Y', strtotime($newDate)) . ". Status set to Pending. Original payment preserved.",
+            'new_date' => $newDate,
+            'package_status' => 'pending',
+        ];
+    }
+
+    /**
+     * Option C: Continue travel package without the cancelled service, recalculating cost and issuing refund.
+     */
+    public static function continueWithoutService(
+        string $pkgRef,
+        int $itemId,
+        int $actorId = 0,
+        ?string $reason = null
+    ): array {
+        self::ensureTables();
+
+        $item = Database::first("SELECT * FROM package_booking_items WHERE id = ? AND package_booking_ref = ?", [$itemId, $pkgRef]);
+        if (!$item) {
+            throw new RuntimeException("Service item not found.");
+        }
+
+        if ($item['status'] !== 'cancelled') {
+            throw new RuntimeException("Only cancelled service items can be dropped.");
+        }
+
+        $serviceType = (string) $item['service_type'];
+        if ($serviceType === 'guide') {
+            throw new RuntimeException("The tour guide host service is essential to completing this travel package itinerary. Please select Option D to cancel the entire package or coordinate with your guide.");
+        }
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+        if (!$parent) {
+            throw new RuntimeException("Package booking not found.");
+        }
+
+        $parentBookingId = (int) $parent['id'];
+        $serviceType = (string) $item['service_type'];
+        $serviceName = (string) $item['service_name'];
+        $allocatedAmount = (float) $item['allocated_amount'];
+        $currentTotal = (float) $parent['total_amount'];
+        $newTotal = max(0.00, round($currentTotal - $allocatedAmount, 2));
+
+        Database::run("
+            UPDATE package_booking_items
+            SET status = 'removed',
+                cancellation_reason = 'Continued package without this service',
+                updated_at = NOW()
+            WHERE id = ?
+        ", [$itemId]);
+
+        Database::run("
+            UPDATE bookings
+            SET total_amount = ?,
+                refund_amount = COALESCE(refund_amount, 0) + ?,
+                refund_status = 'partially_refunded',
+                updated_at = NOW()
+            WHERE id = ?
+        ", [$newTotal, $allocatedAmount, $parentBookingId]);
+
+        $syncRes = self::synchronizeOverallPackageStatus($pkgRef, $serviceType, 'remove');
+
+        self::logAudit(
+            $pkgRef,
+            $parentBookingId,
+            $itemId,
+            'service_removed',
+            $actorId,
+            'traveler',
+            "Continued package without {$serviceType} ('{$serviceName}'). Refund of ₱" . number_format($allocatedAmount, 2) . " credited. New package total: ₱" . number_format($newTotal, 2) . ".",
+            $reason
+        );
+
+        $packageTitle = (string) ($parent['listing_title'] ?? '');
+        if ($packageTitle === '' && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            $packageTitle = (string) ($l['title'] ?? 'Travel Package');
+        }
+        if ($packageTitle === '') {
+            $packageTitle = 'Travel Package';
+        }
+
+        $touristUser = User::find((int) $parent['user_id']);
+        if ($touristUser && !empty($touristUser['email'])) {
+            $msg = "You have chosen to continue Travel Package '{$packageTitle}' (#{$pkgRef}) without {$serviceType} ('{$serviceName}'). A refund of ₱" . number_format($allocatedAmount, 2) . " has been issued to your payment method. Your updated package total is ₱" . number_format($newTotal, 2) . ".";
+            NotificationService::send($touristUser['email'], "Package Updated: {$serviceName} Removed (#{$pkgRef})", $msg);
+            self::createAutomatedMessage((int) $parent['user_id'], "Package Updated (#{$pkgRef})", $msg);
+        }
+
+        // Notify host
+        $hostGuideId = (int) ($parent['guide_id'] ?? 0);
+        if ($hostGuideId <= 0 && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            $hostGuideId = (int) ($l['user_id'] ?? 0);
+        }
+
+        if ($hostGuideId > 0) {
+            $guideUser = User::find($hostGuideId);
+            if ($guideUser && !empty($guideUser['email'])) {
+                $msg = "Traveler has opted to continue Travel Package #{$pkgRef} ('{$packageTitle}') without {$serviceType} ('{$serviceName}'). The remaining itinerary and confirmed bookings will proceed as planned.";
+                NotificationService::send($guideUser['email'], "Package Itinerary Update: #{$pkgRef}", $msg);
+                self::createAutomatedMessage($hostGuideId, "Package Itinerary Update", $msg);
+            }
+        }
+
+        // Notify affected provider
+        $provId = (int) $item['provider_id'];
+        if ($provId > 0 && $provId !== $hostGuideId) {
+            $pUser = User::find($provId);
+            if ($pUser && !empty($pUser['email'])) {
+                NotificationService::send($pUser['email'], "Service Removed from Package #{$pkgRef}", "Your service '{$serviceName}' in Travel Package #{$pkgRef} has been removed per traveler decision.");
+            }
+        }
+
+        return [
+            'success' => true,
+            'package_booking_ref' => $pkgRef,
+            'removed_item_id' => $itemId,
+            'removed_service_name' => $serviceName,
+            'refund_amount' => $allocatedAmount,
+            'new_total_amount' => $newTotal,
+            'overall_status' => $syncRes['overall_status'] ?? 'confirmed',
+            'message' => "Removed {$serviceName} from package. ₱" . number_format($allocatedAmount, 2) . " has been refunded, and your package will continue with the remaining confirmed services.",
+        ];
+    }
+
+    /**
+     * Option D: Calculate consequences, remaining bookings, and full refund for entire package cancellation.
+     */
+    public static function calculateEntirePackageCancellationSummary(string $pkgRef): array
+    {
+        self::ensureTables();
+
+        $items = Database::all("
+            SELECT pbi.*, u.name AS provider_name
+            FROM package_booking_items pbi
+            LEFT JOIN users u ON u.id = pbi.provider_id
+            WHERE pbi.package_booking_ref = ?
+        ", [$pkgRef]);
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+        if (!$parent) {
+            throw new RuntimeException("Package booking not found.");
+        }
+
+        $activeServices = [];
+        $cancelledServices = [];
+        foreach ($items as $it) {
+            if ($it['status'] === 'cancelled') {
+                $cancelledServices[] = [
+                    'id' => (int) $it['id'],
+                    'service_type' => $it['service_type'],
+                    'service_name' => $it['service_name'],
+                    'provider_name' => $it['provider_name'] ?? 'Provider',
+                    'status' => 'cancelled',
+                    'cancellation_reason' => $it['cancellation_reason'] ?? 'Provider unavailable',
+                    'allocated_amount' => (float) $it['allocated_amount'],
+                ];
+            } elseif ($it['status'] !== 'removed') {
+                $activeServices[] = [
+                    'id' => (int) $it['id'],
+                    'service_type' => $it['service_type'],
+                    'service_name' => $it['service_name'],
+                    'provider_name' => $it['provider_name'] ?? 'Provider',
+                    'status' => $it['status'],
+                    'allocated_amount' => (float) $it['allocated_amount'],
+                ];
+            }
+        }
+
+        $totalAmount = (float) $parent['total_amount'];
+        $alreadyRefunded = (float) ($parent['refund_amount'] ?? 0);
+        $refundPayable = max(0.00, round($totalAmount, 2));
+
+        return [
+            'package_booking_ref' => $pkgRef,
+            'package_title' => (string) ($parent['listing_title'] ?? 'Travel Package'),
+            'total_package_amount' => $totalAmount,
+            'refund_amount' => $refundPayable,
+            'already_refunded' => $alreadyRefunded,
+            'active_services' => $activeServices,
+            'cancelled_services' => $cancelledServices,
+            'active_count' => count($activeServices),
+            'consequences' => [
+                'All remaining active provider bookings (hotels, vehicles, guide) will be terminated immediately.',
+                'A full refund of ₱' . number_format($refundPayable, 2) . ' will be processed and returned to your original payment method.',
+                'All participating service providers will be notified of the cancellation.',
+                'This action cannot be undone once confirmed.',
+            ],
+        ];
+    }
+
+    /**
+     * Option D: Cancel the entire travel package with full refund and provider notifications.
+     */
+    public static function cancelEntirePackage(
+        string $pkgRef,
+        int $actorId = 0,
+        string $reason = 'Cancelled by traveler following service disruption',
+        bool $isConfirmed = false
+    ): array {
+        self::ensureTables();
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$pkgRef]);
+        if (!$parent) {
+            throw new RuntimeException("Package booking not found.");
+        }
+
+        $parentBookingId = (int) $parent['id'];
+        $items = Database::all("SELECT * FROM package_booking_items WHERE package_booking_ref = ?", [$pkgRef]);
+
+        // Cancel all items
+        Database::run("
+            UPDATE package_booking_items
+            SET status = 'cancelled',
+                cancellation_reason = COALESCE(cancellation_reason, ?),
+                responded_at = COALESCE(responded_at, NOW()),
+                updated_at = NOW()
+            WHERE package_booking_ref = ?
+        ", [$reason, $pkgRef]);
+
+        // Cancel all bookings
+        Database::run("
+            UPDATE bookings
+            SET status = 'cancelled',
+                hotel_status = 'cancelled',
+                package_overall_status = 'cancelled',
+                cancelled_at = COALESCE(cancelled_at, NOW()),
+                cancellation_reason = COALESCE(cancellation_reason, ?),
+                refund_amount = total_amount,
+                refund_status = 'refunded',
+                updated_at = NOW()
+            WHERE package_booking_ref = ? OR id = ?
+        ", [$reason, $pkgRef, $parentBookingId]);
+
+        // Cancel all rental requests
+        Database::run("
+            UPDATE rental_requests
+            SET status = 'cancelled',
+                cancelled_at = COALESCE(cancelled_at, NOW()),
+                cancellation_reason = COALESCE(cancellation_reason, ?),
+                payment_status = 'refunded',
+                refund_status = 'refunded',
+                updated_at = NOW()
+            WHERE package_booking_ref = ? OR package_booking_id = ?
+        ", [$reason, $pkgRef, $parentBookingId]);
+
+        // Trigger payment refund if paid
+        if (Payment::isPaid($parentBookingId)) {
+            Payment::refund($parentBookingId);
+        }
+
+        // Audit log
+        self::logAudit(
+            $pkgRef,
+            $parentBookingId,
+            null,
+            'package_cancelled',
+            $actorId,
+            'traveler',
+            "Entire travel package cancelled. Full refund of ₱" . number_format((float) $parent['total_amount'], 2) . " processed. Reason: {$reason}.",
+            $reason
+        );
+
+        // Notify traveler and all providers
+        $packageTitle = (string) ($parent['listing_title'] ?? '');
+        if ($packageTitle === '' && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            $packageTitle = (string) ($l['title'] ?? 'Travel Package');
+        }
+        if ($packageTitle === '') {
+            $packageTitle = 'Travel Package';
+        }
+
+        $touristUser = User::find((int) $parent['user_id']);
+        if ($touristUser && !empty($touristUser['email'])) {
+            $msg = "Your travel package '{$packageTitle}' (#{$pkgRef}) has been fully cancelled. A full refund of ₱" . number_format((float) $parent['total_amount'], 2) . " has been reversed to your account. Reason: {$reason}.";
+            NotificationService::send($touristUser['email'], "Package Cancelled (#{$pkgRef})", $msg);
+            self::createAutomatedMessage((int) $parent['user_id'], "Package Cancelled (#{$pkgRef})", $msg);
+        }
+
+        foreach ($items as $it) {
+            $provId = (int) $it['provider_id'];
+            if ($provId > 0 && $provId !== (int) $parent['user_id']) {
+                $pUser = User::find($provId);
+                if ($pUser && !empty($pUser['email'])) {
+                    $msg = "Travel Package #{$pkgRef} ('{$packageTitle}') has been cancelled. Any remaining bookings for your service have been released.";
+                    NotificationService::send($pUser['email'], "Package Cancelled (#{$pkgRef})", $msg);
+                }
+                self::createAutomatedMessage($provId, "Package Cancelled (#{$pkgRef})", "Package #{$pkgRef} cancelled.");
+            }
+        }
+
+        return [
+            'success' => true,
+            'package_booking_ref' => $pkgRef,
+            'overall_status' => 'cancelled',
+            'refund_amount' => (float) $parent['total_amount'],
+            'message' => "Entire travel package cancelled. Full refund of ₱" . number_format((float) $parent['total_amount'], 2) . " has been processed.",
         ];
     }
 

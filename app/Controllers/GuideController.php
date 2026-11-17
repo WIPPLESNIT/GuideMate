@@ -348,13 +348,31 @@ final class GuideController extends Controller
             if (in_array($current, ['cancelled', 'completed', 'refunded', 'disputed'], true)) {
                 flash('error', 'This booking can no longer be cancelled.');
                 redirect('/dashboard/bookings');
+                return;
+            }
+            if (User::isGuideWarned((int) Auth::id())) {
+                flash('error', 'Your account has an active administrator warning. You cannot cancel or refund bookings until an admin clears it.');
+                redirect('/dashboard/bookings');
+                return;
+            }
+            if (!empty($booking['package_booking_ref'])) {
+                // Host cancels the entire Travel Package booking!
+                \App\Services\PackageBookingService::cancelEntirePackage(
+                    (string) $booking['package_booking_ref'],
+                    (int) Auth::id(),
+                    'Cancelled by host/package organizer',
+                    true
+                );
+                flash('success', 'Travel Package cancelled. All associated hotel reservations, vehicle rental requests, and provider bookings have been cancelled, and the traveler and all affected providers have been notified.');
+                redirect('/dashboard/bookings');
+                return;
             }
             $result = Booking::cancelByGuide((int) $booking['id']);
             if ($result['blocked'] ?? false) {
                 flash('error', 'Your account has an active administrator warning. You cannot cancel or refund bookings until an admin clears it.');
                 redirect('/dashboard/bookings');
+                return;
             }
-            \App\Services\PackageBookingService::onBookingUpdated((int) $booking['id'], 'cancelled', (int) Auth::id());
             if ($result['refunded']) {
                 NotificationService::bookingCancelled(
                     (string) $booking['customer_email'],
@@ -366,6 +384,7 @@ final class GuideController extends Controller
                 flash('success', 'Booking cancelled.');
             }
             redirect('/dashboard/bookings');
+            return;
         }
 
         if (in_array($status, ['confirmed', 'completed'], true)) {
@@ -390,6 +409,57 @@ final class GuideController extends Controller
             } else {
                 flash('success', 'Booking marked as completed.');
             }
+        }
+
+        redirect('/dashboard/bookings');
+    }
+
+    public function reschedulePackage(string $id): void
+    {
+        $this->verifyCsrf();
+        Auth::refreshUser();
+        $user = Auth::user();
+        $userId = (int) ($user['id'] ?? 0);
+        $booking = Booking::find((int) $id);
+
+        if (!$booking || empty($booking['package_booking_ref'])) {
+            flash('error', 'Travel Package booking not found.');
+            redirect('/dashboard/bookings');
+            return;
+        }
+
+        $isGuideOwner = (int) ($booking['guide_id'] ?? 0) === $userId;
+        $isAdmin = in_array($user['role'] ?? '', ['admin'], true);
+        if (!$isGuideOwner && !$isAdmin) {
+            $listing = \App\Core\Database::first('SELECT user_id FROM listings WHERE id = ?', [(int) $booking['listing_id']]);
+            if (!$listing || (int) $listing['user_id'] !== $userId) {
+                flash('error', 'You are not authorized to reschedule this package.');
+                redirect('/dashboard/bookings');
+                return;
+            }
+        }
+
+        $newDate = trim((string) $this->input('new_date', ''));
+        $newTime = trim((string) $this->input('new_time', ''));
+        $notes = trim((string) $this->input('notes', ''));
+
+        if ($newDate === '' || strtotime($newDate) < strtotime('today')) {
+            flash('error', 'Please provide a valid future travel date.');
+            redirect('/dashboard/bookings');
+            return;
+        }
+
+        try {
+            $res = \App\Services\PackageBookingService::rescheduleEntirePackage(
+                (string) $booking['package_booking_ref'],
+                $newDate,
+                $newTime !== '' ? $newTime : null,
+                $userId,
+                $notes
+            );
+            flash('success', $res['message'] ?? 'Travel package rescheduled successfully.');
+        } catch (\Throwable $e) {
+            flash('error', $e->getMessage());
         }
 
         redirect('/dashboard/bookings');

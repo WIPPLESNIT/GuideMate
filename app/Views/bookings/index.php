@@ -120,15 +120,24 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                         <tbody>
                         <?php foreach ($displayBookings as $b): ?>
                             <?php
-                            $isHotel = !empty($b['room_id']) || !empty($b['hotel_status']) || (!empty($b['deposit_amount']) && (float) $b['deposit_amount'] > 0);
+                            $isPkg = !empty($b['package_booking_ref']) || str_contains((string) ($b['notes'] ?? ''), 'package_booking');
+                            $pkgSummary = $isPkg ? \App\Services\PackageBookingService::getPackageBookingSummary($b['package_booking_ref'] ?? $b['id']) : null;
+                            $overallPkgStatus = $pkgSummary['overall_status'] ?? ($b['package_overall_status'] ?? '');
+                            $isActionRequired = $isPkg && ($overallPkgStatus === 'action_required' || !empty($pkgSummary['has_cancellation']));
+
+                            $isHotel = !$isPkg && (!empty($b['room_id']) || !empty($b['hotel_status']) || (!empty($b['deposit_amount']) && (float) $b['deposit_amount'] > 0));
                             $hotelStatus = (string) ($b['hotel_status'] ?? '');
                             $status = (string) $b['status'];
                             $total = (float) $b['total_amount'];
                             $deposit = (float) ($b['deposit_amount'] ?? 0);
                             $balance = (float) ($b['balance_amount'] ?? max(0, $total - $deposit));
-                            $isConfirmed = $hotelStatus === 'confirmed' || $status === 'confirmed';
-                            $rowIsCompleted = ($hotelStatus === 'completed' || $status === 'completed');
-                            $isCancelled = in_array($hotelStatus, ['cancelled', 'refunded'], true) || in_array($status, ['cancelled', 'refunded'], true) || !empty($b['cancelled_at']);
+                            $isConfirmed = $hotelStatus === 'confirmed' || $status === 'confirmed' || ($isPkg && $overallPkgStatus === 'confirmed');
+                            $rowIsCompleted = ($hotelStatus === 'completed' || $status === 'completed' || ($isPkg && $overallPkgStatus === 'completed'));
+                            $isCancelled = in_array($hotelStatus, ['cancelled', 'refunded'], true) || in_array($status, ['cancelled', 'refunded'], true) || ($isPkg && $overallPkgStatus === 'cancelled') || !empty($b['cancelled_at']);
+                            if ($isActionRequired) {
+                                $isCancelled = false;
+                                $rowIsCompleted = false;
+                            }
                             $cancellation = \App\Services\CancellationPolicyService::compute($b, $isHotel ? 'hotel' : 'attraction');
                             ?>
                             <tr>
@@ -227,6 +236,19 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                         <?php elseif ($hotelStatus === 'checked_in'): ?>
                                             <small class="hint" style="display:block;margin-top:3px;">Currently checked in</small>
                                         <?php endif; ?>
+                                    <?php elseif ($isActionRequired): ?>
+                                        <span class="pill" style="background:#FFFBEB;color:#B45309;border:1.5px solid #F59E0B;font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+                                            <span>⚠️</span> Action Required
+                                        </span>
+                                        <small class="hint" style="color:#B45309;font-weight:600;display:block;margin-top:3px;">Service provider cancelled. Your host is coordinating replacement or reschedule. You can also adjust options in the GuideMate Mobile App.</small>
+                                    <?php elseif ($isPkg): ?>
+                                        <span class="pill pill-<?= e($overallPkgStatus) ?>"><?= e(match ($overallPkgStatus) {
+                                            'partially_confirmed' => 'Partially Confirmed',
+                                            'confirmed' => 'Confirmed',
+                                            'completed' => 'Completed',
+                                            'cancelled' => 'Cancelled',
+                                            default => 'Pending Approvals'
+                                        }) ?></span>
                                     <?php else: ?>
                                         <span class="pill pill-<?= e($b['status']) ?>"><?= e(status_label((string) $b['status'])) ?></span>
                                         <?php if ($b['status'] === 'pending'): ?><br><small class="hint">Waiting for the partner to confirm</small><?php endif; ?>
@@ -342,7 +364,5 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
             </div>
             <p class="hint mt-2">Paid on GuideMate but a guide asked for extra money? Use <strong>Report problem</strong>. <a href="<?= e(url('/policy')) ?>">Read our policy</a></p>
         <?php endif; ?>
-    </div>
-</section>
     </div>
 </section>

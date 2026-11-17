@@ -323,4 +323,117 @@ final class BookingController extends Controller
         }
         return $booking;
     }
+
+    public function packageSummary(string $ref): void
+    {
+        $summary = \App\Services\PackageBookingService::getPackageBookingSummary($ref);
+        if (!$summary) {
+            $this->json(['error' => 'Package summary not found.'], 404);
+            return;
+        }
+        $this->json(['success' => true, 'summary' => $summary]);
+    }
+
+    public function packageAlternatives(string $ref): void
+    {
+        $userId = (int) Auth::id();
+        $parent = \App\Core\Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        $user = \App\Core\Auth::user();
+        $role = (string) ($user['role'] ?? '');
+        $isHost = $role === 'guide' || (int) ($parent['guide_id'] ?? 0) === $userId;
+        if (!$isHost && !empty($parent['listing_id'])) {
+            $l = \App\Models\Listing::find((int) $parent['listing_id']);
+            if ($l && (int) ($l['user_id'] ?? 0) === $userId) {
+                $isHost = true;
+            }
+        }
+        if (!$isHost && $role !== 'admin') {
+            $this->json(['error' => 'Access denied. Only the host can view replacement options.'], 403);
+            return;
+        }
+
+        $itemId = (int) $this->input('item_id', 0);
+        $alternatives = \App\Services\PackageBookingService::getAvailableAlternatives($ref, $itemId);
+        $this->json(['success' => true, 'alternatives' => $alternatives]);
+    }
+
+    public function packageReplace(string $ref): void
+    {
+        $this->verifyCsrf();
+        $userId = (int) Auth::id();
+        $parent = \App\Core\Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        $user = \App\Core\Auth::user();
+        $role = (string) ($user['role'] ?? '');
+        $isHost = $role === 'guide' || (int) ($parent['guide_id'] ?? 0) === $userId;
+        if (!$isHost && !empty($parent['listing_id'])) {
+            $l = \App\Models\Listing::find((int) $parent['listing_id']);
+            if ($l && (int) ($l['user_id'] ?? 0) === $userId) {
+                $isHost = true;
+            }
+        }
+        if (!$isHost && $role !== 'admin') {
+            flash('error', 'Access denied. Only the host can replace cancelled services.');
+            redirect('/dashboard/bookings');
+            return;
+        }
+
+        $itemId = (int) $this->input('item_id', 0);
+        $providerId = (int) $this->input('provider_id', 0);
+        $serviceId = (int) $this->input('service_id', 0);
+        $roomId = (int) $this->input('room_id', 0);
+
+        try {
+            $res = \App\Services\PackageBookingService::replaceCancelledService($ref, $itemId, $providerId, $serviceId, ['room_id' => $roomId], $userId);
+            flash('success', $res['message'] ?? 'Service replacement confirmed.');
+        } catch (\Throwable $e) {
+            flash('error', $e->getMessage());
+        }
+        redirect('/dashboard/bookings');
+    }
+
+    public function packageReschedule(string $ref): void
+    {
+        $this->verifyCsrf();
+        $userId = (int) Auth::id();
+        $parent = \App\Core\Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        $user = \App\Core\Auth::user();
+        $role = (string) ($user['role'] ?? '');
+        $isHost = $role === 'guide' || (int) ($parent['guide_id'] ?? 0) === $userId;
+        if (!$isHost && !empty($parent['listing_id'])) {
+            $l = \App\Models\Listing::find((int) $parent['listing_id']);
+            if ($l && (int) ($l['user_id'] ?? 0) === $userId) {
+                $isHost = true;
+            }
+        }
+        if (!$isHost && $role !== 'admin') {
+            flash('error', 'Access denied. Only the host can reschedule cancelled services.');
+            redirect('/dashboard/bookings');
+            return;
+        }
+
+        $itemId = (int) $this->input('item_id', 0);
+        $newDate = trim((string) $this->input('new_date', ''));
+        $newTime = trim((string) $this->input('new_time', ''));
+        $notes = trim((string) $this->input('notes', ''));
+
+        try {
+            $res = \App\Services\PackageBookingService::rescheduleCancelledService($ref, $itemId, $newDate, $newTime !== '' ? $newTime : null, $notes !== '' ? $notes : null, $userId);
+            flash('success', $res['message'] ?? 'Service rescheduled successfully.');
+        } catch (\Throwable $e) {
+            flash('error', $e->getMessage());
+        }
+        redirect('/dashboard/bookings');
+    }
+
+    public function packageContinueWithout(string $ref): void
+    {
+        flash('error', 'Continuing without a cancelled service is available only through the GuideMate Mobile App.');
+        redirect('/bookings');
+    }
+
+    public function packageCancelFull(string $ref): void
+    {
+        flash('error', 'Traveler package cancellation is available only through the GuideMate Mobile App.');
+        redirect('/bookings');
+    }
 }

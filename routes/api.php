@@ -61,6 +61,14 @@ $router->post('/api/messages/delete', [ApiController::class, 'deleteConversation
 $router->get('/api/packages', [ApiController::class, 'packages']);
 $router->get('/api/packages/{id}', [ApiController::class, 'packageDetail']);
 $router->post('/api/packages/{id}/book', [ApiController::class, 'bookPackage']);
+$router->get('/api/packages/bookings/{ref}/summary', [ApiController::class, 'packageBookingSummary']);
+$router->get('/api/packages/bookings/{ref}/alternatives/{itemId}', [ApiController::class, 'packageBookingAlternatives']);
+$router->post('/api/packages/bookings/{ref}/replace', [ApiController::class, 'packageBookingReplace']);
+$router->post('/api/packages/bookings/{ref}/reschedule', [ApiController::class, 'packageBookingReschedule']);
+$router->post('/api/packages/bookings/{ref}/reschedule-package', [ApiController::class, 'packageBookingReschedulePackage']);
+$router->post('/api/packages/bookings/{ref}/continue-without', [ApiController::class, 'packageBookingContinueWithout']);
+$router->get('/api/packages/bookings/{ref}/cancel-summary', [ApiController::class, 'packageBookingCancelSummary']);
+$router->post('/api/packages/bookings/{ref}/cancel-full', [ApiController::class, 'packageBookingCancelFull']);
 
 $router->get('/api/rentals', [ApiController::class, 'rentalUnits']);
 $router->get('/api/rentals/mine', [ApiController::class, 'myRentals']);

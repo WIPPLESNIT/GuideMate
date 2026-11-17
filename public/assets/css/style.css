@@ -5882,10 +5882,10 @@ a.stat-clickable:focus-visible {
 .guide-bookings-table .col-actions  { width: 8%; text-align: right; white-space: nowrap; padding-right: 1.5rem !important; }
 
 .guide-bookings-table tr.row-pending {
-    background: #FFFBEB;
+    background: transparent;
 }
 .guide-bookings-table tr.row-pending:hover {
-    background: #FEF3C7 !important;
+    background: var(--bg-hover, rgba(0, 0, 0, 0.02)) !important;
 }
 .guide-bookings-table .booking-customer-name {
     color: var(--text, #0f172a);

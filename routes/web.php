@@ -75,6 +75,12 @@ $router->get('/bookings/map', [BookingController::class, 'map'], ['auth']);
 $router->get('/checkout/{id}', [BookingController::class, 'checkout'], ['auth']);
 $router->post('/checkout/{id}', [BookingController::class, 'pay'], ['auth']);
 $router->post('/bookings/{id}/cancel', [BookingController::class, 'cancel'], ['auth']);
+$router->get('/bookings/package/{ref}/summary', [BookingController::class, 'packageSummary'], ['auth']);
+$router->get('/bookings/package/{ref}/alternatives', [BookingController::class, 'packageAlternatives'], ['auth']);
+$router->post('/bookings/package/{ref}/replace', [BookingController::class, 'packageReplace'], ['auth']);
+$router->post('/bookings/package/{ref}/reschedule', [BookingController::class, 'packageReschedule'], ['auth']);
+$router->post('/bookings/package/{ref}/continue-without', [BookingController::class, 'packageContinueWithout'], ['auth']);
+$router->post('/bookings/package/{ref}/cancel-full', [BookingController::class, 'packageCancelFull'], ['auth']);
 $router->get('/bookings/{id}/report', [DisputeController::class, 'create'], ['auth']);
 $router->post('/bookings/{id}/report', [DisputeController::class, 'store'], ['auth']);
 
@@ -138,6 +144,7 @@ $router->get('/dashboard/bookings/verify', [GuideController::class, 'showVerifyB
 $router->post('/dashboard/bookings/verify', [GuideController::class, 'verifyBooking'], ['listing_provider']);
 $router->get('/dashboard/transactions', [GuideController::class, 'transactions'], ['listing_provider']);
 $router->post('/dashboard/bookings/{id}/status', [GuideController::class, 'updateBookingStatus'], ['listing_provider']);
+$router->post('/dashboard/bookings/{id}/reschedule-package', [GuideController::class, 'reschedulePackage'], ['listing_provider']);
 $router->post('/dashboard/bookings/{id}/delete', [GuideController::class, 'deleteBooking'], ['listing_provider']);
 $router->delete('/dashboard/bookings/{id}', [GuideController::class, 'deleteBooking'], ['listing_provider']);
 $router->get('/dashboard/listings/{id}/availability', [GuideController::class, 'availability'], ['listing_provider']);

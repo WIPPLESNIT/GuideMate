@@ -34,6 +34,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\NotificationService;
 use App\Services\OAuthPending;
+use App\Services\PackageBookingService;
 use App\Services\RecommendationService;
 
 final class ApiController extends Controller
@@ -3635,6 +3636,8 @@ final class ApiController extends Controller
                 $canReport = empty($booking['dispute_id']);
             } elseif ($overallPackageStatus === 'confirmed') {
                 $canReport = empty($booking['dispute_id']);
+            } elseif ($overallPackageStatus === 'action_required') {
+                $isCompleted = false;
             }
         }
 
@@ -3766,11 +3769,17 @@ final class ApiController extends Controller
             'package_booking_ref' => $booking['package_booking_ref'] ?? ($pkgSummary['package_booking_ref'] ?? ($packageDetails['package_booking_ref'] ?? null)),
             'package_overall_status' => $overallPackageStatus,
             'provider_statuses' => $providerStatuses,
+            'package_summary' => $pkgSummary,
+            'cancelled_items' => $pkgSummary['cancelled_items'] ?? [],
+            'has_cancellation' => !empty($pkgSummary['has_cancellation']),
+            'alternative_options' => $pkgSummary['alternative_options'] ?? null,
+            'audit_logs' => $pkgSummary['audit_logs'] ?? [],
             'status' => $isPackage ? $overallPackageStatus : $status,
             'status_label' => $isPackage ? match ($overallPackageStatus) {
                 'pending' => 'Pending Confirmations',
                 'partially_confirmed' => 'Awaiting Providers Confirmation',
                 'confirmed' => 'Confirmed',
+                'action_required' => 'Action Required',
                 'cancelled' => 'Cancelled',
                 'completed' => 'Completed',
                 default => ucfirst(str_replace('_', ' ', $overallPackageStatus)),
@@ -5577,5 +5586,290 @@ final class ApiController extends Controller
                 ],
             ],
         ];
+    }
+
+    /**
+     * Get real-time summary, provider statuses, and alternative options for a package booking.
+     */
+    public function packageBookingSummary(string $ref): void
+    {
+        $this->sendCors();
+        $summary = PackageBookingService::getPackageBookingSummary($ref);
+        if (!$summary) {
+            $this->json(['error' => 'Package booking summary not found.'], 404);
+            return;
+        }
+        $this->json(['success' => true, 'summary' => $summary]);
+    }
+
+    /**
+     * Option A: Get available matching replacement services for a cancelled package item (Host only).
+     */
+    public function packageBookingAlternatives(string $ref, string $itemId): void
+    {
+        $this->sendCors();
+        $userId = ApiAuth::id() ?? \App\Core\Auth::id() ?? 0;
+        $user = $userId > 0 ? User::find($userId) : null;
+        $role = (string) ($user['role'] ?? '');
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        if (!$parent) {
+            $this->json(['error' => 'Package booking not found.'], 404);
+            return;
+        }
+
+        $isHost = $role === 'guide' || (int) ($parent['guide_id'] ?? 0) === $userId;
+        if (!$isHost && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            if ($l && (int) ($l['user_id'] ?? 0) === $userId) {
+                $isHost = true;
+            }
+        }
+        $isAdmin = $role === 'admin';
+
+        if ($userId > 0 && !$isHost && !$isAdmin) {
+            $this->json(['error' => 'Access denied. Only the host/organizer can view replacement services.'], 403);
+            return;
+        }
+
+        $alternatives = PackageBookingService::getAvailableAlternatives($ref, (int) $itemId);
+        $this->json([
+            'success' => true,
+            'package_booking_ref' => $ref,
+            'item_id' => (int) $itemId,
+            'alternatives' => $alternatives,
+        ]);
+    }
+
+    /**
+     * Option A: Confirm replacing the cancelled service with an alternative provider (Host only).
+     */
+    public function packageBookingReplace(string $ref): void
+    {
+        $this->sendCors();
+        $body = $this->jsonBody();
+        $itemId = (int) ($body['item_id'] ?? 0);
+        $providerId = (int) ($body['provider_id'] ?? 0);
+        $serviceId = (int) ($body['service_id'] ?? 0);
+        $options = (array) ($body['options'] ?? []);
+        $userId = ApiAuth::id() ?? \App\Core\Auth::id() ?? 0;
+        $user = $userId > 0 ? User::find($userId) : null;
+        $role = (string) ($user['role'] ?? '');
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        if (!$parent) {
+            $this->json(['error' => 'Package booking not found.'], 404);
+            return;
+        }
+
+        $isHost = $role === 'guide' || (int) ($parent['guide_id'] ?? 0) === $userId;
+        if (!$isHost && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            if ($l && (int) ($l['user_id'] ?? 0) === $userId) {
+                $isHost = true;
+            }
+        }
+        $isAdmin = $role === 'admin';
+
+        if (!$isHost && !$isAdmin) {
+            $this->json(['error' => 'Access denied. Only the host/organizer can replace cancelled services.'], 403);
+            return;
+        }
+
+        if ($itemId <= 0 || $providerId <= 0 || $serviceId <= 0) {
+            $this->json(['error' => 'Missing required replacement parameters (item_id, provider_id, service_id).'], 422);
+            return;
+        }
+
+        try {
+            $res = PackageBookingService::replaceCancelledService($ref, $itemId, $providerId, $serviceId, $options, $userId);
+            $this->json($res);
+        } catch (\Throwable $e) {
+            $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Option B: Propose an alternative date and schedule for a cancelled service (Host only).
+     */
+    public function packageBookingReschedule(string $ref): void
+    {
+        $this->sendCors();
+        $body = $this->jsonBody();
+        $itemId = (int) ($body['item_id'] ?? 0);
+        $newDate = trim((string) ($body['new_date'] ?? ''));
+        $newTime = !empty($body['new_time']) ? trim((string) $body['new_time']) : null;
+        $notes = !empty($body['notes']) ? trim((string) $body['notes']) : null;
+        $userId = ApiAuth::id() ?? \App\Core\Auth::id() ?? 0;
+        $user = $userId > 0 ? User::find($userId) : null;
+        $role = (string) ($user['role'] ?? '');
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        if (!$parent) {
+            $this->json(['error' => 'Package booking not found.'], 404);
+            return;
+        }
+
+        $isHost = $role === 'guide' || (int) ($parent['guide_id'] ?? 0) === $userId;
+        if (!$isHost && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            if ($l && (int) ($l['user_id'] ?? 0) === $userId) {
+                $isHost = true;
+            }
+        }
+        $isAdmin = $role === 'admin';
+
+        if (!$isHost && !$isAdmin) {
+            $this->json(['error' => 'Access denied. Only the host/organizer can reschedule cancelled services.'], 403);
+            return;
+        }
+
+        if ($itemId <= 0 || $newDate === '') {
+            $this->json(['error' => 'Missing item_id or new_date.'], 422);
+            return;
+        }
+
+        try {
+            $res = PackageBookingService::rescheduleCancelledService($ref, $itemId, $newDate, $newTime, $notes, $userId);
+            $this->json($res);
+        } catch (\Throwable $e) {
+            $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Option C: Continue the travel package without the cancelled service, recalculating cost and refunding (Traveler only).
+     */
+    public function packageBookingContinueWithout(string $ref): void
+    {
+        $this->sendCors();
+        $body = $this->jsonBody();
+        $itemId = (int) ($body['item_id'] ?? 0);
+        $reason = !empty($body['reason']) ? trim((string) $body['reason']) : null;
+        $userId = ApiAuth::id() ?? \App\Core\Auth::id() ?? 0;
+        $user = $userId > 0 ? User::find($userId) : null;
+        $role = (string) ($user['role'] ?? '');
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        if (!$parent) {
+            $this->json(['error' => 'Package booking not found.'], 404);
+            return;
+        }
+
+        $isTraveler = (int) ($parent['user_id'] ?? 0) === $userId;
+        $isAdmin = $role === 'admin';
+
+        if (!$isTraveler && !$isAdmin) {
+            $this->json(['error' => 'Access denied. Only the traveler can choose to continue without a cancelled service.'], 403);
+            return;
+        }
+
+        if ($itemId <= 0) {
+            $this->json(['error' => 'Missing item_id.'], 422);
+            return;
+        }
+
+        try {
+            $res = PackageBookingService::continueWithoutService($ref, $itemId, $userId, $reason);
+            $this->json($res);
+        } catch (\Throwable $e) {
+            $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Option D: Calculate entire package cancellation breakdown, consequences, and refund.
+     */
+    public function packageBookingCancelSummary(string $ref): void
+    {
+        $this->sendCors();
+        try {
+            $summary = PackageBookingService::calculateEntirePackageCancellationSummary($ref);
+            $this->json(['success' => true, 'cancellation_summary' => $summary]);
+        } catch (\Throwable $e) {
+            $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Option D: Cancel the entire travel package with a full refund and provider notifications (Traveler only).
+     */
+    public function packageBookingCancelFull(string $ref): void
+    {
+        $this->sendCors();
+        $body = $this->jsonBody();
+        $reason = !empty($body['reason']) ? trim((string) $body['reason']) : 'Cancelled by traveler following service disruption';
+        $userId = ApiAuth::id() ?? \App\Core\Auth::id() ?? 0;
+        $user = $userId > 0 ? User::find($userId) : null;
+        $role = (string) ($user['role'] ?? '');
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        if (!$parent) {
+            $this->json(['error' => 'Package booking not found.'], 404);
+            return;
+        }
+
+        $isTraveler = (int) ($parent['user_id'] ?? 0) === $userId;
+        $isAdmin = $role === 'admin';
+
+        if (!$isTraveler && !$isAdmin) {
+            $this->json(['error' => 'Access denied. Only the traveler can cancel the entire package under Option D.'], 403);
+            return;
+        }
+
+        try {
+            $res = PackageBookingService::cancelEntirePackage($ref, $userId, $reason, true);
+            $this->json($res);
+        } catch (\Throwable $e) {
+            $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Host: Reschedule the entire travel package travel date.
+     */
+    public function packageBookingReschedulePackage(string $ref): void
+    {
+        $this->sendCors();
+        $userId = ApiAuth::id() ?? \App\Core\Auth::id() ?? 0;
+        $user = $userId > 0 ? User::find($userId) : null;
+        $role = (string) ($user['role'] ?? '');
+
+        $parent = Database::first("SELECT * FROM bookings WHERE package_booking_ref = ? LIMIT 1", [$ref]);
+        if (!$parent) {
+            $this->json(['error' => 'Package booking not found.'], 404);
+            return;
+        }
+
+        $isHost = $role === 'guide' || (int) ($parent['guide_id'] ?? 0) === $userId;
+        if (!$isHost && !empty($parent['listing_id'])) {
+            $l = Listing::find((int) $parent['listing_id']);
+            if ($l && (int) ($l['user_id'] ?? 0) === $userId) {
+                $isHost = true;
+            }
+        }
+        $isAdmin = $role === 'admin';
+
+        if (!$isHost && !$isAdmin) {
+            $this->json(['error' => 'Access denied. Only the package host/guide can reschedule this travel package.'], 403);
+            return;
+        }
+
+        $body = $this->jsonBody();
+        $newDate = trim((string) ($body['new_date'] ?? ''));
+        $newTime = !empty($body['new_time']) ? trim((string) $body['new_time']) : null;
+        $notes = !empty($body['notes']) ? trim((string) $body['notes']) : '';
+
+        if ($newDate === '' || strtotime($newDate) < strtotime('today')) {
+            $this->json(['error' => 'Please provide a valid future travel date.'], 422);
+            return;
+        }
+
+        try {
+            $res = PackageBookingService::rescheduleEntirePackage($ref, $newDate, $newTime, $userId, $notes);
+            $this->json($res);
+        } catch (\Throwable $e) {
+            $this->json(['error' => $e->getMessage()], 400);
+        }
     }
 }

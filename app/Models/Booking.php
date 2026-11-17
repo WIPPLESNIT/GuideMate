@@ -431,6 +431,12 @@ final class Booking
             return ['refunded' => false, 'amount' => 0.0, 'blocked' => true];
         }
 
+        $isPkg = $booking !== null && (!empty($booking['package_booking_ref']) || str_contains((string) ($booking['notes'] ?? ''), 'package_booking'));
+        if ($isPkg) {
+            \App\Services\PackageBookingService::onBookingUpdated($id, 'cancelled', (int) ($booking['guide_id'] ?? 0));
+            return ['refunded' => false, 'amount' => 0.0, 'is_package' => true];
+        }
+
         $payment = Payment::forBooking($id);
         $wasPaid = $payment !== null && $payment['status'] === 'paid';
         $amount = (float) ($payment['amount'] ?? 0);
@@ -440,10 +446,6 @@ final class Booking
             self::updateStatus($id, 'refunded');
         } else {
             self::updateStatus($id, 'cancelled');
-        }
-
-        if ($booking !== null && (!empty($booking['package_booking_ref']) || str_contains((string) ($booking['notes'] ?? ''), 'package_booking'))) {
-            \App\Services\PackageBookingService::onBookingUpdated($id, 'cancelled', (int) ($booking['guide_id'] ?? 0));
         }
 
         return ['refunded' => $wasPaid, 'amount' => $amount];
