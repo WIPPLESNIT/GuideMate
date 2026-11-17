@@ -60,6 +60,9 @@ $alignedBioHeight = max(48, ($bioLineCount * 24) + 28);
                         <div>
                             <h2 style="margin:0 0 .3rem;font-size:1.35rem;"><?= e($user['name']) ?></h2>
                             <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+                                <?php if ($isVerified): ?>
+                                    <span class="pill pill-confirmed" style="background:#dcfce7;color:#15803d;font-weight:700;">✔ Verified Guide</span>
+                                <?php endif; ?>
                                 <span class="pill pill-confirmed"><?= e(\App\Models\User::PROVIDER_LABELS[$user['role']] ?? ucfirst($user['role'])) ?></span>
                                 <?php if (!empty($user['location'])): ?>
                                     <span class="hint">📍 <?= e($user['location']) ?></span>
@@ -85,11 +88,49 @@ $alignedBioHeight = max(48, ($bioLineCount * 24) + 28);
                             <span class="hint" style="display:block;margin-bottom:.25rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Location</span>
                             <div style="font-weight:600;color:var(--ink-900);"><?= !empty($user['location']) ? e($user['location']) : '<span class="hint">Not provided</span>' ?></div>
                         </div>
+                        <?php if ($isGuide): ?>
+                            <div>
+                                <span class="hint" style="display:block;margin-bottom:.25rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Experience</span>
+                                <div style="font-weight:600;color:var(--ink-900);"><?= !empty($user['experience']) ? e($user['experience']) : '<span class="hint">Not provided</span>' ?></div>
+                            </div>
+                            <div>
+                                <span class="hint" style="display:block;margin-bottom:.25rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Languages</span>
+                                <div style="font-weight:600;color:var(--ink-900);"><?= !empty($user['languages']) ? e($user['languages']) : '<span class="hint">Not provided</span>' ?></div>
+                            </div>
+                            <div>
+                                <span class="hint" style="display:block;margin-bottom:.25rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Rating</span>
+                                <div style="font-weight:600;color:var(--ink-900);">
+                                    <?php
+                                    $avgRating = (float) ($guideStats['avg_rating'] ?? 0);
+                                    $revCount = (int) ($guideStats['review_count'] ?? 0);
+                                    ?>
+                                    <?= $avgRating > 0 ? '⭐ ' . number_format($avgRating, 1) . ' / 5.0' . ($revCount > 0 ? ' (' . $revCount . ')' : '') : '⭐ New Guide' ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                         <div>
                             <span class="hint" style="display:block;margin-bottom:.25rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Member since</span>
                             <div style="font-weight:600;color:var(--ink-900);"><?= !empty($user['created_at']) ? e(date('F Y', strtotime((string) $user['created_at']))) : '—' ?></div>
                         </div>
                     </div>
+
+                    <?php if ($isGuide): ?>
+                        <div style="margin-bottom:1.25rem;">
+                            <span class="hint" style="display:block;margin-bottom:.4rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Specialties</span>
+                            <?php
+                            $specs = array_filter(array_map('trim', explode(',', (string) ($user['specialties'] ?? ''))));
+                            ?>
+                            <?php if ($specs !== []): ?>
+                                <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+                                    <?php foreach ($specs as $spec): ?>
+                                        <span style="display:inline-flex;align-items:center;padding:0.3rem 0.8rem;border-radius:999px;background:var(--sand-100, #f1f5f9);border:1px solid var(--line, #e2e8f0);font-size:0.85rem;font-weight:600;color:var(--ink-800);"><?= e($spec) ?></span>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="hint">No specialties listed yet. Edit profile to add your specialties.</div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
 
                     <div>
                         <span class="hint" style="display:block;margin-bottom:.4rem;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;"><?= ($user['role'] === 'guide') ? 'About you (shown to travelers)' : 'Bio' ?></span>
@@ -169,6 +210,11 @@ $alignedBioHeight = max(48, ($bioLineCount * 24) + 28);
             <?= csrf_field() ?>
             
             <div class="profile-modal-body">
+                <!-- Personal Information Header -->
+                <div style="margin-bottom:0.75rem;padding-bottom:0.35rem;border-bottom:1px solid var(--line);">
+                    <h3 style="font-size:0.88rem;font-weight:700;color:var(--ink-700);text-transform:uppercase;letter-spacing:0.04em;margin:0;">Personal Information</h3>
+                </div>
+
                 <!-- Avatar Section -->
                 <div class="profile-modal-avatar-section">
                     <img id="modalAvatarPreview" class="profile-modal-avatar-preview" src="<?= e(img_src($user['avatar'] ?? null, 'avatar' . $user['id'])) ?>" alt="<?= e($user['name']) ?>">
@@ -225,9 +271,44 @@ $alignedBioHeight = max(48, ($bioLineCount * 24) + 28);
                     </div>
                 </div>
 
-                <!-- Bio -->
+                <?php if ($isGuide): ?>
+                    <!-- Professional Information Header -->
+                    <div style="margin:1.25rem 0 0.75rem;padding-bottom:0.35rem;border-bottom:1px solid var(--line);">
+                        <h3 style="font-size:0.88rem;font-weight:700;color:var(--ink-700);text-transform:uppercase;letter-spacing:0.04em;margin:0;">Professional Information</h3>
+                    </div>
+
+                    <!-- Years of Experience & Languages Spoken (2 columns) -->
+                    <div class="profile-modal-grid-2">
+                        <div class="profile-modal-field">
+                            <label for="modalExperienceInput" class="profile-modal-label">Years of Experience</label>
+                            <input class="input" type="text" id="modalExperienceInput" name="experience" value="<?= e(old('experience', $user['experience'] ?? '')) ?>" placeholder="e.g. 3+ Years">
+                            <?php if (isset($errors['experience'])): ?>
+                                <div class="field-error"><?= e($errors['experience']) ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="profile-modal-field">
+                            <label for="modalLanguagesInput" class="profile-modal-label">Languages Spoken</label>
+                            <input class="input" type="text" id="modalLanguagesInput" name="languages" value="<?= e(old('languages', $user['languages'] ?? '')) ?>" placeholder="e.g. English, Cebuano">
+                            <?php if (isset($errors['languages'])): ?>
+                                <div class="field-error"><?= e($errors['languages']) ?></div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Areas of Specialization / Expertise -->
+                    <div class="profile-modal-field">
+                        <label for="modalSpecialtiesInput" class="profile-modal-label">Areas of Specialization / Expertise</label>
+                        <input class="input" type="text" id="modalSpecialtiesInput" name="specialties" value="<?= e(old('specialties', $user['specialties'] ?? '')) ?>" placeholder="e.g. Snorkeling, Island Tours, Local Dining, Adventure Tours">
+                        <span class="hint" style="font-size:0.78rem;display:block;margin-top:0.25rem;">Separate multiple specialties or areas of expertise with commas.</span>
+                        <?php if (isset($errors['specialties'])): ?>
+                            <div class="field-error"><?= e($errors['specialties']) ?></div>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- About You / Professional Biography -->
                 <div class="profile-modal-field">
-                    <label for="modalBioInput" class="profile-modal-label"><?= ($user['role'] === 'guide') ? 'About you (shown to travelers)' : 'Bio' ?></label>
+                    <label for="modalBioInput" class="profile-modal-label"><?= ($user['role'] === 'guide') ? 'About You / Professional Biography' : 'About you / Bio' ?></label>
                     <textarea class="input" id="modalBioInput" name="bio" rows="4" placeholder="<?= e($bioPlaceholder) ?>" style="min-height:96px;line-height:1.55;resize:vertical;"><?= e(old('bio', $user['bio'] ?? '')) ?></textarea>
                     <?php if (isset($errors['bio'])): ?>
                         <div class="field-error"><?= e($errors['bio']) ?></div>

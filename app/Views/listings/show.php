@@ -376,13 +376,28 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                     <?php endif; ?>
                 </div>
 
-                <div class="guide-mini">
-                    <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" alt="<?= e($listing['owner_name']) ?>" class="guide-mini-avatar">
-                    <div class="guide-mini-meta">
-                        <span class="guide-mini-label"><?= e($host['sidebar']) ?></span>
-                        <strong class="guide-mini-name"><?= e($listing['owner_name']) ?></strong>
+                <?php if (!empty($listing['user_id']) && in_array($listing['owner_role'] ?? '', ['guide', 'provider'], true)): ?>
+                    <div class="guide-mini" style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
+                        <a href="<?= e(url('/guides/' . (int) $listing['user_id'])) ?>" style="display:flex;align-items:center;gap:0.75rem;text-decoration:none;color:inherit;flex:1;min-width:0;">
+                            <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" alt="<?= e($listing['owner_name']) ?>" class="guide-mini-avatar">
+                            <div class="guide-mini-meta" style="flex:1;min-width:0;">
+                                <span class="guide-mini-label"><?= e($host['sidebar']) ?></span>
+                                <strong class="guide-mini-name" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= e($listing['owner_name']) ?></strong>
+                            </div>
+                        </a>
+                        <a href="<?= e(url('/guides/' . (int) $listing['user_id'])) ?>" class="btn btn-ghost btn-sm" style="font-size:0.8rem;padding:0.35rem 0.65rem;flex-shrink:0;" title="View Guide Profile">
+                            View Profile →
+                        </a>
                     </div>
-                </div>
+                <?php else: ?>
+                    <div class="guide-mini">
+                        <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" alt="<?= e($listing['owner_name']) ?>" class="guide-mini-avatar">
+                        <div class="guide-mini-meta">
+                            <span class="guide-mini-label"><?= e($host['sidebar']) ?></span>
+                            <strong class="guide-mini-name"><?= e($listing['owner_name']) ?></strong>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
                 <?php if ($isOwner): ?>
                     <p class="hint">This is your listing.</p>
@@ -477,7 +492,9 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
 
                         <div class="field-row">
                             <label for="hotel_guests">Guests</label>
-                            <input class="input" type="number" id="hotel_guests" name="guests" min="1" max="10" value="2">
+                            <input class="input" type="number" id="hotel_guests" name="guests" min="1" max="10" value="<?= e(old('guests', '2')) ?>" oninput="validateHotelGuests(this)">
+                            <?php if (isset($errors['guests'])): ?><div class="field-error"><?= e($errors['guests']) ?></div><?php endif; ?>
+                            <small class="hint" id="hotelGuestsHint" style="display:block;margin-top:4px;color:var(--text-muted,#64748B);"></small>
                         </div>
 
                         <div class="field-row">
@@ -703,10 +720,7 @@ function selectRoomForBooking(roomId, roomName, price, depositPct, maxGuests) {
         select.value = roomId;
     }
     syncHotelCustomSelect(roomId);
-    var guestsInput = document.getElementById('hotel_guests');
-    if (guestsInput && maxGuests) {
-        guestsInput.max = maxGuests;
-    }
+    updateGuestsCapacity(maxGuests);
     recalculateHotelTotal();
     var box = document.getElementById('bookingBox');
     if (box) {
@@ -717,10 +731,41 @@ function selectRoomForBooking(roomId, roomName, price, depositPct, maxGuests) {
     }
 }
 
+function updateGuestsCapacity(maxGuests) {
+    var guestsInput = document.getElementById('hotel_guests');
+    var hint = document.getElementById('hotelGuestsHint');
+    if (guestsInput && maxGuests) {
+        guestsInput.max = maxGuests;
+        if (parseInt(guestsInput.value, 10) > maxGuests) {
+            guestsInput.value = maxGuests;
+        }
+    }
+    if (hint && maxGuests) {
+        hint.textContent = 'Maximum capacity: ' + maxGuests + ' guest' + (maxGuests === 1 ? '' : 's');
+    }
+}
+
+function validateHotelGuests(input) {
+    if (!input) return;
+    var max = parseInt(input.max, 10);
+    if (!isNaN(max) && max > 0) {
+        var val = parseInt(input.value, 10);
+        if (val > max) {
+            input.value = max;
+        } else if (val < 1 && input.value !== '') {
+            input.value = 1;
+        }
+    }
+}
+
 function onHotelRoomChange() {
     var select = document.getElementById('hotel_room_id');
     if (select) {
         syncHotelCustomSelect(select.value);
+        var opt = select.options[select.selectedIndex];
+        if (opt && opt.dataset && opt.dataset.max) {
+            updateGuestsCapacity(parseInt(opt.dataset.max, 10));
+        }
     }
     recalculateHotelTotal();
 }

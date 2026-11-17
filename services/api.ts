@@ -12,7 +12,15 @@ export type ApiUser = {
   email: string;
   role: string;
   avatar: string;
-  bio: string;
+  bio?: string;
+  phone?: string;
+  location?: string;
+  experience?: string;
+  languages?: string;
+  specialties?: string;
+  guide_status?: string;
+  is_verified?: boolean;
+  created_at?: string;
 };
 
 export type ChatStatus = 'sent' | 'delivered' | 'read';
@@ -50,6 +58,37 @@ export type ApiChatPartner = {
   review_count?: number;
   completed_tours?: number;
   available?: boolean;
+  location?: string;
+  experience?: string;
+  languages?: string;
+  specialties?: string;
+  role?: string;
+  guide_status?: string;
+  is_verified?: boolean;
+  created_at?: string;
+};
+
+export type ApiGuideReview = {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_avatar: string;
+  rating: number;
+  comment: string;
+  listing_title?: string;
+  created_at: string;
+};
+
+export type ApiGuideProfileResponse = {
+  guide: ApiChatPartner;
+  stats?: {
+    avg_rating: number;
+    review_count: number;
+    completed: number;
+    conversion: number;
+  };
+  listings: ApiListing[];
+  reviews: ApiGuideReview[];
 };
 
 export type ApiCategory = {
@@ -156,6 +195,7 @@ export type ApiHotelRoom = {
   photos?: string[];
   photo_urls?: string[];
   image_url?: string;
+  booked_dates?: string[];
 };
 
 export type ApiBooking = {
@@ -442,6 +482,7 @@ export const getListing = (slug: string) =>
     has_reviewed: boolean;
     can_review: boolean;
     booked_slots: { date: string; time: string }[];
+    booked_dates?: string[];
   }>(`/api/listings/${slug}`);
 
 export const apiLogin = (email: string, password: string) =>
@@ -987,8 +1028,18 @@ export async function submitDispute(payload: {
 
 // â”€â”€ Profile â”€â”€
 
-export const apiUpdateProfile = (payload: { name?: string; bio?: string }) =>
-  api<{ user: ApiUser }>('/api/profile', { method: 'POST', body: payload });
+export const apiUpdateProfile = (payload: {
+  name?: string;
+  bio?: string;
+  phone?: string;
+  location?: string;
+  experience?: string;
+  languages?: string;
+  specialties?: string;
+}) => api<{ user: ApiUser }>('/api/profile', { method: 'POST', body: payload });
+
+export const getGuideProfile = (id: number | string) =>
+  api<ApiGuideProfileResponse>(`/api/guides/${id}`);
 
 // Guess a MIME type from a local file URI's extension.
 function mimeFromUri(uri: string, fallbackName: string): string {

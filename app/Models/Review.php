@@ -95,13 +95,14 @@ final class Review
     {
         return Database::all(
             'SELECT r.*, u.name AS user_name, u.avatar AS user_avatar,
-                    l.title AS listing_title, l.slug AS listing_slug
+                    COALESCE(l.title, "Tour Guide Service") AS listing_title,
+                    l.slug AS listing_slug
              FROM reviews r
              JOIN users u ON u.id = r.user_id
-             JOIN listings l ON l.id = r.listing_id
-             WHERE l.user_id = ?
+             LEFT JOIN listings l ON l.id = r.listing_id
+             WHERE l.user_id = ? OR r.provider_id = ?
              ORDER BY r.created_at DESC',
-            [$ownerId]
+            [$ownerId, $ownerId]
         );
     }
 }

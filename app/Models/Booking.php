@@ -496,26 +496,107 @@ final class Booking
     /**
      * Upcoming dates already taken (confirmed/completed) for a listing, so the
      * booking form can stop tourists from picking them.
+     * Strictly scoped per listing (and optionally per room). Multi-day stays
+     * are expanded across each occupied night of the booking.
      *
      * @return array<int, string>
      */
-    public static function bookedDates(int $listingId): array
+    public static function bookedDates(int $listingId, ?int $roomId = null): array
     {
+        $listing = Listing::find($listingId);
+        $isHotel = ((string) ($listing['category_slug'] ?? '')) === 'hotels';
+
+        if ($isHotel && $roomId !== null && $roomId > 0) {
+            $room = HotelRoom::find($roomId);
+            $totalUnits = max(1, (int) ($room['total_units'] ?? 1));
+
+            $rows = Database::all(
+                'SELECT booking_date, booking_dates, check_in_date, check_out_date
+                 FROM bookings
+                 WHERE listing_id = ?
+                   AND (room_id = ? OR room_id IS NULL)
+                   AND status NOT IN ("cancelled", "refunded")
+                   AND (hotel_status IS NULL OR hotel_status NOT IN ("cancelled", "no_show"))
+                   AND (booking_date >= CURDATE() OR check_out_date >= CURDATE())
+                 ORDER BY booking_date',
+                [$listingId, $roomId]
+            );
+
+            $dateCounts = [];
+            foreach ($rows as $r) {
+                $occupied = [];
+                if (!empty($r['check_in_date']) && !empty($r['check_out_date'])) {
+                    try {
+                        $curr = new \DateTime((string) $r['check_in_date']);
+                        $end = new \DateTime((string) $r['check_out_date']);
+                        while ($curr < $end) {
+                            $occupied[] = $curr->format('Y-m-d');
+                            $curr->modify('+1 day');
+                        }
+                    } catch (\Throwable $e) {
+                        $occupied[] = (string) $r['check_in_date'];
+                    }
+                } elseif (!empty($r['booking_date'])) {
+                    $occupied[] = (string) $r['booking_date'];
+                }
+                if (!empty($r['booking_dates'])) {
+                    $extra = json_decode((string) $r['booking_dates'], true);
+                    if (is_array($extra)) {
+                        foreach ($extra as $d) {
+                            $occupied[] = (string) $d;
+                        }
+                    }
+                }
+
+                foreach (array_unique($occupied) as $od) {
+                    $dateCounts[$od] = ($dateCounts[$od] ?? 0) + 1;
+                }
+            }
+
+            $booked = [];
+            foreach ($dateCounts as $od => $cnt) {
+                if ($cnt >= $totalUnits) {
+                    $booked[] = $od;
+                }
+            }
+
+            $blocked = GuideAvailability::blockedDates($listingId);
+            return array_values(array_unique(array_merge($booked, $blocked)));
+        }
+
         $rows = Database::all(
-            'SELECT booking_date, booking_dates FROM bookings
-             WHERE listing_id = ? AND status IN ("pending","confirmed","completed") AND booking_date >= CURDATE()
+            'SELECT booking_date, booking_dates, check_in_date, check_out_date, room_id
+             FROM bookings
+             WHERE listing_id = ?
+               AND status NOT IN ("cancelled", "refunded")
+               AND (hotel_status IS NULL OR hotel_status NOT IN ("cancelled", "no_show"))
+               AND (booking_date >= CURDATE() OR check_out_date >= CURDATE())
              ORDER BY booking_date',
             [$listingId]
         );
         $booked = [];
         foreach ($rows as $r) {
-            $booked[] = (string) $r['booking_date'];
+            if (!empty($r['booking_date'])) {
+                $booked[] = (string) $r['booking_date'];
+            }
             if (!empty($r['booking_dates'])) {
                 $extra = json_decode((string) $r['booking_dates'], true);
                 if (is_array($extra)) {
                     foreach ($extra as $d) {
                         $booked[] = (string) $d;
                     }
+                }
+            }
+            if (!empty($r['check_in_date']) && !empty($r['check_out_date'])) {
+                try {
+                    $curr = new \DateTime((string) $r['check_in_date']);
+                    $end = new \DateTime((string) $r['check_out_date']);
+                    while ($curr < $end) {
+                        $booked[] = $curr->format('Y-m-d');
+                        $curr->modify('+1 day');
+                    }
+                } catch (\Throwable $e) {
+                    $booked[] = (string) $r['check_in_date'];
                 }
             }
         }
@@ -926,9 +1007,11 @@ final class Booking
     public static function guideRatingStats(int $guideId): array
     {
         $row = Database::first(
-            'SELECT AVG(r.rating) AS avg_rating, COUNT(r.id) AS review_count
-             FROM reviews r JOIN listings l ON l.id = r.listing_id WHERE l.user_id = ?',
-            [$guideId]
+            'SELECT AVG(COALESCE(r.provider_rating, r.rating)) AS avg_rating, COUNT(r.id) AS review_count
+             FROM reviews r
+             LEFT JOIN listings l ON l.id = r.listing_id
+             WHERE l.user_id = ? OR r.provider_id = ?',
+            [$guideId, $guideId]
         );
         $completed = self::countCompletedForGuide($guideId);
         $bookings = self::countForGuide($guideId);

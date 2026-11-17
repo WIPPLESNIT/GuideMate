@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Upload;
+use App\Models\Booking;
 use App\Models\GuideDocument;
 use App\Models\User;
 use RuntimeException;
@@ -16,9 +17,13 @@ final class ProfileController extends Controller
     public function show(): void
     {
         $user = Auth::user();
-        $documents = User::isProviderRole((string) ($user['role'] ?? ''))
+        $isGuide = User::isProviderRole((string) ($user['role'] ?? ''));
+        $documents = $isGuide
             ? GuideDocument::forUser((int) $user['id'])
             : [];
+        $guideStats = $isGuide
+            ? Booking::guideRatingStats((int) $user['id'])
+            : null;
 
         $errors = errors();
         $openEditModal = isset($_GET['edit']) || !empty($errors);
@@ -27,6 +32,7 @@ final class ProfileController extends Controller
             'title' => 'My Profile',
             'user' => $user,
             'documents' => $documents,
+            'guideStats' => $guideStats,
             'errors' => $errors,
             'openEditModal' => $openEditModal,
         ]);
@@ -35,14 +41,19 @@ final class ProfileController extends Controller
     public function edit(): void
     {
         $user = Auth::user();
-        $documents = User::isProviderRole((string) ($user['role'] ?? ''))
+        $isGuide = User::isProviderRole((string) ($user['role'] ?? ''));
+        $documents = $isGuide
             ? GuideDocument::forUser((int) $user['id'])
             : [];
+        $guideStats = $isGuide
+            ? Booking::guideRatingStats((int) $user['id'])
+            : null;
 
         $this->view('profile/edit', [
             'title' => 'Edit Profile',
             'user' => $user,
             'documents' => $documents,
+            'guideStats' => $guideStats,
             'errors' => errors(),
             'openEditModal' => true,
         ]);
@@ -78,13 +89,20 @@ final class ProfileController extends Controller
             }
         }
 
-        User::updateProfile($userId, [
+        $updateData = [
             'name' => (string) $this->input('name', ''),
             'email' => $newEmail !== '' ? $newEmail : (string) ($user['email'] ?? ''),
             'phone' => (string) $this->input('phone', ''),
             'location' => (string) $this->input('location', ''),
             'bio' => (string) $this->input('bio', ''),
-        ]);
+        ];
+        if (User::isProviderRole((string) ($user['role'] ?? ''))) {
+            $updateData['experience'] = (string) $this->input('experience', '');
+            $updateData['languages'] = (string) $this->input('languages', '');
+            $updateData['specialties'] = (string) $this->input('specialties', '');
+        }
+
+        User::updateProfile($userId, $updateData);
 
         if ($avatarPath !== null) {
             User::updateAvatar($userId, $avatarPath);

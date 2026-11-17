@@ -39,6 +39,8 @@ $router->get('/things-to-do', [ListingController::class, 'thingsToDo']);
 $router->get('/attractions', [ListingController::class, 'attractions']);
 $router->get('/attraction-and-tours', function() { redirect('/attractions', 301); });
 $router->get('/tour-guides', [ListingController::class, 'tourGuides']);
+$router->get('/guides/{id}', [ListingController::class, 'guideProfile']);
+$router->get('/guide/{id}', [ListingController::class, 'guideProfile']);
 $router->get('/hotels', [ListingController::class, 'hotels']);
 $router->get('/packages', [ListingController::class, 'packages']);
 $router->get('/restaurants', [ListingController::class, 'restaurants']);

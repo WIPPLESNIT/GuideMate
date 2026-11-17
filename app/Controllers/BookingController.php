@@ -69,6 +69,11 @@ final class BookingController extends Controller
                 $errors['check_out_date'] = 'Check-out date must be at least one day after check-in date. Same-day overnight stays are not permitted.';
             }
 
+            $maxGuests = max(1, (int) ($room['max_guests'] ?? 2));
+            if ($guests > $maxGuests) {
+                $errors['guests'] = "This room accommodates a maximum of {$maxGuests} guest" . ($maxGuests === 1 ? '' : 's') . ".";
+            }
+
             if ($errors === [] && !HotelRoom::isAvailableForDates($roomId, $checkIn, $checkOut)) {
                 $errors['check_in_date'] = 'Sorry, this room is already booked or blocked for these dates.';
             }

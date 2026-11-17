@@ -142,16 +142,26 @@ final class User
         $phone = $data['phone'] ?? null;
         $location = $data['location'] ?? null;
         $bio = $data['bio'] ?? null;
+        $experience = array_key_exists('experience', $data) ? $data['experience'] : null;
+        $languages = array_key_exists('languages', $data) ? $data['languages'] : null;
+        $specialties = array_key_exists('specialties', $data) ? $data['specialties'] : null;
+
+        $existing = self::find($id);
+        if ($existing !== null) {
+            if (!array_key_exists('experience', $data)) $experience = $existing['experience'] ?? null;
+            if (!array_key_exists('languages', $data)) $languages = $existing['languages'] ?? null;
+            if (!array_key_exists('specialties', $data)) $specialties = $existing['specialties'] ?? null;
+        }
 
         if (isset($data['email']) && $data['email'] !== '') {
             Database::run(
-                'UPDATE users SET name = ?, email = ?, phone = ?, location = ?, bio = ? WHERE id = ?',
-                [$data['name'], $data['email'], $phone, $location, $bio, $id]
+                'UPDATE users SET name = ?, email = ?, phone = ?, location = ?, bio = ?, experience = ?, languages = ?, specialties = ? WHERE id = ?',
+                [$data['name'], $data['email'], $phone, $location, $bio, $experience, $languages, $specialties, $id]
             );
         } else {
             Database::run(
-                'UPDATE users SET name = ?, phone = ?, location = ?, bio = ? WHERE id = ?',
-                [$data['name'], $phone, $location, $bio, $id]
+                'UPDATE users SET name = ?, phone = ?, location = ?, bio = ?, experience = ?, languages = ?, specialties = ? WHERE id = ?',
+                [$data['name'], $phone, $location, $bio, $experience, $languages, $specialties, $id]
             );
         }
     }

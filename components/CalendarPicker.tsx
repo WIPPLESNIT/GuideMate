@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // Lightweight month calendar with no native dependencies (works in Expo Go).
-// Past dates are disabled. Emits the selected date as a YYYY-MM-DD string.
+// Past dates and booked dates are disabled. Emits the selected date as a YYYY-MM-DD string.
 
 type Theme = {
   textMain: string;
@@ -20,7 +20,7 @@ type Props = {
   onMultiChange?: (dates: string[]) => void;
   multiSelect?: boolean;
   theme: Theme;
-  disabledDates?: string[]; // YYYY-MM-DD dates that are fully booked
+  disabledDates?: string[]; // YYYY-MM-DD dates that are fully booked / unavailable
   minDate?: string; // Optional minimum selectable date (YYYY-MM-DD)
   readOnly?: boolean; // When true, calendar displays selected date(s) without allowing clicks
 };
@@ -37,6 +37,17 @@ function pad(n: number): string {
 
 function toKey(year: number, month: number, day: number): string {
   return `${year}-${pad(month + 1)}-${pad(day)}`;
+}
+
+function parseYMD(str?: string): { year: number; month: number; day: number } | null {
+  if (!str) return null;
+  const parts = str.split('-');
+  if (parts.length !== 3) return null;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return null;
+  return { year, month, day };
 }
 
 export default function CalendarPicker({
@@ -56,18 +67,18 @@ export default function CalendarPicker({
   const blocked = useMemo(() => new Set(disabledDates), [disabledDates]);
 
   const initialDateStr = multiSelect ? (values[0] || value) : value;
-  const initial = initialDateStr ? new Date(initialDateStr) : today;
+  const initialParsed = parseYMD(initialDateStr);
   const [previousDate, setPreviousDate] = useState(initialDateStr);
-  const [viewYear, setViewYear] = useState(initial.getFullYear());
-  const [viewMonth, setViewMonth] = useState(initial.getMonth());
+  const [viewYear, setViewYear] = useState(initialParsed ? initialParsed.year : today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initialParsed ? initialParsed.month : today.getMonth());
 
   if (initialDateStr !== previousDate) {
     setPreviousDate(initialDateStr);
     if (initialDateStr) {
-      const target = new Date(initialDateStr);
-      if (!Number.isNaN(target.getTime())) {
-        setViewYear(target.getFullYear());
-        setViewMonth(target.getMonth());
+      const target = parseYMD(initialDateStr);
+      if (target) {
+        setViewYear(target.year);
+        setViewMonth(target.month);
       }
     }
   }
@@ -81,13 +92,23 @@ export default function CalendarPicker({
     return new Set(value ? [value] : []);
   }, [multiSelect, values, value]);
 
-  const cells = useMemo(() => {
+  // Group days into explicit 7-column rows to prevent Saturday from wrapping to next line
+  const rows = useMemo(() => {
     const firstDay = new Date(viewYear, viewMonth, 1).getDay();
     const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
     const list: (number | null)[] = [];
     for (let i = 0; i < firstDay; i += 1) list.push(null);
     for (let d = 1; d <= daysInMonth; d += 1) list.push(d);
-    return list;
+
+    const r: (number | null)[][] = [];
+    for (let i = 0; i < list.length; i += 7) {
+      const slice = list.slice(i, i + 7);
+      while (slice.length < 7) {
+        slice.push(null);
+      }
+      r.push(slice);
+    }
+    return r;
   }, [viewYear, viewMonth]);
 
   const goPrev = () => {
@@ -127,13 +148,13 @@ export default function CalendarPicker({
   return (
     <View style={[styles.wrap, { borderColor: theme.border, backgroundColor: theme.card }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={goPrev} style={styles.navBtn} hitSlop={10}>
+        <TouchableOpacity onPress={goPrev} style={styles.navBtn} hitSlop={10} accessibilityRole="button" accessibilityLabel="Previous month">
           <Ionicons name="chevron-back" size={20} color={theme.textMain} />
         </TouchableOpacity>
         <Text style={[styles.monthTitle, { color: theme.textMain }]}>
           {MONTHS[viewMonth]} {viewYear}
         </Text>
-        <TouchableOpacity onPress={goNext} style={styles.navBtn} hitSlop={10}>
+        <TouchableOpacity onPress={goNext} style={styles.navBtn} hitSlop={10} accessibilityRole="button" accessibilityLabel="Next month">
           <Ionicons name="chevron-forward" size={20} color={theme.textMain} />
         </TouchableOpacity>
       </View>
@@ -147,46 +168,53 @@ export default function CalendarPicker({
       </View>
 
       <View style={styles.grid}>
-        {cells.map((day, idx) => {
-          if (day === null) {
-            return <View key={`empty-${idx}`} style={styles.cell} />;
-          }
-          const key = toKey(viewYear, viewMonth, day);
-          const isPast = minDate ? key < minDate : key < todayKey;
-          const isFull = blocked.has(key);
-          const isDisabled = isPast || isFull;
-          const isSelected = selectedSet.has(key);
-          const isToday = key === todayKey;
-          return (
-            <TouchableOpacity
-              key={key}
-              style={styles.cell}
-              disabled={readOnly || isDisabled}
-              activeOpacity={0.7}
-              onPress={() => handlePress(key)}
-            >
-              <View
-                style={[
-                  styles.dayInner,
-                  isSelected && { backgroundColor: theme.accent },
-                  isToday && !isSelected && { borderWidth: 1, borderColor: theme.accent },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.dayText,
-                    { color: isDisabled ? theme.textSub : theme.textMain },
-                    isPast && { opacity: 0.35 },
-                    isFull && { opacity: 0.4, textDecorationLine: 'line-through' },
-                    isSelected && { color: '#FFFFFF', fontWeight: '800' },
-                  ]}
+        {rows.map((row, rIdx) => (
+          <View key={`row-${rIdx}`} style={styles.gridRow}>
+            {row.map((day, cIdx) => {
+              if (day === null) {
+                return <View key={`empty-${rIdx}-${cIdx}`} style={styles.cell} />;
+              }
+              const key = toKey(viewYear, viewMonth, day);
+              const isPast = minDate ? key < minDate : key < todayKey;
+              const isFull = blocked.has(key);
+              const isDisabled = isPast || isFull;
+              const isSelected = selectedSet.has(key);
+              const isToday = key === todayKey;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={styles.cell}
+                  disabled={readOnly || isDisabled}
+                  activeOpacity={0.7}
+                  onPress={() => handlePress(key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${MONTHS[viewMonth]} ${day}, ${viewYear}${isFull ? ' (Booked / Unavailable)' : isPast ? ' (Past)' : ''}`}
                 >
-                  {day}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+                  <View
+                    style={[
+                      styles.dayInner,
+                      isFull && styles.dayInnerFull,
+                      isSelected && { backgroundColor: theme.accent },
+                      isToday && !isSelected && !isFull && { borderWidth: 1, borderColor: theme.accent },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.dayText,
+                        { color: isDisabled ? (isFull ? '#94A3B8' : theme.textSub) : theme.textMain },
+                        isPast && { opacity: 0.35 },
+                        isFull && styles.dayTextFull,
+                        isSelected && { color: '#FFFFFF', fontWeight: '800' },
+                      ]}
+                    >
+                      {day}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ))}
       </View>
 
       {multiSelect && values.length > 0 ? (
@@ -210,10 +238,18 @@ const styles = StyleSheet.create({
   monthTitle: { fontSize: 15, fontWeight: '800' },
   weekRow: { flexDirection: 'row', marginBottom: 4 },
   weekday: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  grid: { width: '100%' },
+  gridRow: { flexDirection: 'row', width: '100%' },
+  cell: { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
   dayInner: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  dayInnerFull: {
+    backgroundColor: 'rgba(148, 163, 184, 0.16)',
+  },
   dayText: { fontSize: 14, fontWeight: '600' },
+  dayTextFull: {
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
   multiFooter: {
     flexDirection: 'row',
     alignItems: 'center',

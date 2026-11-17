@@ -145,10 +145,11 @@ final class ApiController extends Controller
         $rawRooms = ((string) ($listing['category_slug'] ?? '') === 'hotels')
             ? \App\Models\HotelRoom::forListing($listingId)
             : [];
-        $rooms = array_map(static function (array $rm): array {
+        $rooms = array_map(static function (array $rm) use ($listingId): array {
             $photos = \App\Models\HotelRoom::getPhotos($rm);
             $rm['photos'] = array_map(static fn (string $p): string => api_img_src($p, 'room' . ($rm['id'] ?? 0)), $photos);
             $rm['image'] = !empty($rm['photos']) ? $rm['photos'][0] : api_img_src((string) ($rm['image'] ?? ''), 'room' . ($rm['id'] ?? 0));
+            $rm['booked_dates'] = \App\Models\Booking::bookedDates($listingId, (int) ($rm['id'] ?? 0));
             unset($rm['room_size']);
             return $rm;
         }, $rawRooms);
@@ -228,6 +229,7 @@ final class ApiController extends Controller
             ] : null,
             'has_reviewed' => $hasReviewed,
             'can_review' => $canReview,
+            'booked_dates' => \App\Models\Booking::bookedDates($listingId),
             // Guide-level: disable every slot where this guide is already busy
             // (on this or any of their other listings) to avoid double-booking.
             'booked_slots' => Booking::guideBookedSlots((int) ($listing['user_id'] ?? 0)),
@@ -1214,19 +1216,27 @@ final class ApiController extends Controller
 
         $name = array_key_exists('name', $body) ? trim((string) $body['name']) : (string) ($user['name'] ?? '');
         $bio = array_key_exists('bio', $body) ? trim((string) $body['bio']) : (string) ($user['bio'] ?? '');
+        $phone = array_key_exists('phone', $body) ? trim((string) $body['phone']) : (string) ($user['phone'] ?? '');
+        $location = array_key_exists('location', $body) ? trim((string) $body['location']) : (string) ($user['location'] ?? '');
+        $experience = array_key_exists('experience', $body) ? trim((string) $body['experience']) : (string) ($user['experience'] ?? '');
+        $languages = array_key_exists('languages', $body) ? trim((string) $body['languages']) : (string) ($user['languages'] ?? '');
+        $specialties = array_key_exists('specialties', $body) ? trim((string) $body['specialties']) : (string) ($user['specialties'] ?? '');
 
         if ($name === '') {
             $this->json(['error' => 'Name cannot be empty.'], 422);
             return;
         }
-        if (mb_strlen($bio) > 300) {
-            $bio = mb_substr($bio, 0, 300);
+        if (mb_strlen($bio) > 1000) {
+            $bio = mb_substr($bio, 0, 1000);
         }
 
         User::updateProfile((int) $user['id'], [
             'name' => $name,
-            'phone' => (string) ($user['phone'] ?? ''),
-            'location' => (string) ($user['location'] ?? ''),
+            'phone' => $phone,
+            'location' => $location,
+            'experience' => $experience,
+            'languages' => $languages,
+            'specialties' => $specialties,
             'bio' => $bio,
         ]);
 
@@ -1745,6 +1755,12 @@ final class ApiController extends Controller
                 }
             }
 
+            $maxGuests = max(1, (int) ($room['max_guests'] ?? 2));
+            if ($guests > $maxGuests) {
+                $this->json(['error' => "This room accommodates a maximum of {$maxGuests} guest" . ($maxGuests === 1 ? '' : 's') . "."], 422);
+                return;
+            }
+
             if (!\App\Models\HotelRoom::isAvailableForDates($roomId, $checkIn, $checkOut)) {
                 $this->json(['error' => 'Sorry, this room is already booked or blocked for your selected dates.'], 409);
                 return;
@@ -2192,7 +2208,7 @@ final class ApiController extends Controller
         $this->json(['success' => true]);
     }
 
-    /** GET /api/guides â€” approved tour guides available to message. */
+    /** GET /api/guides — approved tour guides available to message. */
     public function guides(): void
     {
         $userId = ApiAuth::id();
@@ -2209,6 +2225,14 @@ final class ApiController extends Controller
             // Guide is "on a tour" while they have a confirmed booking today;
             // once it's completed (or the day passes) they're available again.
             $payload['available'] = !Booking::isGuideBusyToday((int) $u['id']);
+            $payload['experience'] = (string) ($u['experience'] ?? '');
+            $payload['languages'] = (string) ($u['languages'] ?? '');
+            $payload['specialties'] = (string) ($u['specialties'] ?? '');
+            $payload['location'] = (string) ($u['location'] ?? '');
+            $payload['role'] = (string) ($u['role'] ?? 'guide');
+            $payload['guide_status'] = (string) ($u['guide_status'] ?? 'approved');
+            $payload['is_verified'] = ($u['guide_status'] ?? '') === 'approved' || !empty($u['is_verified']);
+            $payload['created_at'] = (string) ($u['created_at'] ?? '');
             $guides[] = $payload;
         }
         // Available guides first, then best-rated and most-experienced.
@@ -2217,6 +2241,69 @@ final class ApiController extends Controller
                 <=> [$a['available'], $a['rating'], $a['completed_tours']];
         });
         $this->json(['guides' => $guides]);
+    }
+
+    /** GET /api/guides/{id} — public profile data for a specific tour guide */
+    public function guideProfile(string $id): void
+    {
+        $guideId = (int) $id;
+        $u = User::find($guideId);
+
+        if (!$u || !in_array($u['role'] ?? '', ['guide', 'provider'], true)) {
+            $this->json(['error' => 'Guide not found.'], 404);
+            return;
+        }
+
+        $stats = Booking::guideRatingStats($guideId);
+        $guide = [
+            'id' => (int) $u['id'],
+            'name' => (string) ($u['name'] ?? ''),
+            'avatar' => api_img_src((string) ($u['avatar'] ?? ''), 'user' . $u['id']),
+            'bio' => (string) ($u['bio'] ?? ''),
+            'location' => (string) ($u['location'] ?? ''),
+            'experience' => (string) ($u['experience'] ?? ''),
+            'languages' => (string) ($u['languages'] ?? ''),
+            'specialties' => (string) ($u['specialties'] ?? ''),
+            'role' => (string) ($u['role'] ?? 'guide'),
+            'guide_status' => (string) ($u['guide_status'] ?? ''),
+            'is_verified' => ($u['guide_status'] ?? '') === 'approved' || !empty($u['is_verified']),
+            'rating' => (float) ($stats['avg_rating'] ?? 0),
+            'review_count' => (int) ($stats['review_count'] ?? 0),
+            'completed_tours' => (int) ($stats['completed'] ?? 0),
+            'available' => !Booking::isGuideBusyToday($guideId),
+            'online' => User::isOnline($guideId),
+            'created_at' => (string) ($u['created_at'] ?? ''),
+        ];
+
+        $rawListings = Listing::forOwner($guideId);
+        $listings = [];
+        foreach ($rawListings as $l) {
+            if (($l['status'] ?? '') !== 'approved') {
+                continue;
+            }
+            $listings[] = $this->listingPayload($l);
+        }
+
+        $rawReviews = Review::forOwner($guideId);
+        $reviews = array_map(static function (array $r): array {
+            return [
+                'id' => (int) ($r['id'] ?? 0),
+                'user_id' => (int) ($r['user_id'] ?? 0),
+                'user_name' => (string) ($r['user_name'] ?? 'Traveler'),
+                'user_avatar' => api_img_src((string) ($r['user_avatar'] ?? ''), 'user' . ($r['user_id'] ?? 0)),
+                'rating' => (int) ($r['rating'] ?? 5),
+                'comment' => (string) ($r['comment'] ?? ''),
+                'listing_title' => (string) ($r['listing_title'] ?? ''),
+                'created_at' => (string) ($r['created_at'] ?? ''),
+            ];
+        }, $rawReviews);
+
+        $this->json([
+            'guide' => $guide,
+            'stats' => $stats,
+            'listings' => $listings,
+            'reviews' => $reviews,
+        ]);
     }
 
     private function setArchivedState(bool $archived): void
@@ -3193,6 +3280,15 @@ final class ApiController extends Controller
             'email' => (string) $user['email'],
             'role' => (string) $user['role'],
             'avatar' => api_img_src((string) ($user['avatar'] ?? ''), 'user' . $user['id']),
+            'bio' => (string) ($user['bio'] ?? ''),
+            'phone' => (string) ($user['phone'] ?? ''),
+            'location' => (string) ($user['location'] ?? ''),
+            'experience' => (string) ($user['experience'] ?? ''),
+            'languages' => (string) ($user['languages'] ?? ''),
+            'specialties' => (string) ($user['specialties'] ?? ''),
+            'guide_status' => (string) ($user['guide_status'] ?? ''),
+            'is_verified' => ($user['guide_status'] ?? '') === 'approved' || !empty($user['is_verified']),
+            'created_at' => (string) ($user['created_at'] ?? ''),
         ];
     }
 

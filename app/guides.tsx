@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EmptyState } from '../components/ui';
 import { useTheme } from '../lib/theme';
@@ -14,6 +14,7 @@ export default function GuidesScreen() {
   const [guides, setGuides] = useState<ApiChatPartner[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeMenuGuide, setActiveMenuGuide] = useState<ApiChatPartner | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -92,12 +93,14 @@ export default function GuidesScreen() {
       </View>
 
       <TouchableOpacity
-        style={[styles.msgBtn, { backgroundColor: colors.primary }]}
-        activeOpacity={0.85}
-        onPress={() => router.push(`/chat/${item.id}`)}
+        style={[styles.moreBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+        activeOpacity={0.7}
+        onPress={() => setActiveMenuGuide(item)}
+        accessibilityRole="button"
+        accessibilityLabel={`Options for ${item.name}`}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Ionicons name="chatbubble-ellipses" size={16} color="#FFFFFF" />
-        <Text style={styles.msgBtnText}>Message</Text>
+        <Ionicons name="ellipsis-vertical" size={18} color={colors.textSub} />
       </TouchableOpacity>
     </View>
   );
@@ -132,7 +135,7 @@ export default function GuidesScreen() {
           ListHeaderComponent={
             guides.length > 0 ? (
               <Text style={[styles.subtitle, { color: colors.textSub }]}>
-                Verified local guides in Cebu. Tap Message to plan your tour.
+                Verified local guides in Cebu. Plan your tour with a local guide.
               </Text>
             ) : undefined
           }
@@ -150,6 +153,73 @@ export default function GuidesScreen() {
           }
         />
       )}
+
+      {/* ── Guide Options Overflow Menu Modal ── */}
+      <Modal
+        visible={activeMenuGuide !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActiveMenuGuide(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setActiveMenuGuide(null)}
+        >
+          <View style={[styles.menuModalCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow.md]}>
+            <View style={styles.menuHeader}>
+              <Text style={[styles.menuTitle, { color: colors.text }]} numberOfLines={1}>
+                {activeMenuGuide?.name}
+              </Text>
+              <Text style={[styles.menuSub, { color: colors.textSub }]}>Tour Guide</Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.menuItem, { borderTopColor: colors.border }]}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (activeMenuGuide) {
+                  const id = activeMenuGuide.id;
+                  setActiveMenuGuide(null);
+                  router.push(`/guide/${id}` as any);
+                }
+              }}
+            >
+              <View style={[styles.menuIconWrap, { backgroundColor: colors.chipBg }]}>
+                <Ionicons name="person-outline" size={18} color={colors.primary} />
+              </View>
+              <Text style={[styles.menuItemText, { color: colors.text }]}>View Guide Profile</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMute} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.menuItem, { borderTopColor: colors.border }]}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (activeMenuGuide) {
+                  const id = activeMenuGuide.id;
+                  setActiveMenuGuide(null);
+                  router.push(`/chat/${id}` as any);
+                }
+              }}
+            >
+              <View style={[styles.menuIconWrap, { backgroundColor: colors.chipBg }]}>
+                <Ionicons name="chatbubble-outline" size={18} color={colors.primary} />
+              </View>
+              <Text style={[styles.menuItemText, { color: colors.text }]}>Message Guide</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMute} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.menuCancelBtn, { backgroundColor: colors.bgAlt }]}
+              activeOpacity={0.7}
+              onPress={() => setActiveMenuGuide(null)}
+            >
+              <Text style={[styles.menuCancelText, { color: colors.textSub }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -196,6 +266,15 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12, fontWeight: '600' },
   dot: { fontSize: 12, marginHorizontal: 3 },
   bio: { fontSize: 12, lineHeight: 17, marginTop: 4 },
-  msgBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 999 },
-  msgBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  moreBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  menuModalCard: { width: '100%', maxWidth: 360, borderRadius: 20, borderWidth: 1, padding: 18 },
+  menuHeader: { marginBottom: 12, paddingBottom: 10 },
+  menuTitle: { fontSize: 17, fontWeight: '800', marginBottom: 2 },
+  menuSub: { fontSize: 12, fontWeight: '600' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth },
+  menuIconWrap: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  menuItemText: { flex: 1, fontSize: 14, fontWeight: '700' },
+  menuCancelBtn: { marginTop: 12, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  menuCancelText: { fontSize: 14, fontWeight: '700' },
 });

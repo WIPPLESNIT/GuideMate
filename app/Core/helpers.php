@@ -413,6 +413,9 @@ if (!function_exists('active_when')) {
         if ($targetPath === '/rentals' && str_starts_with($currentPath, '/rentals')) {
             return 'active';
         }
+        if ($targetPath === '/tour-guides' && (str_starts_with($currentPath, '/tour-guides') || str_starts_with($currentPath, '/guides') || str_starts_with($currentPath, '/guide/'))) {
+            return 'active';
+        }
         return '';
     }
 }

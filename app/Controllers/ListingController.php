@@ -67,6 +67,42 @@ final class ListingController extends Controller
         ]);
     }
 
+    public function guideProfile(string $id): void
+    {
+        $guideId = (int) $id;
+        $guide = User::find($guideId);
+
+        if (!$guide || !in_array($guide['role'] ?? '', ['guide', 'provider'], true)) {
+            $this->view('errors/404', ['title' => 'Tour Guide Not Found'], 404);
+            return;
+        }
+
+        $stats = Booking::guideRatingStats($guideId);
+        $guide['rating'] = (float) ($stats['avg_rating'] ?? 0);
+        $guide['review_count'] = (int) ($stats['review_count'] ?? 0);
+        $guide['completed_tours'] = (int) ($stats['completed'] ?? 0);
+        $guide['available'] = !Booking::isGuideBusyToday($guideId);
+        $guide['online'] = User::isOnline($guideId);
+
+        // Fetch approved listings for this guide
+        $rawListings = Listing::forOwner($guideId);
+        $listings = array_values(array_filter($rawListings, static function (array $l): bool {
+            return ($l['status'] ?? '') === 'approved';
+        }));
+
+        // Fetch traveler reviews for this guide's services / listings
+        $reviews = Review::forOwner($guideId);
+
+        $this->view('listings/guide-profile', [
+            'title' => ($guide['name'] ?? 'Guide') . ' — Tour Guide Profile',
+            'activeCategory' => 'tour-guides',
+            'guide' => $guide,
+            'stats' => $stats,
+            'listings' => $listings,
+            'reviews' => $reviews,
+        ]);
+    }
+
     public function hotels(): void
     {
         $this->renderBrowse('hotels', 'Hotels & Stays in Cebu', 'Resorts, hotels and places to stay.');

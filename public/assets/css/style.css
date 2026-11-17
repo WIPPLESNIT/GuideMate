@@ -3122,10 +3122,21 @@ tr.is-menu-open {
 .guide-dir-avail.is-busy i { background: #EF4444; }
 .guide-dir-meta { color: var(--ink-500); font-size: .9rem; font-weight: 600; margin: 0 0 .35rem; }
 
+.guide-dir-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.guide-dir-actions .res-action-wrap {
+    display: inline-flex;
+    align-items: center;
+}
+
 @media (max-width: 700px) {
     .guide-dir-card { grid-template-columns: 64px 1fr; }
-    .guide-dir-card form, .guide-dir-card > .btn { grid-column: 1 / -1; }
-    .guide-dir-card .btn { width: 100%; }
+    .guide-dir-actions { grid-column: 1 / -1; width: 100%; justify-content: stretch; }
+    .guide-dir-actions > form, .guide-dir-actions > .btn { flex: 1; }
+    .guide-dir-actions form .btn { width: 100%; }
 }
 
 /* ---------- Reviews ---------- */

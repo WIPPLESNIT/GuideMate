@@ -7,7 +7,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -34,9 +36,18 @@ export default function AccountScreen() {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const [bioOpen, setBioOpen] = useState(false);
+  // Edit Profile Modal State
+  const [editOpen, setEditOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [phoneDraft, setPhoneDraft] = useState('');
+  const [locationDraft, setLocationDraft] = useState('');
+  const [experienceDraft, setExperienceDraft] = useState('');
+  const [languagesDraft, setLanguagesDraft] = useState('');
+  const [specialtiesDraft, setSpecialtiesDraft] = useState('');
   const [bioDraft, setBioDraft] = useState('');
-  const [savingBio, setSavingBio] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
   const [toast, setToast] = useState(false);
   const [toastKey, setToastKey] = useState(0);
 
@@ -56,9 +67,7 @@ export default function AccountScreen() {
           setUser(null);
           return;
         }
-        // Show the signed-in profile immediately from the cached session, so a
-        // logged-in user never sees the "Register" card just because a refresh
-        // call is slow or the network is down.
+        // Show the signed-in profile immediately from the cached session
         setUser((prev) => prev ?? {
           id: session.id,
           name: session.fullName,
@@ -71,7 +80,7 @@ export default function AccountScreen() {
           const res = await apiMe();
           if (active) setUser(res.user);
         } catch {
-          // Keep the cached session profile shown above.
+          // Keep the cached session profile
         }
       })();
       return () => {
@@ -121,24 +130,57 @@ export default function AccountScreen() {
     }
   };
 
-  const openBio = () => {
-    setBioDraft(user?.bio ?? '');
-    setBioOpen(true);
+  const openEdit = () => {
+    if (!user) return;
+    setNameDraft(user.name || '');
+    setPhoneDraft(user.phone || '');
+    setLocationDraft(user.location || '');
+    setExperienceDraft(user.experience || '');
+    setLanguagesDraft(user.languages || '');
+    setSpecialtiesDraft(user.specialties || '');
+    setBioDraft(user.bio || '');
+    setEditError('');
+    setEditOpen(true);
   };
 
-  const saveBio = async () => {
-    setSavingBio(true);
+  const saveProfile = async () => {
+    if (!nameDraft.trim()) {
+      setEditError('Full name cannot be empty.');
+      return;
+    }
+    setSaving(true);
+    setEditError('');
     try {
-      const res = await apiUpdateProfile({ bio: bioDraft.trim() });
+      const res = await apiUpdateProfile({
+        name: nameDraft.trim(),
+        phone: phoneDraft.trim(),
+        location: locationDraft.trim(),
+        experience: experienceDraft.trim(),
+        languages: languagesDraft.trim(),
+        specialties: specialtiesDraft.trim(),
+        bio: bioDraft.trim(),
+      });
       setUser(res.user);
-      setBioOpen(false);
+      setEditOpen(false);
       showProfileUpdated();
     } catch (e) {
-      Alert.alert('Could not save', e instanceof Error ? e.message : 'Please try again.');
+      setEditError(e instanceof Error ? e.message : 'Failed to save changes. Please try again.');
     } finally {
-      setSavingBio(false);
+      setSaving(false);
     }
   };
+
+  const isGuide = user?.role === 'guide' || user?.role === 'provider';
+  const isVerified = (user?.guide_status === 'approved') || !emptyValue(user?.is_verified);
+
+  function emptyValue(val: any): boolean {
+    return !val || val === '0' || val === 0;
+  }
+
+  const specialtiesList = (user?.specialties || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const menu: MenuRow[] = [
     { icon: 'compass', label: t('explore'), color: '#FF8C00', bg: '#FFF2E6', onPress: () => router.push('/things-to-do') },
@@ -193,12 +235,85 @@ export default function AccountScreen() {
             <Text style={styles.profileName} numberOfLines={1}>{user.name}</Text>
             <Text style={styles.profileEmail} numberOfLines={1}>{user.email}</Text>
 
-            <TouchableOpacity style={styles.bioRow} activeOpacity={0.8} onPress={openBio}>
-              <Ionicons name="create-outline" size={14} color="rgba(255,255,255,0.9)" style={{ marginRight: 6 }} />
+            {/* Badges for Guides */}
+            {isGuide ? (
+              <View style={styles.badgeRow}>
+                {isVerified ? (
+                  <View style={styles.verifiedBadge}>
+                    <Ionicons name="checkmark-circle" size={12} color="#15803D" />
+                    <Text style={styles.verifiedText}>Verified Guide</Text>
+                  </View>
+                ) : null}
+                <View style={styles.roleBadge}>
+                  <Text style={styles.roleText}>Tour Guide</Text>
+                </View>
+                {user.location ? (
+                  <View style={styles.locationBadge}>
+                    <Ionicons name="location-sharp" size={12} color="#FFFFFF" />
+                    <Text style={styles.locationBadgeText}>{user.location}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* Guide Meta Details */}
+            {isGuide && (user.experience || user.languages) ? (
+              <View style={styles.guideMetaBox}>
+                {user.experience ? (
+                  <Text style={styles.guideMetaItem}>
+                    <Text style={styles.guideMetaKey}>Experience: </Text>
+                    {user.experience}
+                  </Text>
+                ) : null}
+                {user.languages ? (
+                  <Text style={styles.guideMetaItem}>
+                    <Text style={styles.guideMetaKey}>Languages: </Text>
+                    {user.languages}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* Specialties Pills */}
+            {isGuide && specialtiesList.length > 0 ? (
+              <View style={styles.specialtiesRow}>
+                {specialtiesList.map((spec, si) => (
+                  <View key={si} style={styles.specialtyChip}>
+                    <Text style={styles.specialtyChipText}>{spec}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* Bio row */}
+            <View style={styles.bioRow}>
               <Text style={styles.bioText} numberOfLines={3}>
-                {user.bio?.trim() ? user.bio : 'Add a short bio about yourself'}
+                {user.bio?.trim() ? user.bio : 'Add a short bio about yourself to introduce who you are to travelers.'}
               </Text>
-            </TouchableOpacity>
+            </View>
+
+            {/* Profile Action Buttons */}
+            <View style={styles.profileActionsRow}>
+              <TouchableOpacity
+                style={styles.profileEditBtn}
+                activeOpacity={0.85}
+                onPress={openEdit}
+              >
+                <Ionicons name="create-outline" size={15} color="#FFFFFF" />
+                <Text style={styles.profileEditBtnText}>Edit Profile</Text>
+              </TouchableOpacity>
+
+              {isGuide ? (
+                <TouchableOpacity
+                  style={styles.publicProfileBtn}
+                  activeOpacity={0.85}
+                  onPress={() => router.push(`/guide/${user.id}` as any)}
+                >
+                  <Ionicons name="eye-outline" size={15} color="#0B7A4B" />
+                  <Text style={styles.publicProfileBtnText}>View Public Profile</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </LinearGradient>
         ) : (
           <View style={[styles.guestCard, { backgroundColor: colors.card, borderColor: colors.border }, shadow.sm]}>
@@ -233,34 +348,151 @@ export default function AccountScreen() {
         <Text style={[styles.footerVersion, { color: colors.textMute }]}>Version 1.0.0</Text>
       </ScrollView>
 
-      {/* Bio editor */}
-      <Modal visible={bioOpen} transparent animationType="fade" onRequestClose={() => setBioOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Edit bio</Text>
-            <TextInput
-              style={[styles.bioInput, { backgroundColor: colors.bgAlt, color: colors.text }]}
-              placeholder="Tell guides a little about yourself..."
-              placeholderTextColor={colors.textMute}
-              value={bioDraft}
-              onChangeText={setBioDraft}
-              multiline
-              maxLength={300}
-            />
+      {/* ── Comprehensive Edit Profile Modal ── */}
+      <Modal visible={editOpen} transparent animationType="slide" onRequestClose={() => setEditOpen(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Profile</Text>
+                <Text style={[styles.modalSub, { color: colors.textSub }]}>
+                  {isGuide ? 'Update your personal details and public guide info.' : 'Update your personal details and bio.'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditOpen(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={20} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {editError ? (
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                <Text style={styles.errorBannerText}>{editError}</Text>
+              </View>
+            ) : null}
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }} contentContainerStyle={{ paddingVertical: 4 }}>
+              {/* Full Name */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>
+                  Full Name <Text style={{ color: '#EF4444' }}>*</Text>
+                </Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: colors.bgAlt, color: colors.text, borderColor: colors.border }]}
+                  placeholder="Your full name"
+                  placeholderTextColor={colors.textMute}
+                  value={nameDraft}
+                  onChangeText={setNameDraft}
+                />
+              </View>
+
+              {/* Phone & Location */}
+              <View style={styles.inputRow}>
+                <View style={[styles.inputGroup, { flex: 1 }]}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Phone Number</Text>
+                  <TextInput
+                    style={[styles.textInput, { backgroundColor: colors.bgAlt, color: colors.text, borderColor: colors.border }]}
+                    placeholder="e.g. +63 912 345 6789"
+                    placeholderTextColor={colors.textMute}
+                    value={phoneDraft}
+                    onChangeText={setPhoneDraft}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+                <View style={[styles.inputGroup, { flex: 1 }]}>
+                  <Text style={[styles.inputLabel, { color: colors.text }]}>Location</Text>
+                  <TextInput
+                    style={[styles.textInput, { backgroundColor: colors.bgAlt, color: colors.text, borderColor: colors.border }]}
+                    placeholder="e.g. Moalboal, Cebu"
+                    placeholderTextColor={colors.textMute}
+                    value={locationDraft}
+                    onChangeText={setLocationDraft}
+                  />
+                </View>
+              </View>
+
+              {/* Guide-Specific Fields */}
+              {isGuide ? (
+                <>
+                  <View style={styles.inputRow}>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={[styles.inputLabel, { color: colors.text }]}>Experience</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: colors.bgAlt, color: colors.text, borderColor: colors.border }]}
+                        placeholder="e.g. 3+ Years"
+                        placeholderTextColor={colors.textMute}
+                        value={experienceDraft}
+                        onChangeText={setExperienceDraft}
+                      />
+                    </View>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={[styles.inputLabel, { color: colors.text }]}>Languages</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: colors.bgAlt, color: colors.text, borderColor: colors.border }]}
+                        placeholder="e.g. English, Cebuano"
+                        placeholderTextColor={colors.textMute}
+                        value={languagesDraft}
+                        onChangeText={setLanguagesDraft}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>Specialties (comma-separated)</Text>
+                    <TextInput
+                      style={[styles.textInput, { backgroundColor: colors.bgAlt, color: colors.text, borderColor: colors.border }]}
+                      placeholder="e.g. Snorkeling, Island Tours, Local Dining, Adventure Tours"
+                      placeholderTextColor={colors.textMute}
+                      value={specialtiesDraft}
+                      onChangeText={setSpecialtiesDraft}
+                    />
+                  </View>
+                </>
+              ) : null}
+
+              {/* Bio */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>
+                  {isGuide ? 'About you (shown to travelers)' : 'Bio'}
+                </Text>
+                <TextInput
+                  style={[styles.bioInput, { backgroundColor: colors.bgAlt, color: colors.text, borderColor: colors.border }]}
+                  placeholder={isGuide ? 'Describe your guiding background, local secrets, and what travelers can look forward to...' : 'Tell travelers and guides a little about yourself...'}
+                  placeholderTextColor={colors.textMute}
+                  value={bioDraft}
+                  onChangeText={setBioDraft}
+                  multiline
+                  maxLength={1000}
+                />
+              </View>
+            </ScrollView>
+
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalBtn} onPress={() => setBioOpen(false)} disabled={savingBio}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.bgAlt }]}
+                onPress={() => setEditOpen(false)}
+                disabled={saving}
+              >
                 <Text style={[styles.modalBtnText, { color: colors.textSub }]}>Cancel</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: colors.primary, borderRadius: 10 }, savingBio && { opacity: 0.6 }]}
-                onPress={saveBio}
-                disabled={savingBio}
+                style={[styles.modalBtn, { backgroundColor: colors.primary, borderRadius: 12 }, saving && { opacity: 0.6 }]}
+                onPress={saveProfile}
+                disabled={saving}
               >
-                <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>{savingBio ? 'Saving...' : 'Save'}</Text>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Save Changes</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <AppToast
@@ -280,16 +512,34 @@ const styles = StyleSheet.create({
   headerContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16 },
   headerTitle: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   settingsButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
-  profileCard: { borderRadius: 24, marginHorizontal: 20, paddingVertical: 26, paddingHorizontal: 20, alignItems: 'center', marginBottom: 18 },
-  avatarWrap: { marginBottom: 12 },
+  profileCard: { borderRadius: 24, marginHorizontal: 20, paddingVertical: 24, paddingHorizontal: 20, alignItems: 'center', marginBottom: 18 },
+  avatarWrap: { marginBottom: 10 },
   avatar: { width: 84, height: 84, borderRadius: 42, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' },
   avatarImg: { width: 84, height: 84, borderRadius: 42, borderWidth: 2, borderColor: 'rgba(255,255,255,0.6)' },
   avatarText: { color: '#FFFFFF', fontSize: 34, fontWeight: '900' },
   cameraBadge: { position: 'absolute', right: -2, bottom: -2, width: 28, height: 28, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.8)' },
   profileName: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
   profileEmail: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '500', marginTop: 3 },
-  bioRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 14, paddingHorizontal: 8, maxWidth: '100%' },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingVertical: 3, paddingHorizontal: 8, borderRadius: 999 },
+  verifiedText: { fontSize: 11, fontWeight: '800', color: '#15803D' },
+  roleBadge: { backgroundColor: 'rgba(255,255,255,0.25)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: 999 },
+  roleText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+  locationBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.18)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: 999 },
+  locationBadgeText: { fontSize: 11, fontWeight: '600', color: '#FFFFFF' },
+  guideMetaBox: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10, paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10 },
+  guideMetaItem: { fontSize: 12, color: '#FFFFFF' },
+  guideMetaKey: { fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
+  specialtiesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, justifyContent: 'center', marginTop: 8 },
+  specialtyChip: { backgroundColor: 'rgba(255,255,255,0.22)', paddingVertical: 2, paddingHorizontal: 8, borderRadius: 999 },
+  specialtyChipText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  bioRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 12, paddingHorizontal: 8, maxWidth: '100%' },
   bioText: { color: 'rgba(255,255,255,0.92)', fontSize: 13, lineHeight: 18, flexShrink: 1, textAlign: 'center' },
+  profileActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
+  profileEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.25)', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
+  profileEditBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  publicProfileBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999 },
+  publicProfileBtnText: { color: '#0B7A4B', fontSize: 13, fontWeight: '800' },
   guestCard: { borderRadius: 24, marginHorizontal: 20, paddingVertical: 28, paddingHorizontal: 22, alignItems: 'center', marginBottom: 18, borderWidth: 1 },
   guestIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   welcomeTitle: { fontSize: 19, fontWeight: '800', textAlign: 'center' },
@@ -300,11 +550,20 @@ const styles = StyleSheet.create({
   menuItemText: { fontSize: 15, fontWeight: '700', flex: 1 },
   footerText: { fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 28 },
   footerVersion: { fontSize: 11, fontWeight: '500', textAlign: 'center', marginTop: 3 },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 28 },
-  modalCard: { width: '100%', borderRadius: 18, padding: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 14 },
-  bioInput: { minHeight: 96, borderRadius: 12, padding: 14, fontSize: 15, textAlignVertical: 'top' },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 16 },
-  modalBtn: { paddingVertical: 11, paddingHorizontal: 22, marginLeft: 10 },
-  modalBtnText: { fontSize: 15, fontWeight: '700' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalCard: { width: '100%', maxWidth: 440, borderRadius: 22, padding: 20, borderWidth: 1 },
+  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  modalTitle: { fontSize: 19, fontWeight: '800', marginBottom: 2 },
+  modalSub: { fontSize: 12 },
+  modalCloseBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10, borderRadius: 10, backgroundColor: '#FEE2E2', marginBottom: 12 },
+  errorBannerText: { fontSize: 12, fontWeight: '700', color: '#B91C1C', flex: 1 },
+  inputGroup: { marginBottom: 12 },
+  inputRow: { flexDirection: 'row', gap: 10 },
+  inputLabel: { fontSize: 12, fontWeight: '700', marginBottom: 5 },
+  textInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 },
+  bioInput: { minHeight: 80, borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 14, textAlignVertical: 'top' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E2E8F0' },
+  modalBtn: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10 },
+  modalBtnText: { fontSize: 14, fontWeight: '700' },
 });

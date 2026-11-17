@@ -130,6 +130,28 @@ function calculateNights(inDate: string, outDate: string): number {
   return 1;
 }
 
+function hasBookedDatesInRange(checkIn: string, checkOut: string, disabled: string[]): boolean {
+  if (!checkIn || !checkOut || checkOut <= checkIn || !disabled || disabled.length === 0) return false;
+  const disabledSet = new Set(disabled);
+  const parts = checkIn.split('-');
+  const endParts = checkOut.split('-');
+  if (parts.length !== 3 || endParts.length !== 3) return false;
+  const curDate = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)));
+  const endDate = new Date(Date.UTC(parseInt(endParts[0], 10), parseInt(endParts[1], 10) - 1, parseInt(endParts[2], 10)));
+
+  while (curDate < endDate) {
+    const y = curDate.getUTCFullYear();
+    const m = String(curDate.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(curDate.getUTCDate()).padStart(2, '0');
+    const key = `${y}-${m}-${d}`;
+    if (disabledSet.has(key)) {
+      return true;
+    }
+    curDate.setUTCDate(curDate.getUTCDate() + 1);
+  }
+  return false;
+}
+
 function getTodayString(): string {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -197,6 +219,7 @@ export default function ListingDetailScreen() {
   const [favorited, setFavorited] = useState(false);
   const [canReview, setCanReview] = useState(false);
   const [bookedSlots, setBookedSlots] = useState<{ date: string; time: string }[]>([]);
+  const [listingBookedDates, setListingBookedDates] = useState<string[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [gallery, setGallery] = useState<{ id: number; url: string }[]>([]);
@@ -258,6 +281,7 @@ export default function ListingDetailScreen() {
         setActiveBooking(data.active_booking || null);
         setCanReview(!!data.can_review);
         setBookedSlots(Array.isArray(data.booked_slots) ? data.booked_slots : []);
+        setListingBookedDates(Array.isArray(data.booked_dates) ? data.booked_dates : []);
         setReviews(Array.isArray(data.reviews) ? data.reviews : []);
         setGallery(Array.isArray(data.gallery) ? data.gallery : []);
       } catch (e) {
@@ -354,9 +378,15 @@ export default function ListingDetailScreen() {
     }
     const todayStr = getTodayString();
     const tomorrowStr = getNextCalendarDay(todayStr);
-    const dayAfterTomorrowStr = getNextCalendarDay(tomorrowStr);
-    setHotelCheckIn(tomorrowStr);
-    setHotelCheckOut(dayAfterTomorrowStr);
+    let initialIn = tomorrowStr;
+    let iter = 0;
+    while (hotelDisabledDates.includes(initialIn) && iter < 60) {
+      initialIn = getNextCalendarDay(initialIn);
+      iter++;
+    }
+    const initialOut = getNextCalendarDay(initialIn);
+    setHotelCheckIn(initialIn);
+    setHotelCheckOut(initialOut);
     setHotelPickerTarget('check_in');
 
     if (!isHotel) {
@@ -464,6 +494,58 @@ export default function ListingDetailScreen() {
     return selectedDateSessions.find((s) => s.start_time?.slice(0, 5) === bookingTime) || selectedDateSessions[0] || null;
   }, [hasSchedule, selectedDateSessions, bookingTime]);
 
+  const hotelDisabledDates = React.useMemo(() => {
+    if (selectedRoom && Array.isArray(selectedRoom.booked_dates)) {
+      return selectedRoom.booked_dates;
+    }
+    return listingBookedDates;
+  }, [selectedRoom, listingBookedDates]);
+
+  const effectiveHotelDisabledDates = React.useMemo(() => {
+    if (hotelPickerTarget === 'check_in') {
+      return hotelDisabledDates;
+    }
+    if (!hotelCheckIn) {
+      return hotelDisabledDates;
+    }
+    const futureBooked = hotelDisabledDates.filter((d) => d >= hotelCheckIn).sort();
+    if (futureBooked.length === 0) {
+      return [];
+    }
+    const earliestBooked = futureBooked[0];
+    const disabledList = new Set<string>();
+    let cur = getNextCalendarDay(earliestBooked);
+    for (let i = 0; i < 180; i++) {
+      disabledList.add(cur);
+      cur = getNextCalendarDay(cur);
+    }
+    return Array.from(disabledList);
+  }, [hotelPickerTarget, hotelCheckIn, hotelDisabledDates]);
+
+  const maxGuestsAllowed = React.useMemo(() => {
+    if (isHotel) {
+      if (selectedRoom) {
+        const parsed = Number(selectedRoom.max_guests);
+        return !Number.isNaN(parsed) && parsed > 0 ? parsed : (Number(listing?.capacity) || 2);
+      }
+      return Number(listing?.capacity) || 2;
+    }
+    if (hasSchedule && currentSession) {
+      return currentSession.available_slots ?? listing?.capacity ?? 10;
+    }
+    return attractionAvailableSlots;
+  }, [isHotel, selectedRoom, listing, hasSchedule, currentSession, attractionAvailableSlots]);
+
+  // Enforce room guest limit whenever hotel room changes
+  useEffect(() => {
+    if (isHotel && selectedRoom) {
+      const roomMax = Math.max(1, Number(selectedRoom.max_guests) || 2);
+      if (guests > roomMax) {
+        setGuests(roomMax);
+      }
+    }
+  }, [isHotel, selectedRoom, guests]);
+
   const hotelNights = isHotel && hotelCheckIn && hotelCheckOut ? calculateNights(hotelCheckIn, hotelCheckOut) : 1;
   const daysCount = isHotel ? hotelNights : Math.max(1, bookingDates.length);
   const roomPrice = isHotel && selectedRoom ? selectedRoom.price_per_night : (listing ? listing.price : 0);
@@ -510,6 +592,22 @@ export default function ListingDetailScreen() {
       }
       if (hotelCheckOut === hotelCheckIn) {
         Alert.alert('Invalid stay', 'Check-out date must be at least one day after check-in date. A minimum stay is 1 night.');
+        return;
+      }
+      if (hotelDisabledDates.includes(hotelCheckIn)) {
+        Alert.alert('Date Unavailable', 'The selected check-in date is already booked. Please choose an available arrival date.');
+        return;
+      }
+      if (hasBookedDatesInRange(hotelCheckIn, hotelCheckOut, hotelDisabledDates)) {
+        Alert.alert('Dates Unavailable', 'Your selected stay includes dates that are already booked. Please choose available dates.');
+        return;
+      }
+      const roomMax = Math.max(1, Number(selectedRoom?.max_guests) || 2);
+      if (guests > roomMax) {
+        Alert.alert(
+          'Maximum Capacity Exceeded',
+          `This room accommodates a maximum of ${roomMax} guest${roomMax === 1 ? '' : 's'}. Please adjust the number of guests to continue.`
+        );
         return;
       }
     } else {
@@ -2318,15 +2416,27 @@ export default function ListingDetailScreen() {
 
                       <CalendarPicker
                         value={hotelPickerTarget === 'check_in' ? hotelCheckIn : hotelCheckOut}
+                        disabledDates={effectiveHotelDisabledDates}
                         onChange={(pickedDate) => {
                           if (hotelPickerTarget === 'check_in') {
+                            if (hotelDisabledDates.includes(pickedDate)) {
+                              Alert.alert('Date Unavailable', 'This date is already booked. Please choose an available arrival date.');
+                              return;
+                            }
                             setHotelCheckIn(pickedDate);
                             // Selecting a check-in date automatically sets the default check-out date
                             // to exactly one day after the selected check-in date (one-night stay).
                             setHotelCheckOut(getNextCalendarDay(pickedDate));
                             setHotelPickerTarget('check_out');
                           } else {
-                            // Keep manual check-out date selection
+                            if (pickedDate <= hotelCheckIn) {
+                              Alert.alert('Invalid Date', 'Check-out date must be at least one day after check-in date.');
+                              return;
+                            }
+                            if (hasBookedDatesInRange(hotelCheckIn, pickedDate, hotelDisabledDates)) {
+                              Alert.alert('Dates Unavailable', 'Your selected stay includes dates that are already reserved. Please select an available departure date.');
+                              return;
+                            }
                             setHotelCheckOut(pickedDate);
                           }
                         }}
@@ -2681,40 +2791,54 @@ export default function ListingDetailScreen() {
                           style={[
                             styles.stepBtn,
                             { borderColor: theme.border },
-                            (() => {
-                              const maxAllowed = hasSchedule && currentSession
-                                ? (currentSession.available_slots ?? listing?.capacity ?? 10)
-                                : attractionAvailableSlots;
-                              return guests >= maxAllowed ? { opacity: 0.5 } : undefined;
-                            })()
+                            guests >= maxGuestsAllowed ? { opacity: 0.5 } : undefined,
                           ]}
+                          accessibilityRole="button"
+                          accessibilityLabel="Increase guests"
                           onPress={() => {
-                            const maxAllowed = hasSchedule && currentSession
-                              ? (currentSession.available_slots ?? listing?.capacity ?? 10)
-                              : attractionAvailableSlots;
-                            if (guests >= maxAllowed) {
-                              Alert.alert('Capacity Limit', `Only ${maxAllowed} slot${maxAllowed === 1 ? '' : 's'} available.`);
+                            if (guests >= maxGuestsAllowed) {
+                              if (isHotel) {
+                                Alert.alert(
+                                  'Maximum Guest Limit',
+                                  `This room accommodates a maximum of ${maxGuestsAllowed} guest${maxGuestsAllowed === 1 ? '' : 's'}.`
+                                );
+                              } else {
+                                Alert.alert('Capacity Limit', `Only ${maxGuestsAllowed} slot${maxGuestsAllowed === 1 ? '' : 's'} available.`);
+                              }
                               return;
                             }
-                            setGuests((g) => Math.min(maxAllowed, g + 1));
+                            setGuests((g) => Math.min(maxGuestsAllowed, g + 1));
                           }}
                         >
                           <Ionicons name="add" size={20} color={theme.textMain} />
                         </TouchableOpacity>
                       </View>
-                      <Text style={{
-                        fontSize: 12,
-                        color: isAttractionFullyBooked ? '#EF4444' : theme.textSub,
-                        fontWeight: isAttractionFullyBooked ? '700' : '400',
-                        marginTop: 4,
-                        marginBottom: 8
-                      }}>
-                        {isAttractionFullyBooked
-                          ? 'Fully Booked · No slots available'
-                          : hasSchedule && currentSession
-                            ? `${currentSession.available_slots ?? listing?.capacity ?? 10} of ${currentSession.capacity ?? listing?.capacity ?? 10} slots available`
-                            : `${attractionAvailableSlots} of ${totalAttractionCapacity} slots available (Available Slots: ${attractionAvailableSlots}/${totalAttractionCapacity})`}
-                      </Text>
+                      {isHotel && selectedRoom ? (
+                        <Text style={{
+                          fontSize: 12,
+                          color: guests >= maxGuestsAllowed ? '#D97706' : theme.textSub,
+                          fontWeight: guests >= maxGuestsAllowed ? '600' : '400',
+                          marginTop: 4,
+                          marginBottom: 8,
+                        }}>
+                          Maximum capacity: {maxGuestsAllowed} guest{maxGuestsAllowed === 1 ? '' : 's'}
+                          {guests >= maxGuestsAllowed ? ' (Maximum capacity reached)' : ''}
+                        </Text>
+                      ) : (
+                        <Text style={{
+                          fontSize: 12,
+                          color: isAttractionFullyBooked ? '#EF4444' : theme.textSub,
+                          fontWeight: isAttractionFullyBooked ? '700' : '400',
+                          marginTop: 4,
+                          marginBottom: 8
+                        }}>
+                          {isAttractionFullyBooked
+                            ? 'Fully Booked · No slots available'
+                            : hasSchedule && currentSession
+                              ? `${currentSession.available_slots ?? listing?.capacity ?? 10} of ${currentSession.capacity ?? listing?.capacity ?? 10} slots available`
+                              : `${attractionAvailableSlots} of ${totalAttractionCapacity} slots available (Available Slots: ${attractionAvailableSlots}/${totalAttractionCapacity})`}
+                        </Text>
+                      )}
 
                       {isHotel && selectedRoom ? (
                         <View style={[styles.priceSummaryBox, { backgroundColor: theme.card, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }]}>

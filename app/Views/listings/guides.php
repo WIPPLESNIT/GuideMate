@@ -52,16 +52,41 @@ $user = auth_user();
                                 <p class="listing-summary mb-0"><?= e(mb_strimwidth((string) $g['bio'], 0, 140, '…')) ?></p>
                             <?php endif; ?>
                         </div>
-                        <?php if ($user && (int) $user['id'] === (int) $g['id']): ?>
-                            <span class="btn btn-ghost" style="cursor:default;opacity:.7;">Your profile</span>
-                        <?php elseif ($user): ?>
-                            <form method="post" action="<?= e(url('/guides/' . (int) $g['id'] . '/contact')) ?>">
-                                <?= csrf_field() ?>
-                                <button class="btn btn-primary" type="submit">💬 Message</button>
-                            </form>
-                        <?php else: ?>
-                            <a class="btn btn-primary" href="<?= e($loginUrl) ?>">💬 Message</a>
-                        <?php endif; ?>
+                        <div class="guide-dir-actions">
+                            <?php if ($user && (int) $user['id'] === (int) $g['id']): ?>
+                                <a href="<?= e(url('/guides/' . (int) $g['id'])) ?>" class="btn btn-ghost">View Public Profile</a>
+                            <?php elseif ($user): ?>
+                                <form method="post" action="<?= e(url('/guides/' . (int) $g['id'] . '/contact')) ?>" style="margin:0;">
+                                    <?= csrf_field() ?>
+                                    <button class="btn btn-primary" type="submit">💬 Message</button>
+                                </form>
+                            <?php else: ?>
+                                <a class="btn btn-primary" href="<?= e($loginUrl) ?>">💬 Message</a>
+                            <?php endif; ?>
+
+                            <div class="res-action-wrap" style="position:relative;">
+                                <button type="button"
+                                        class="btn-res-action-trigger"
+                                        id="guideActionBtn_<?= (int) $g['id'] ?>"
+                                        aria-haspopup="true"
+                                        aria-expanded="false"
+                                        aria-controls="guideActionMenu_<?= (int) $g['id'] ?>"
+                                        title="Options for <?= e((string) $g['name']) ?>"
+                                        aria-label="Options for <?= e((string) $g['name']) ?>">
+                                    <?= admin_icon('more-vertical', 16) ?>
+                                </button>
+                                <div class="res-action-dropdown"
+                                     id="guideActionMenu_<?= (int) $g['id'] ?>"
+                                     role="menu"
+                                     aria-labelledby="guideActionBtn_<?= (int) $g['id'] ?>">
+                                    <a href="<?= e(url('/guides/' . (int) $g['id'])) ?>"
+                                       class="res-action-item"
+                                       role="menuitem">
+                                        <?= admin_icon('user', 14) ?> View Guide Profile
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
                     </article>
                 <?php endforeach; ?>
             </div>

@@ -49,6 +49,7 @@ $router->post('/api/disputes', [ApiController::class, 'submitDispute']);
 $router->post('/api/disputes/{id}/evidence', [ApiController::class, 'uploadDisputeEvidence']);
 
 $router->get('/api/guides', [ApiController::class, 'guides']);
+$router->get('/api/guides/{id}', [ApiController::class, 'guideProfile']);
 $router->get('/api/messages', [ApiController::class, 'conversations']);
 $router->get('/api/messages/thread', [ApiController::class, 'thread']);
 $router->get('/api/messages/poll', [ApiController::class, 'pollThread']);
