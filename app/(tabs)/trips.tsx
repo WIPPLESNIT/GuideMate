@@ -100,7 +100,13 @@ const STATUS_LABEL: Record<string, string> = {
  * - Active or upcoming trips continue to appear in the non-history section.
  */
 function isTripHistory(b: ApiBooking): boolean {
-  if (b.package_overall_status === 'action_required' || b.has_cancellation) {
+  const overall = (b.package_overall_status || b.status || '').toLowerCase();
+  const isCancelled = overall === 'cancelled' || overall === 'refunded' || b.status === 'cancelled' || b.status === 'refunded';
+  if (isCancelled) {
+    return true;
+  }
+
+  if (b.package_overall_status === 'action_required' || (b.has_cancellation && overall !== 'completed')) {
     return false;
   }
 
@@ -114,11 +120,10 @@ function isTripHistory(b: ApiBooking): boolean {
   );
 
   if (isPkg) {
-    const overall = (b.package_overall_status || b.status || '').toLowerCase();
-    return overall === 'completed' || overall === 'refunded' || overall === 'cancelled';
+    return overall === 'completed' || Boolean(b.is_completed);
   }
 
-  if (b.status === 'completed' || b.status === 'refunded') {
+  if (b.status === 'completed' || b.status === 'refunded' || b.status === 'cancelled' || Boolean(b.is_completed)) {
     return true;
   }
   const isHotel = Boolean(
@@ -1346,7 +1351,7 @@ export default function TripsScreen() {
             </TouchableOpacity>
           ) : null}
 
-          {isCompleted || item.is_completed || overallStatus === 'completed' ? (
+          {!isCancelled && isPkgCompleted ? (
             <View style={styles.pkgActionRow}>
               {item.can_review || overallStatus === 'completed' ? (
                 <TouchableOpacity
@@ -2402,19 +2407,51 @@ export default function TripsScreen() {
                 const vehicleSt = vehicleItem?.rental_request_status || vehicleItem?.status || (hasVehicle && overallStatus === 'completed' ? 'completed' : (details?.rental_request_status === 'approved' ? 'confirmed' : 'pending'));
                 const vehicleObj = details?.rental || details?.rentalDetail;
 
+                const hotelReplacementObj = details?.accommodation_replacement || selectedPackageDetails.replacement_hotel;
+                const originalHotelCancelled = Boolean(
+                  (hotelItem && (hotelItem.status === 'cancelled' || hotelItem.status === 'rejected' || hotelItem.status === 'declined')) ||
+                  selectedPackageDetails.all_cancelled_items?.some((c: any) => c.service_type === 'hotel') ||
+                  selectedPackageDetails.cancelled_items?.some((c: any) => c.service_type === 'hotel') ||
+                  (hotelReplacementObj && (hotelReplacementObj.is_replacement || hotelReplacementObj.replaces_item_id || details?.accommodation_replacement))
+                );
+                const hasHotelReplacement = Boolean(originalHotelCancelled && hotelReplacementObj);
+
+                const vehicleReplacementObj = details?.rental_replacement || selectedPackageDetails.replacement_vehicle;
+                const originalVehicleCancelled = Boolean(
+                  (vehicleItem && (vehicleItem.status === 'cancelled' || vehicleItem.status === 'rejected' || vehicleItem.status === 'declined')) ||
+                  selectedPackageDetails.all_cancelled_items?.some((c: any) => c.service_type === 'vehicle') ||
+                  selectedPackageDetails.cancelled_items?.some((c: any) => c.service_type === 'vehicle') ||
+                  (vehicleReplacementObj && (vehicleReplacementObj.is_replacement || vehicleReplacementObj.replaces_item_id || details?.rental_replacement))
+                );
+                const hasVehicleReplacement = Boolean(originalVehicleCancelled && vehicleReplacementObj);
+
+                const activeHotelSt = hasHotelReplacement
+                  ? (hotelReplacementObj?.status || hotelItem?.hotel_reservation_status || hotelItem?.status || 'pending').toLowerCase()
+                  : hotelSt;
+                const activeHotelConfirmed = hasHotelReplacement
+                  ? (activeHotelSt === 'confirmed' || activeHotelSt === 'approved' || activeHotelSt === 'checked_in' || activeHotelSt === 'completed')
+                  : (hotelSt === 'confirmed' || hotelSt === 'checked_in' || hotelSt === 'completed');
+
+                const activeVehicleSt = hasVehicleReplacement
+                  ? (vehicleReplacementObj?.status || vehicleItem?.rental_request_status || vehicleItem?.status || 'pending').toLowerCase()
+                  : vehicleSt;
+                const activeVehicleConfirmed = hasVehicleReplacement
+                  ? (activeVehicleSt === 'confirmed' || activeVehicleSt === 'approved' || activeVehicleSt === 'contacted' || activeVehicleSt === 'completed')
+                  : (vehicleSt === 'confirmed' || vehicleSt === 'approved' || vehicleSt === 'contacted' || vehicleSt === 'completed');
+
                 const isCancelled = overallStatus === 'cancelled' || overallStatus === 'refunded' || selectedPackageDetails.status === 'cancelled' || selectedPackageDetails.status === 'refunded';
 
                 const hotelIsActive = (hotelItem ? hotelItem.status !== 'removed' : Boolean(details?.hotel_included || details?.accommodation));
                 const vehicleIsActive = (vehicleItem ? vehicleItem.status !== 'removed' : Boolean(details?.rental_included || details?.rental));
 
                 const guideCompleted = guideSt === 'completed';
-                const hotelCompleted = !hotelIsActive || hotelSt === 'completed';
-                const vehicleCompleted = !vehicleIsActive || vehicleSt === 'completed';
+                const hotelCompleted = !hotelIsActive || activeHotelSt === 'completed';
+                const vehicleCompleted = !vehicleIsActive || activeVehicleSt === 'completed';
                 const isAllCompleted = guideCompleted && hotelCompleted && vehicleCompleted;
 
                 const guideConfirmed = guideSt === 'confirmed' || guideSt === 'completed';
-                const hotelConfirmed = !hotelIsActive || hotelSt === 'confirmed' || hotelSt === 'checked_in' || hotelSt === 'completed';
-                const vehicleConfirmed = !vehicleIsActive || vehicleSt === 'confirmed' || vehicleSt === 'approved' || vehicleSt === 'contacted' || vehicleSt === 'completed';
+                const hotelConfirmed = !hotelIsActive || activeHotelConfirmed;
+                const vehicleConfirmed = !vehicleIsActive || activeVehicleConfirmed;
 
                 const isAllConfirmed = guideConfirmed && hotelConfirmed && vehicleConfirmed;
                 const isPartiallyConfirmed = !isAllConfirmed && !isAllCompleted && (guideConfirmed || (hotelIsActive && hotelConfirmed) || (vehicleIsActive && vehicleConfirmed));
@@ -2424,6 +2461,45 @@ export default function TripsScreen() {
 
                 const isHost = currentUser?.role === 'guide' || Boolean(selectedPackageDetails.guide_id && currentUser?.id === selectedPackageDetails.guide_id);
                 const isTraveler = !isHost;
+
+                const derivedDays = (() => {
+                  if (vehicleItem?.rental_days && Number(vehicleItem.rental_days) > 1) {
+                    return Number(vehicleItem.rental_days);
+                  }
+                  if (vehicleObj?.rental_days && Number(vehicleObj.rental_days) > 1) {
+                    return Number(vehicleObj.rental_days);
+                  }
+                  if (details?.duration_days && Number(details.duration_days) > 0) {
+                    return Number(details.duration_days);
+                  }
+                  const titleAndDesc = `${selectedPackageDetails.listing_title || ''} ${(selectedPackageDetails as any).duration || ''} ${details?.duration || ''} ${details?.package_title || ''}`;
+                  const m = titleAndDesc.match(/(\d+)\s*(?:d|day)/i);
+                  if (m) {
+                    return parseInt(m[1], 10);
+                  }
+                  if (vehicleItem?.rental_days && Number(vehicleItem.rental_days) > 0) {
+                    return Number(vehicleItem.rental_days);
+                  }
+                  if (selectedPackageDetails.days_count && Number(selectedPackageDetails.days_count) > 1) {
+                    return Number(selectedPackageDetails.days_count);
+                  }
+                  return 3;
+                })();
+                const derivedNights = Number(selectedPackageDetails.nights || details?.duration_nights || Math.max(1, derivedDays - 1));
+
+                const hotelCheckIn = selectedPackageDetails.check_in_date || selectedPackageDetails.booking_date;
+                const hotelCheckOut = selectedPackageDetails.check_out_date || (function() {
+                  const d = new Date(hotelCheckIn);
+                  d.setDate(d.getDate() + derivedNights);
+                  return isNaN(d.getTime()) ? hotelCheckIn : d.toISOString().split('T')[0];
+                })();
+
+                const vehiclePickup = vehicleItem?.rental_pickup_date || selectedPackageDetails.booking_date;
+                const vehicleReturn = vehicleItem?.rental_return_date || (function() {
+                  const d = new Date(vehiclePickup);
+                  d.setDate(d.getDate() + derivedDays);
+                  return isNaN(d.getTime()) ? vehiclePickup : d.toISOString().split('T')[0];
+                })();
 
                 const approvalsBadgeText = isCancelled
                   ? (overallStatus === 'refunded' || selectedPackageDetails.status === 'refunded' ? 'REFUNDED' : 'CANCELLED')
@@ -2781,15 +2857,21 @@ export default function TripsScreen() {
                         {/* Hotel */}
                         {hasHotel ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
                               <Text style={{ fontSize: 15 }}>🏨</Text>
-                              <View>
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Hotel Accommodation</Text>
-                                <Text style={{ fontSize: 11, color: colors.textSub }}>{hotelObj?.name || hotelObj?.hotel_name || 'Partner Hotel'}</Text>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+                                  {hasHotelReplacement ? 'Hotel Accommodation (Replacement)' : 'Hotel Accommodation'}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: colors.textSub }} numberOfLines={1}>
+                                  {hasHotelReplacement
+                                    ? `${hotelReplacementObj?.hotel_name || hotelItem?.service_name || 'Replacement Hotel'} \u2022 ${hotelReplacementObj?.provider_name || hotelItem?.provider_name || 'Hotel Partner'}`
+                                    : (hotelObj?.name || hotelObj?.hotel_name || hotelItem?.service_name || 'Partner Hotel')}
+                                </Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: hotelConfirmed ? '#059669' : (hotelSt === 'rescheduled' ? '#2563EB' : (hotelSt === 'removed' ? '#64748B' : (hotelSt === 'cancelled' || hotelSt === 'rejected' || hotelSt === 'declined' ? '#DC2626' : '#D97706'))) }}>
-                              {hotelSt === 'checked_in' ? '\u2713 Checked In' : (hotelSt === 'completed' ? '\u2713 Completed' : (hotelSt === 'confirmed' ? '\u2713 Confirmed' : (hotelSt === 'rescheduled' ? '↺ Rescheduled' : (hotelSt === 'removed' ? '— Removed' : (hotelSt === 'cancelled' ? '\u2715 Cancelled' : (hotelSt === 'rejected' || hotelSt === 'declined' ? '\u2715 Declined' : '⏳ Pending'))))))}
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: activeHotelConfirmed ? '#059669' : (activeHotelSt === 'rescheduled' ? '#2563EB' : (activeHotelSt === 'removed' ? '#64748B' : (activeHotelSt === 'cancelled' || activeHotelSt === 'rejected' || activeHotelSt === 'declined' ? '#DC2626' : '#D97706'))) }}>
+                              {activeHotelSt === 'checked_in' ? '\u2713 Checked In' : (activeHotelSt === 'completed' ? '\u2713 Completed' : (activeHotelConfirmed ? '\u2713 Confirmed' : (activeHotelSt === 'rescheduled' ? '↺ Rescheduled' : (activeHotelSt === 'removed' ? '— Removed' : (activeHotelSt === 'cancelled' || activeHotelSt === 'rejected' || activeHotelSt === 'declined' ? '\u2715 Declined' : '⏳ Pending')))))}
                             </Text>
                           </View>
                         ) : null}
@@ -2797,15 +2879,21 @@ export default function TripsScreen() {
                         {/* Vehicle Rental */}
                         {hasVehicle ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
                               <Text style={{ fontSize: 15 }}>🛵</Text>
-                              <View>
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Vehicle Transportation</Text>
-                                <Text style={{ fontSize: 11, color: colors.textSub }}>{vehicleObj?.name || vehicleObj?.vehicle_name || 'Rental Vehicle'}</Text>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+                                  {hasVehicleReplacement ? 'Vehicle Transportation (Replacement)' : 'Vehicle Transportation'}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: colors.textSub }} numberOfLines={1}>
+                                  {hasVehicleReplacement
+                                    ? `${vehicleReplacementObj?.vehicle_name || vehicleReplacementObj?.model || vehicleItem?.service_name || 'Replacement Vehicle'} \u2022 ${vehicleReplacementObj?.provider_name || vehicleItem?.provider_name || 'Rental Partner'}`
+                                    : (vehicleObj?.name || vehicleObj?.vehicle_name || vehicleItem?.service_name || 'Rental Vehicle')}
+                                </Text>
                               </View>
                             </View>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: vehicleConfirmed ? '#059669' : (vehicleSt === 'rescheduled' ? '#2563EB' : (vehicleSt === 'removed' ? '#64748B' : (vehicleSt === 'cancelled' || vehicleSt === 'rejected' || vehicleSt === 'declined' ? '#DC2626' : '#D97706'))) }}>
-                              {vehicleSt === 'contacted' ? '\u2713 Contacted' : (vehicleSt === 'completed' ? '\u2713 Completed' : ((vehicleSt === 'confirmed' || vehicleSt === 'approved') ? '\u2713 Confirmed' : (vehicleSt === 'rescheduled' ? '↺ Rescheduled' : (vehicleSt === 'removed' ? '— Removed' : (vehicleSt === 'cancelled' ? '\u2715 Cancelled' : (vehicleSt === 'rejected' || vehicleSt === 'declined' ? '\u2715 Declined' : '⏳ Pending'))))))}
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: activeVehicleConfirmed ? '#059669' : (activeVehicleSt === 'rescheduled' ? '#2563EB' : (activeVehicleSt === 'removed' ? '#64748B' : (activeVehicleSt === 'cancelled' || activeVehicleSt === 'rejected' || activeVehicleSt === 'declined' ? '#DC2626' : '#D97706'))) }}>
+                              {activeVehicleSt === 'contacted' ? '\u2713 Contacted' : (activeVehicleSt === 'completed' ? '\u2713 Completed' : (activeVehicleConfirmed ? '\u2713 Confirmed' : (activeVehicleSt === 'rescheduled' ? '↺ Rescheduled' : (activeVehicleSt === 'removed' ? '— Removed' : (activeVehicleSt === 'cancelled' || activeVehicleSt === 'rejected' || activeVehicleSt === 'declined' ? '\u2715 Declined' : '⏳ Pending')))))}
                             </Text>
                           </View>
                         ) : null}
@@ -2872,11 +2960,16 @@ export default function TripsScreen() {
                             {hotelObj?.name || hotelObj?.hotel_name || selectedPackageDetails.room_name || 'Partner Hotel'}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
-                            {`${hotelObj?.roomType || hotelObj?.room_name || 'Selected Room'} \u2022 ${selectedPackageDetails.nights ?? details?.duration_nights ?? 1} Night${((selectedPackageDetails.nights ?? details?.duration_nights ?? 1) > 1) ? 's' : ''}`}
+                            {`${hotelObj?.roomType || hotelObj?.room_name || 'Selected Room'} \u2022 ${derivedNights} Night${((derivedNights) > 1) ? 's' : ''}`}
                           </Text>
                           <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>
-                            {`Check-in: ${formatDate(selectedPackageDetails.check_in_date || selectedPackageDetails.booking_date)} from 02:00 PM \u2022 Check-out: ${formatDate(selectedPackageDetails.check_out_date || selectedPackageDetails.booking_date)} at 12:00 PM`}
+                            {`Check-in: ${formatDate(hotelCheckIn)} from 02:00 PM \u2022 Check-out: ${formatDate(hotelCheckOut)} at 12:00 PM`}
                           </Text>
+                          {originalHotelCancelled ? (
+                            <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>✕ Cancelled by original hotel provider</Text>
+                            </View>
+                          ) : null}
                         </>
                       ) : (
                         <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4, fontStyle: 'italic' }}>
@@ -2884,6 +2977,37 @@ export default function TripsScreen() {
                         </Text>
                       )}
                     </View>
+
+                    {/* Hotel Stay Accommodation Replacement */}
+                    {hasHotelReplacement && hotelReplacementObj ? (
+                      <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#D97706', textTransform: 'uppercase' }}>
+                            Hotel Stay Accommodation Replacement
+                          </Text>
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: activeHotelConfirmed ? '#DCFCE7' : ((activeHotelSt === 'cancelled' || activeHotelSt === 'rejected' || activeHotelSt === 'declined') ? '#FEF2F2' : '#FEF3C7') }}>
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: activeHotelConfirmed ? '#15803D' : ((activeHotelSt === 'cancelled' || activeHotelSt === 'rejected' || activeHotelSt === 'declined') ? '#DC2626' : '#B45309') }}>
+                              {activeHotelConfirmed ? '✓ Confirmed' : ((activeHotelSt === 'cancelled' || activeHotelSt === 'rejected' || activeHotelSt === 'declined') ? '✕ Declined' : '⏳ Pending')}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>
+                          {hotelReplacementObj.hotel_name || hotelReplacementObj.service_name || 'Replacement Partner Hotel'}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                          {`${hotelReplacementObj.room_name || hotelReplacementObj.room_type || 'Selected Room'} (${hotelReplacementObj.room_type || 'Standard'}) \u2022 ${hotelReplacementObj.nights || selectedPackageDetails.nights || 1} Night${((hotelReplacementObj.nights || selectedPackageDetails.nights || 1) > 1) ? 's' : ''}`}
+                        </Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary, marginTop: 2 }}>
+                          {`Pricing: ₱${Number(hotelReplacementObj.pricing || hotelReplacementObj.allocated_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${hotelReplacementObj.price_per_night ? `(₱${Number(hotelReplacementObj.price_per_night).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / night)` : ''}`}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>
+                          {`Reservation Dates: ${formatDate(hotelReplacementObj.check_in_date || selectedPackageDetails.check_in_date || selectedPackageDetails.booking_date)} to ${formatDate(hotelReplacementObj.check_out_date || selectedPackageDetails.check_out_date || selectedPackageDetails.booking_date)}`}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.textSub, marginTop: 2 }}>
+                          {`Provider: ${hotelReplacementObj.provider_name || 'Hotel Partner'}${hotelReplacementObj.provider_phone ? ` \u2022 ${hotelReplacementObj.provider_phone}` : ''}${hotelReplacementObj.provider_email ? ` \u2022 ${hotelReplacementObj.provider_email}` : ''}`}
+                        </Text>
+                      </View>
+                    ) : null}
 
                     {/* Transport */}
                     <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
@@ -2894,8 +3018,23 @@ export default function TripsScreen() {
                             {vehicleObj?.name || vehicleObj?.vehicle_name || 'Partner Rental Vehicle'}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
-                            {`${selectedPackageDetails.days_count ?? details?.duration_days ?? 1} Full Days \u2022 ${vehicleObj?.vehicle_type || 'Vehicle'} \u2022 Handover Included`}
+                            {`${derivedDays} Full Day${derivedDays > 1 ? 's' : ''} \u2022 ${vehicleObj?.vehicle_type || 'Vehicle'} \u2022 Handover Included`}
                           </Text>
+                          <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>
+                            {`Pickup: ${formatDate(vehiclePickup)} \u2022 Return: ${formatDate(vehicleReturn)}`}
+                          </Text>
+                          {originalVehicleCancelled ? (
+                            <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>✕ Cancelled by original rental provider</Text>
+                              {Boolean(vehicleItem?.refund_amount || vehicleItem?.refund_status === 'refunded' || vehicleObj?.refund_amount || vehicleObj?.refund_status === 'refunded' || vehicleItem?.rental_refund_amount) ? (
+                                <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: '#DCFCE7' }}>
+                                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#15803D' }}>
+                                    {`✓ Refunded: ₱${Number(vehicleItem?.refund_amount || vehicleItem?.rental_refund_amount || vehicleObj?.refund_amount || vehicleItem?.allocated_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
+                          ) : null}
                         </>
                       ) : (
                         <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4, fontStyle: 'italic' }}>
@@ -2903,6 +3042,53 @@ export default function TripsScreen() {
                         </Text>
                       )}
                     </View>
+
+                    {/* Rental Transportation Replacement */}
+                    {hasVehicleReplacement && vehicleReplacementObj ? (() => {
+                      const repRentalDays = Math.max(1, Number(vehicleReplacementObj.rental_days || vehicleReplacementObj.duration_days || derivedDays));
+                      const repPickup = vehicleReplacementObj.pickup_date || selectedPackageDetails.booking_date;
+                      const repReturn = vehicleReplacementObj.return_date || (function() {
+                        const d = new Date(repPickup);
+                        d.setDate(d.getDate() + repRentalDays);
+                        return isNaN(d.getTime()) ? repPickup : d.toISOString().split('T')[0];
+                      })();
+
+                      return (
+                        <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: colors.border }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: '#2563EB', textTransform: 'uppercase' }}>
+                              Rental Transportation Replacement
+                            </Text>
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: activeVehicleConfirmed ? '#DCFCE7' : ((activeVehicleSt === 'cancelled' || activeVehicleSt === 'rejected' || activeVehicleSt === 'declined') ? '#FEF2F2' : '#FEF3C7') }}>
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: activeVehicleConfirmed ? '#15803D' : ((activeVehicleSt === 'cancelled' || activeVehicleSt === 'rejected' || activeVehicleSt === 'declined') ? '#DC2626' : '#B45309') }}>
+                                {activeVehicleConfirmed ? '✓ Confirmed' : ((activeVehicleSt === 'cancelled' || activeVehicleSt === 'rejected' || activeVehicleSt === 'declined') ? '✕ Declined' : '⏳ Pending')}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 }}>
+                            {vehicleReplacementObj.vehicle_name || vehicleReplacementObj.model || vehicleReplacementObj.service_name || 'Replacement Vehicle'}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                            {`${repRentalDays} Full Day${repRentalDays > 1 ? 's' : ''} \u2022 ${vehicleReplacementObj.model || vehicleReplacementObj.vehicle_name || 'Vehicle'} (${vehicleReplacementObj.vehicle_type || 'Vehicle'}) \u2022 Capacity: ${vehicleReplacementObj.capacity || 4} Passengers`}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                            {`Pickup Location: ${vehicleReplacementObj.location || 'Designated Location'}`}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>
+                            {`Pickup: ${formatDate(repPickup)} at ${vehicleReplacementObj.pickup_time || '09:00 AM'}`}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.textMute, marginTop: 2 }}>
+                            {`Return: ${formatDate(repReturn)} at ${vehicleReplacementObj.return_time || '05:00 PM'}`}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.textSub, marginTop: 2 }}>
+                            {`Replacement Rental Provider: ${vehicleReplacementObj.provider_name || 'Rental Partner'}${vehicleReplacementObj.provider_phone ? ` \u2022 ${vehicleReplacementObj.provider_phone}` : ''}${vehicleReplacementObj.provider_email ? ` \u2022 ${vehicleReplacementObj.provider_email}` : ''}`}
+                          </Text>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary, marginTop: 2 }}>
+                            {`Pricing: ₱${Number(vehicleReplacementObj.pricing || vehicleReplacementObj.allocated_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </Text>
+                        </View>
+                      );
+                    })() : null}
                   </View>
 
                   {/* Day-by-Day Itinerary */}
@@ -2973,7 +3159,7 @@ export default function TripsScreen() {
 
                   {/* Action Buttons */}
                   <View style={{ marginTop: 18, gap: 10 }}>
-                    {(selectedPackageDetails.is_completed || selectedPackageDetails.status === 'completed' || selectedPackageDetails.package_overall_status === 'completed' || selectedPackageDetails.can_review) ? (
+                    {!isCancelled && isPkgCompleted && (selectedPackageDetails.can_review || overallStatus === 'completed') ? (
                       <TouchableOpacity
                         style={[
                           styles.attractionActionBtn,
@@ -3039,8 +3225,8 @@ export default function TripsScreen() {
                       <Text style={[styles.attractionActionText, { color: '#FFFFFF' }]}>View Payment Receipt</Text>
                     </TouchableOpacity>
 
-                    {/* Cancel Package Button: Positioned directly below View Payment Receipt button */}
-                    {!isCancelled && !isPkgCompleted && !isAllCompleted && overallStatus !== 'completed' ? (
+                    {/* Cancel Booking Button: Automatically hidden once all providers confirm */}
+                    {!isCancelled && !isPkgCompleted && !isAllCompleted && overallStatus !== 'completed' && !isAllConfirmed && overallStatus !== 'confirmed' ? (
                       <TouchableOpacity
                         style={[styles.cancelModalBtn, { borderColor: '#EF4444', backgroundColor: isDark ? '#7F1D1D22' : '#FEF2F2', paddingVertical: 12 }]}
                         disabled={isSubmittingPkgOption}
@@ -3051,7 +3237,7 @@ export default function TripsScreen() {
                         ) : (
                           <>
                             <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
-                            <Text style={{ color: '#EF4444', fontWeight: '800' }}>Cancel Package</Text>
+                            <Text style={{ color: '#EF4444', fontWeight: '800' }}>Cancel Booking</Text>
                           </>
                         )}
                       </TouchableOpacity>
@@ -3254,6 +3440,7 @@ export default function TripsScreen() {
                       selectedPackageReceipt.status !== 'completed' &&
                       selectedPackageReceipt.status !== 'cancelled' &&
                       selectedPackageReceipt.status !== 'refunded' &&
+                      (!selectedPackageReceipt.package_booking_ref || (selectedPackageReceipt.package_overall_status !== 'confirmed' && selectedPackageReceipt.status !== 'confirmed')) &&
                       selectedPackageReceipt.cancellation?.can_cancel ? (
                         <TouchableOpacity
                           style={[styles.cancelModalBtn, { borderColor: '#EF4444', backgroundColor: isDark ? '#7F1D1D22' : '#FEF2F2' }]}

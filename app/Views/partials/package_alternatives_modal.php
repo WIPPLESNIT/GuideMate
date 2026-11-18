@@ -62,8 +62,8 @@
                         <div style="display:flex;align-items:center;gap:10px;">
                             <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#EFF6FF;color:#2563EB;font-weight:800;font-size:0.85rem;">B</span>
                             <div>
-                                <h4 style="margin:0;font-size:0.95rem;font-weight:700;color:#0F172A;">Option B: Reschedule the Cancelled Service</h4>
-                                <small style="color:#64748B;">Request an alternative date/schedule while keeping all other confirmed services unchanged.</small>
+                                <h4 style="margin:0;font-size:0.95rem;font-weight:700;color:#0F172A;">Option B: Reschedule Travel Date</h4>
+                                <small style="color:#64748B;">Reschedule the entire travel package to a new date. Synchronizes with hotel, rental, and guide bookings (status will become Pending awaiting provider reconfirmation).</small>
                             </div>
                         </div>
                         <button type="button" id="btnToggleReschedule" onclick="toggleOptionSection('reschedule')" class="btn btn-sm btn-ghost" style="font-weight:700;white-space:nowrap;border-color:#CBD5E1;">
@@ -72,25 +72,28 @@
                     </div>
                     <!-- Reschedule Form Container -->
                     <div id="pkgRescheduleContainer" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #E2E8F0;">
+                        <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:0.83rem;color:#475569;">
+                            Current Travel Date: <strong id="rescheduleCurrentTravelDate" style="color:#0F172A;">—</strong>
+                        </div>
                         <form id="pkgRescheduleForm" method="post" action="">
                             <input type="hidden" name="_token" value="<?= e(csrf_token()) ?>">
                             <input type="hidden" name="item_id" id="rescheduleItemId" value="">
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                                 <div>
-                                    <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">New Date *</label>
+                                    <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">New Travel Date *</label>
                                     <input type="date" name="new_date" id="rescheduleNewDate" required min="<?= date('Y-m-d') ?>" class="form-control" style="width:100%;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.85rem;">
                                 </div>
                                 <div>
-                                    <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">New Time (Optional)</label>
+                                    <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">New Start Time (Optional)</label>
                                     <input type="time" name="new_time" id="rescheduleNewTime" class="form-control" style="width:100%;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.85rem;">
                                 </div>
                             </div>
                             <div style="margin-top:10px;">
-                                <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Notes for Provider (Optional)</label>
-                                <input type="text" name="notes" placeholder="e.g. Adjusted check-in time coordinated with host" class="form-control" style="width:100%;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.85rem;">
+                                <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Notes for Providers &amp; Traveler (Optional)</label>
+                                <input type="text" name="notes" placeholder="e.g. Adjusted itinerary schedule coordinated with guest" class="form-control" style="width:100%;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.85rem;">
                             </div>
                             <div style="margin-top:12px;text-align:right;">
-                                <button type="submit" class="btn btn-primary btn-sm" style="font-weight:700;">Submit Reschedule Request</button>
+                                <button type="submit" class="btn btn-primary btn-sm" style="font-weight:700;background:#2563EB;border-color:#2563EB;">Confirm Reschedule</button>
                             </div>
                         </form>
                     </div>
@@ -164,11 +167,33 @@ function openOptionBModal(pkgRef, summaryOrId) {
 }
 
 function openPackageOptionsModal(summary, defaultTab = 'replace') {
+    if (!summary) return;
+    if (typeof summary === 'string') {
+        summary = { package_booking_ref: summary };
+    }
+    const pkgRef = summary.package_booking_ref || '';
+    if ((!summary.cancelled_items || summary.cancelled_items.length === 0) && pkgRef) {
+        fetch('<?= url('/bookings/package/') ?>' + encodeURIComponent(pkgRef) + '/summary')
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.summary) {
+                    openPackageOptionsModal(data.summary, defaultTab);
+                }
+            })
+            .catch(() => {});
+        return;
+    }
+
     currentPackageSummary = summary;
     const modal = document.getElementById('pkgAlternativesModal');
-    if (!modal || !summary) return;
+    if (!modal) return;
 
-    document.getElementById('pkgModalRefLabel').textContent = 'Package Ref: #' + (summary.package_booking_ref || '');
+    document.getElementById('pkgModalRefLabel').textContent = 'Package Ref: #' + pkgRef;
+
+    const curDateEl = document.getElementById('rescheduleCurrentTravelDate');
+    if (curDateEl) {
+        curDateEl.textContent = summary.travel_date || summary.booking_date || '—';
+    }
 
     const cancelledItem = (summary.cancelled_items && summary.cancelled_items.length > 0) ? summary.cancelled_items[0] : null;
     if (cancelledItem) {
@@ -206,6 +231,22 @@ function openPackageOptionsModal(summary, defaultTab = 'replace') {
             document.getElementById('pkgReplacementContainer').style.display = 'none';
             document.getElementById('pkgRescheduleContainer').style.display = 'block';
         }
+    } else {
+        document.getElementById('pkgCancelledCategoryBadge').textContent = 'Disrupted Service';
+        document.getElementById('pkgCancelledProviderTitle').textContent = 'Service Disruption Review';
+        document.getElementById('pkgCancelledReason').textContent = '';
+        document.getElementById('pkgCancelledSchedule').textContent = '';
+        const ref = encodeURIComponent(pkgRef);
+        document.getElementById('pkgRescheduleForm').action = '<?= url('/bookings/package/') ?>' + ref + '/reschedule';
+        document.getElementById('rescheduleItemId').value = '0';
+        if (defaultTab === 'replace') {
+            document.getElementById('pkgReplacementContainer').style.display = 'block';
+            document.getElementById('pkgRescheduleContainer').style.display = 'none';
+            loadAlternatives(pkgRef, 0, 0, parseFloat(summary.total_amount || 0));
+        } else if (defaultTab === 'reschedule') {
+            document.getElementById('pkgReplacementContainer').style.display = 'none';
+            document.getElementById('pkgRescheduleContainer').style.display = 'block';
+        }
     }
 
     modal.style.display = 'flex';
@@ -223,7 +264,18 @@ function toggleOptionSection(opt) {
     };
     for (const key in containers) {
         if (key === opt) {
-            containers[key].style.display = (containers[key].style.display === 'block') ? 'none' : 'block';
+            const nextDisplay = (containers[key].style.display === 'block') ? 'none' : 'block';
+            containers[key].style.display = nextDisplay;
+            if (key === 'replace' && nextDisplay === 'block') {
+                const cancelledItem = (currentPackageSummary && currentPackageSummary.cancelled_items && currentPackageSummary.cancelled_items.length > 0) ? currentPackageSummary.cancelled_items[0] : null;
+                const ref = currentPackageSummary ? currentPackageSummary.package_booking_ref : '';
+                loadAlternatives(
+                    ref,
+                    cancelledItem ? cancelledItem.id : 0,
+                    cancelledItem ? parseFloat(cancelledItem.allocated_amount || 0) : 0,
+                    currentPackageSummary ? parseFloat(currentPackageSummary.total_amount || 0) : 0
+                );
+            }
         } else {
             containers[key].style.display = 'none';
         }
@@ -251,45 +303,100 @@ function loadAlternatives(ref, itemId, originalAllocated, currentPackageTotal) {
         .then(data => {
             loadEl.style.display = 'none';
             listEl.innerHTML = '';
-            const alts = data.alternatives || [];
+            const alts = Array.isArray(data.alternatives)
+                ? data.alternatives
+                : (Array.isArray(data.alternatives?.alternatives) ? data.alternatives.alternatives : []);
+
             if (alts.length === 0) {
-                listEl.innerHTML = '<div style="font-size:0.85rem;color:#64748B;text-align:center;padding:12px;">No available replacements found in this category. You may use Option B to reschedule the service date.</div>';
+                listEl.innerHTML = '<div style="font-size:0.875rem;color:#64748B;text-align:center;padding:18px 12px;background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:8px;line-height:1.5;">No available replacement services found for this cancelled service. Please try again later or consider another available service disruption option.</div>';
                 return;
             }
+
             alts.forEach(alt => {
-                const altPrice = parseFloat(alt.price || 0);
-                const priceDiff = altPrice - originalAllocated;
-                const newPkgTotal = currentPackageTotal + priceDiff;
-                const priceDiffText = priceDiff > 0
-                    ? '+ ₱' + priceDiff.toLocaleString('en-US', {minimumFractionDigits: 2})
-                    : (priceDiff < 0 ? '- ₱' + Math.abs(priceDiff).toLocaleString('en-US', {minimumFractionDigits: 2}) : 'No price change');
+                const altRate = parseFloat(alt.price || 0);
+                const altTotal = parseFloat(alt.total_cost || alt.pricing || altRate);
+                const priceDiff = altTotal - originalAllocated;
+                const newPkgTotal = currentPackageTotal + (priceDiff < 0 ? priceDiff : 0);
+                const priceDiffText = priceDiff < 0
+                    ? 'Surplus Refund to Guest: ₱' + Math.abs(priceDiff).toLocaleString('en-US', {minimumFractionDigits: 2})
+                    : (priceDiff === 0 ? 'Reallocated in full (No extra charge)' : 'Exceeds original price (+ ₱' + priceDiff.toLocaleString('en-US', {minimumFractionDigits: 2}) + ')');
+
+                const isExceeding = priceDiff > 0;
+
+                const imgHtml = alt.image
+                    ? `<img src="${alt.image.startsWith('http') || alt.image.startsWith('/') ? alt.image : '<?= url('/') ?>/' + alt.image.replace(/^\/+/, '')}" alt="${alt.title || ''}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0;flex-shrink:0;">`
+                    : `<div style="width:72px;height:72px;border-radius:8px;background:#F1F5F9;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#94A3B8;flex-shrink:0;">🏞️</div>`;
+
+                let detailsHtml = '';
+                if (alt.type === 'hotel') {
+                    detailsHtml = `
+                        <div style="font-size:0.78rem;color:#475569;margin-top:2px;">
+                            <strong>Room:</strong> ${alt.room_name || 'Standard Room'} &bull;
+                            <strong>Capacity:</strong> ${alt.capacity || 2} guests &bull;
+                            <strong>Available:</strong> ${alt.available_units || 1} room(s)
+                        </div>
+                        <div style="font-size:0.76rem;color:#64748B;margin-top:2px;">
+                            Location: ${alt.area || 'Cebu'} &bull; Provider: ${alt.provider_name}
+                        </div>
+                    `;
+                } else if (alt.type === 'vehicle') {
+                    detailsHtml = `
+                        <div style="font-size:0.78rem;color:#475569;margin-top:2px;">
+                            <strong>Type:</strong> ${alt.vehicle_type || 'Vehicle'} &bull;
+                            <strong>Passenger Capacity:</strong> ${alt.capacity || 4} seats &bull;
+                            <strong>Location:</strong> ${alt.location || alt.area || 'Cebu'}
+                        </div>
+                        <div style="font-size:0.76rem;color:#64748B;margin-top:2px;">
+                            Provider: ${alt.provider_name}
+                        </div>
+                    `;
+                } else {
+                    detailsHtml = `
+                        <div style="font-size:0.78rem;color:#475569;margin-top:2px;">
+                            <strong>Category:</strong> ${alt.service_category_label || 'Things to Do'} &bull;
+                            <strong>Capacity:</strong> Up to ${alt.capacity || 10} guests &bull;
+                            <strong>Area:</strong> ${alt.area || 'Cebu'}
+                        </div>
+                        <div style="font-size:0.76rem;color:#64748B;margin-top:2px;">
+                            Provider: ${alt.provider_name}
+                        </div>
+                    `;
+                }
 
                 const card = document.createElement('div');
-                card.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:8px;background:#F8FAFC;gap:12px;';
+                card.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;background:#FFFFFF;gap:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);';
                 card.innerHTML = `
-                    <div style="flex:1;">
-                        <strong style="display:block;font-size:0.9rem;color:#0F172A;">${alt.title || alt.room_name}</strong>
-                        <div style="font-size:0.78rem;color:#64748B;margin-top:2px;">Provider: ${alt.provider_name} &bull; ${alt.area || alt.location || 'Cebu'}</div>
-                        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:0.82rem;">
-                            <span style="color:#059669;font-weight:700;">Service Price: ₱${altPrice.toLocaleString('en-US', {minimumFractionDigits:2})}</span>
-                            <span style="color:${priceDiff > 0 ? '#B45309' : (priceDiff < 0 ? '#059669' : '#64748B')};font-weight:600;font-size:0.76rem;">(${priceDiffText})</span>
+                    <div style="display:flex;align-items:flex-start;gap:12px;flex:1;">
+                        ${imgHtml}
+                        <div style="flex:1;">
+                            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                <strong style="font-size:0.92rem;color:#0F172A;">${alt.title || alt.room_name}</strong>
+                                <span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:9999px;font-size:0.7rem;font-weight:700;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;">✓ Available</span>
+                            </div>
+                            ${detailsHtml}
+                            <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:0.82rem;flex-wrap:wrap;">
+                                <span style="color:#059669;font-weight:700;">Cost: ₱${altTotal.toLocaleString('en-US', {minimumFractionDigits:2})}</span>
+                                <span style="color:${isExceeding ? '#DC2626' : (priceDiff < 0 ? '#059669' : '#2563EB')};font-weight:700;font-size:0.76rem;background:${isExceeding ? '#FEF2F2' : (priceDiff < 0 ? '#ECFDF5' : '#EFF6FF')};padding:2px 7px;border-radius:4px;">${priceDiffText}</span>
+                            </div>
                         </div>
-                        <div style="font-size:0.76rem;color:#475569;margin-top:2px;">Recalculated Package Total: <strong>₱${newPkgTotal.toLocaleString('en-US', {minimumFractionDigits:2})}</strong></div>
                     </div>
-                    <form method="post" action="<?= url('/bookings/package/') ?>${encodeURIComponent(ref)}/replace" style="margin:0;" onsubmit="return confirm('Confirm replacing service with ${alt.title || alt.room_name}? Updated package total: ₱${newPkgTotal.toLocaleString('en-US', {minimumFractionDigits:2})}');">
+                    <form method="post" action="<?= url('/bookings/package/') ?>${encodeURIComponent(ref)}/replace" style="margin:0;align-self:center;" onsubmit="return confirm('Confirm replacing this service with ${alt.title || alt.room_name}?\\n\\nAllocated Cost: ₱${altTotal.toLocaleString('en-US', {minimumFractionDigits:2})}');">
                         <input type="hidden" name="_token" value="<?= e(csrf_token()) ?>">
                         <input type="hidden" name="item_id" value="${resolvedItemId}">
                         <input type="hidden" name="provider_id" value="${alt.provider_id}">
                         <input type="hidden" name="service_id" value="${alt.listing_id || alt.vehicle_id || alt.provider_id}">
                         <input type="hidden" name="room_id" value="${alt.room_id || 0}">
-                        <button type="submit" class="btn btn-sm btn-primary" style="font-weight:700;white-space:nowrap;">Select &amp; Replace</button>
+                        <button type="submit" ${isExceeding ? 'disabled' : ''} class="btn btn-sm ${isExceeding ? 'btn-ghost' : 'btn-primary'}" style="font-weight:700;white-space:nowrap;padding:7px 14px;border-radius:6px;${isExceeding ? 'cursor:not-allowed;opacity:0.6;' : ''}">
+                            ${isExceeding ? 'Price Exceeded' : 'Select &amp; Replace'}
+                        </button>
                     </form>
                 `;
                 listEl.appendChild(card);
             });
         })
         .catch(() => {
-            loadEl.textContent = 'Could not load alternative providers at this time.';
+            loadEl.style.display = 'none';
+            listEl.innerHTML = '<div style="font-size:0.875rem;color:#DC2626;text-align:center;padding:12px;">Could not load alternative providers at this time. Please try again.</div>';
         });
 }
 </script>

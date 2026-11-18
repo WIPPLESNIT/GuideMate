@@ -316,6 +316,9 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
                                         </div>
                                     <?php endif; ?>
                                     <div class="booking-actions-btns">
+                                    <?php if ($isPkg): ?>
+                                        <button type="button" class="btn btn-ghost btn-sm booking-action-btn" onclick="openPackageDetailsModal(<?= htmlspecialchars(json_encode($pkgSummary ?? ($b['package_booking_ref'] ?? $b['id'])), ENT_QUOTES, 'UTF-8') ?>)">Package Details</button>
+                                    <?php endif; ?>
                                     <?php if (($b['payment_status'] ?? '') !== 'paid' && $b['status'] !== 'cancelled' && $b['status'] !== 'refunded'): ?>
                                         <a class="btn btn-primary btn-sm booking-action-btn" href="<?= e(url('/checkout/' . $b['id'])) ?>">Pay</a>
                                     <?php endif; ?>
@@ -366,3 +369,5 @@ $displayBookings = array_filter($currentPool, function ($b) use ($cat) {
         <?php endif; ?>
     </div>
 </section>
+
+<?= \App\Core\View::partial('partials/package_details_modal') ?>

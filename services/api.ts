@@ -252,6 +252,11 @@ export type ApiBooking = {
   package_overall_status?: string | null;
   has_cancellation?: boolean;
   cancelled_items?: any[];
+  all_cancelled_items?: any[];
+  replacement_hotel?: any;
+  replacement_vehicle?: any;
+  original_hotel?: any;
+  original_vehicle?: any;
   alternative_options?: any;
   package_summary?: any;
   audit_logs?: any[];

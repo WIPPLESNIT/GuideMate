@@ -391,21 +391,46 @@ final class GuideController extends Controller
             if (in_array($current, ['cancelled', 'refunded', 'disputed'], true)) {
                 flash('error', 'This booking can no longer be updated.');
                 redirect('/dashboard/bookings');
+                return;
             }
-            if ($status === 'completed' && !in_array($current, ['confirmed', 'completed'], true) && ($booking['package_overall_status'] ?? '') !== 'confirmed') {
+            $isPkg = !empty($booking['package_booking_ref']);
+            $overallPkgStatus = (string) ($booking['package_overall_status'] ?? '');
+            if ($status === 'confirmed' && $isPkg && $overallPkgStatus === 'partially_confirmed') {
+                flash('error', 'You have already confirmed this package. Currently awaiting provider confirmations.');
+                redirect('/dashboard/bookings');
+                return;
+            }
+            if ($status === 'completed' && !in_array($current, ['confirmed', 'completed'], true) && $overallPkgStatus !== 'confirmed') {
                 flash('error', 'Confirm this booking first before marking it completed.');
                 redirect('/dashboard/bookings');
+                return;
             }
             Booking::updateStatus((int) $booking['id'], $status);
             \App\Services\PackageBookingService::onBookingUpdated((int) $booking['id'], $status, (int) Auth::id());
             if ($status === 'confirmed') {
                 Booking::ensureVerifyToken((int) $booking['id']);
-                NotificationService::bookingConfirmed(
-                    (string) $booking['customer_email'],
-                    (string) $booking['listing_title'],
-                    (string) $booking['booking_date']
-                );
-                flash('success', 'Booking confirmed. The tourist has been notified.');
+                if ($isPkg) {
+                    $pkgRef = (string) $booking['package_booking_ref'];
+                    $customerEmail = (string) ($booking['customer_email'] ?? '');
+                    $customerName = (string) ($booking['customer_name'] ?? 'Traveler');
+                    $title = (string) ($booking['listing_title'] ?? 'Travel Package');
+                    NotificationService::packageGuideAcceptedAwaitingProviders($customerEmail, $customerName, $title, $pkgRef);
+                    if (!empty($booking['user_id'])) {
+                        \App\Services\PackageBookingService::createAutomatedMessage(
+                            (int) $booking['user_id'],
+                            "Guide Accepted: Package #{$pkgRef}",
+                            "Your guide has accepted your booking request for '{$title}' (#{$pkgRef}). We are now awaiting confirmation from included service providers."
+                        );
+                    }
+                    flash('success', 'Travel package accepted. Booking is now Awaiting Providers Confirmation, and the traveler has been notified.');
+                } else {
+                    NotificationService::bookingConfirmed(
+                        (string) $booking['customer_email'],
+                        (string) $booking['listing_title'],
+                        (string) $booking['booking_date']
+                    );
+                    flash('success', 'Booking confirmed. The tourist has been notified.');
+                }
             } else {
                 flash('success', 'Booking marked as completed.');
             }

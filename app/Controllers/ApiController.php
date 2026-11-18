@@ -3442,6 +3442,12 @@ final class ApiController extends Controller
             || $packageDetails !== null
             || str_contains(strtolower((string)($booking['listing_title'] ?? '')), 'package');
 
+        if ($isPackage) {
+            $pkgListing = Listing::find($listingId);
+            $durations = \App\Services\PackageBookingService::derivePackageDurations($pkgListing ?: $listingId);
+            $daysCount = $durations['days'];
+        }
+
         // Hotel check: must be hotel category or have a valid room, and never an activity/attraction/package
         $isHotel = !$isPackage && (
             $categorySlug === 'hotels'
@@ -3584,6 +3590,17 @@ final class ApiController extends Controller
             if (!isset($packageDetails['rental_included'])) {
                 $packageDetails['rental_included'] = !empty($packageDetails['rental']);
             }
+            if (!empty($rawNotes)) {
+                $parsedNotes = json_decode($rawNotes, true);
+                if (is_array($parsedNotes) && isset($parsedNotes['package_details'])) {
+                    if (!empty($parsedNotes['package_details']['accommodation_replacement'])) {
+                        $packageDetails['accommodation_replacement'] = $parsedNotes['package_details']['accommodation_replacement'];
+                    }
+                    if (!empty($parsedNotes['package_details']['rental_replacement'])) {
+                        $packageDetails['rental_replacement'] = $parsedNotes['package_details']['rental_replacement'];
+                    }
+                }
+            }
         }
 
         $pkgSummary = $isPackage
@@ -3595,7 +3612,60 @@ final class ApiController extends Controller
                 ? 'completed'
                 : ($booking['package_overall_status'] ?? $status));
 
-        $providerStatuses = $pkgSummary['items'] ?? [];
+        if ($packageDetails !== null && $pkgSummary !== null) {
+            $summaryVehicle = null;
+            $summaryHotel = null;
+            $itemsList = $pkgSummary['items'] ?? [];
+            foreach ($itemsList as $it) {
+                if (($it['service_type'] ?? '') === 'vehicle' && empty($it['is_replacement']) && $summaryVehicle === null) {
+                    $summaryVehicle = $it;
+                }
+                if (($it['service_type'] ?? '') === 'hotel' && empty($it['is_replacement']) && $summaryHotel === null) {
+                    $summaryHotel = $it;
+                }
+            }
+
+            if (empty($packageDetails['accommodation_replacement']) && !empty($pkgSummary['replacement_hotel'])) {
+                $packageDetails['accommodation_replacement'] = $pkgSummary['replacement_hotel'];
+            }
+            if (empty($packageDetails['rental_replacement']) && !empty($pkgSummary['replacement_vehicle'])) {
+                $packageDetails['rental_replacement'] = $pkgSummary['replacement_vehicle'];
+            }
+
+            if ($summaryVehicle !== null && empty($packageDetails['rental'])) {
+                $packageDetails['rental'] = [
+                    'vehicle_name' => $summaryVehicle['vehicle_name'] ?? $summaryVehicle['service_name'] ?? 'Rental Vehicle',
+                    'vehicle_type' => $summaryVehicle['vehicle_type'] ?? 'Vehicle',
+                    'pickup_date' => $summaryVehicle['rental_pickup_date'] ?? $summaryVehicle['pickup_date'] ?? (string) $booking['booking_date'],
+                    'return_date' => $summaryVehicle['rental_return_date'] ?? date('Y-m-d', strtotime(((string) $booking['booking_date']) . " +{$daysCount} days")),
+                    'rental_days' => max(1, (int) ($summaryVehicle['rental_days'] ?? $daysCount)),
+                    'duration_days' => max(1, (int) ($summaryVehicle['rental_days'] ?? $daysCount)),
+                    'provider_name' => $summaryVehicle['provider_name'] ?? 'Rental Partner',
+                ];
+                $packageDetails['rental_included'] = true;
+            } elseif (!empty($packageDetails['rental'])) {
+                $packageDetails['rental']['rental_days'] = max(1, (int) ($summaryVehicle['rental_days'] ?? $packageDetails['rental']['rental_days'] ?? $daysCount));
+                $packageDetails['rental']['duration_days'] = $packageDetails['rental']['rental_days'];
+            }
+
+            if ($summaryHotel !== null && empty($packageDetails['accommodation'])) {
+                $packageDetails['accommodation'] = [
+                    'hotel_name' => $summaryHotel['service_name'] ?? 'Partner Hotel',
+                    'room_name' => 'Selected Room',
+                    'check_in_date' => $summaryHotel['hotel_check_in_date'] ?? (string) $booking['booking_date'],
+                    'check_out_date' => $summaryHotel['hotel_check_out_date'] ?? date('Y-m-d', strtotime(((string) $booking['booking_date']) . " +" . max(1, $daysCount - 1) . " days")),
+                    'nights' => max(1, (int) ($summaryHotel['hotel_nights'] ?? max(1, $daysCount - 1))),
+                    'duration_nights' => max(1, (int) ($summaryHotel['hotel_nights'] ?? max(1, $daysCount - 1))),
+                    'provider_name' => $summaryHotel['provider_name'] ?? 'Hotel Partner',
+                ];
+                $packageDetails['hotel_included'] = true;
+            } elseif (!empty($packageDetails['accommodation'])) {
+                $packageDetails['accommodation']['nights'] = max(1, (int) ($summaryHotel['hotel_nights'] ?? $packageDetails['accommodation']['nights'] ?? max(1, $daysCount - 1)));
+                $packageDetails['accommodation']['duration_nights'] = $packageDetails['accommodation']['nights'];
+            }
+        }
+
+        $providerStatuses = !empty($pkgSummary['active_items']) ? $pkgSummary['active_items'] : ($pkgSummary['items'] ?? []);
         if (empty($providerStatuses) && $isPackage) {
             $guideItemStatus = ($status === 'confirmed' && empty($booking['package_overall_status'])) ? 'pending' : ($status === 'cancelled' ? 'cancelled' : 'pending');
             $providerStatuses = [
@@ -3607,24 +3677,24 @@ final class ApiController extends Controller
                     'status' => $guideItemStatus,
                 ]
             ];
-            if (!empty($packageDetails['hotel_included']) && !empty($packageDetails['accommodation'])) {
-                $hotel = $packageDetails['accommodation'];
+            if (!empty($packageDetails['hotel_included']) && (!empty($packageDetails['accommodation']) || !empty($packageDetails['accommodation_replacement']))) {
+                $hotel = $packageDetails['accommodation_replacement'] ?? $packageDetails['accommodation'];
                 $providerStatuses[] = [
                     'service_type' => 'hotel',
-                    'provider_id' => (int) ($hotel['hotel_id'] ?? $hotel['user_id'] ?? 0),
-                    'provider_name' => (string) ($hotel['hotel_name'] ?? $hotel['name'] ?? 'Hotel Provider'),
+                    'provider_id' => (int) ($hotel['provider_id'] ?? $hotel['hotel_id'] ?? $hotel['user_id'] ?? 0),
+                    'provider_name' => (string) ($hotel['provider_name'] ?? $hotel['hotel_name'] ?? $hotel['name'] ?? 'Hotel Provider'),
                     'service_title' => (string) ($hotel['room_name'] ?? $hotel['roomType'] ?? 'Room Accommodation'),
-                    'status' => 'pending',
+                    'status' => (string) ($hotel['status'] ?? 'pending'),
                 ];
             }
-            if (!empty($packageDetails['rental_included']) && !empty($packageDetails['rental'])) {
-                $rental = $packageDetails['rental'];
+            if (!empty($packageDetails['rental_included']) && (!empty($packageDetails['rental']) || !empty($packageDetails['rental_replacement']))) {
+                $rental = $packageDetails['rental_replacement'] ?? $packageDetails['rental'];
                 $providerStatuses[] = [
                     'service_type' => 'vehicle',
-                    'provider_id' => (int) ($rental['vehicle_id'] ?? $rental['user_id'] ?? 0),
-                    'provider_name' => (string) ($rental['owner_name'] ?? $rental['rental_name'] ?? 'Rental Provider'),
-                    'service_title' => (string) ($rental['vehicle_name'] ?? $rental['name'] ?? 'Vehicle Rental'),
-                    'status' => 'pending',
+                    'provider_id' => (int) ($rental['provider_id'] ?? $rental['vehicle_id'] ?? $rental['user_id'] ?? 0),
+                    'provider_name' => (string) ($rental['provider_name'] ?? $rental['owner_name'] ?? $rental['rental_name'] ?? 'Rental Provider'),
+                    'service_title' => (string) ($rental['vehicle_name'] ?? $rental['model'] ?? $rental['name'] ?? 'Vehicle Rental'),
+                    'status' => (string) ($rental['status'] ?? 'pending'),
                 ];
             }
         }
@@ -3716,7 +3786,8 @@ final class ApiController extends Controller
 
         $canReport = ($paid || ($isHotel && ($totalPaid > 0.0 || $hotelDepositAmount > 0.0)) || $isPaymentPaid) && in_array($status, ['confirmed', 'completed', 'disputed'], true) && empty($booking['dispute_id']);
         $reviewed = $viewerId !== null && Review::userHasReviewed($listingId, $viewerId);
-        $canReview = $status === 'completed' && !$reviewed;
+        $effectiveStatus = $isPackage ? $overallPackageStatus : $status;
+        $canReview = ($effectiveStatus === 'completed' || ($isCompleted && $effectiveStatus !== 'cancelled' && $effectiveStatus !== 'refunded')) && !$reviewed && $effectiveStatus !== 'cancelled' && $effectiveStatus !== 'refunded';
 
         return [
             'id' => (int) $booking['id'],
@@ -3770,6 +3841,11 @@ final class ApiController extends Controller
             'package_overall_status' => $overallPackageStatus,
             'provider_statuses' => $providerStatuses,
             'package_summary' => $pkgSummary,
+            'replacement_hotel' => $pkgSummary['replacement_hotel'] ?? ($packageDetails['accommodation_replacement'] ?? null),
+            'replacement_vehicle' => $pkgSummary['replacement_vehicle'] ?? ($packageDetails['rental_replacement'] ?? null),
+            'all_cancelled_items' => $pkgSummary['all_cancelled_items'] ?? [],
+            'original_hotel' => $pkgSummary['original_hotel'] ?? ($packageDetails['accommodation'] ?? null),
+            'original_vehicle' => $pkgSummary['original_vehicle'] ?? ($packageDetails['rental'] ?? null),
             'cancelled_items' => $pkgSummary['cancelled_items'] ?? [],
             'has_cancellation' => !empty($pkgSummary['has_cancellation']),
             'alternative_options' => $pkgSummary['alternative_options'] ?? null,

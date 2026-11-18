@@ -31,6 +31,11 @@ function assertCondition(bool $condition, string $message): void {
 // Ensure database setup
 PackageBookingService::ensureTables();
 
+// Clean up any stale test records from previous runs
+Database::run("DELETE FROM bookings WHERE package_booking_ref LIKE 'GM-PKG-HOST-%'");
+Database::run("DELETE FROM rental_requests WHERE package_booking_ref LIKE 'GM-PKG-HOST-%'");
+Database::run("DELETE FROM package_booking_items WHERE package_booking_ref LIKE 'GM-PKG-HOST-%'");
+
 // Find or create test users
 $tourist = Database::first("SELECT id, email, name FROM users WHERE role = 'tourist' LIMIT 1");
 $touristId = (int) ($tourist['id'] ?? 4);

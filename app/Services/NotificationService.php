@@ -277,6 +277,22 @@ HTML;
         self::send($guideEmail, $subject, $body);
     }
 
+    public static function packageGuideAcceptedAwaitingProviders(
+        string $travelerEmail,
+        string $travelerName,
+        string $packageTitle,
+        string $bookingRef
+    ): void {
+        $subject = 'Guide Accepted: Waiting for Service Providers — ' . $packageTitle . ' (Ref: #' . $bookingRef . ')';
+        $body = "Hi {$travelerName},\n\n"
+            . "Great news! Your guide has accepted your booking request for the travel package \"{$packageTitle}\" (Ref: #{$bookingRef}).\n\n"
+            . "The package is now awaiting confirmation from the included service providers (such as hotel accommodation and vehicle rental).\n\n"
+            . "We will notify you immediately once all providers have confirmed your booking.\n\n"
+            . self::appUrl('/trips');
+
+        self::send($travelerEmail, $subject, $body);
+    }
+
     public static function packageHotelReservationToProvider(
         string $providerEmail,
         string $providerName,

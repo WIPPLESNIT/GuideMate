@@ -353,8 +353,12 @@ final class BookingController extends Controller
         }
 
         $itemId = (int) $this->input('item_id', 0);
-        $alternatives = \App\Services\PackageBookingService::getAvailableAlternatives($ref, $itemId);
-        $this->json(['success' => true, 'alternatives' => $alternatives]);
+        $res = \App\Services\PackageBookingService::getAvailableAlternatives($ref, $itemId);
+        $this->json([
+            'success' => true,
+            'cancelled_item' => $res['cancelled_item'] ?? null,
+            'alternatives' => $res['alternatives'] ?? [],
+        ]);
     }
 
     public function packageReplace(string $ref): void
@@ -411,14 +415,25 @@ final class BookingController extends Controller
             return;
         }
 
-        $itemId = (int) $this->input('item_id', 0);
         $newDate = trim((string) $this->input('new_date', ''));
         $newTime = trim((string) $this->input('new_time', ''));
         $notes = trim((string) $this->input('notes', ''));
 
+        if ($newDate === '' || strtotime($newDate) < strtotime('today')) {
+            flash('error', 'Please provide a valid future travel date.');
+            redirect('/dashboard/bookings');
+            return;
+        }
+
         try {
-            $res = \App\Services\PackageBookingService::rescheduleCancelledService($ref, $itemId, $newDate, $newTime !== '' ? $newTime : null, $notes !== '' ? $notes : null, $userId);
-            flash('success', $res['message'] ?? 'Service rescheduled successfully.');
+            $res = \App\Services\PackageBookingService::rescheduleEntirePackage(
+                $ref,
+                $newDate,
+                $newTime !== '' ? $newTime : null,
+                $userId,
+                $notes !== '' ? $notes : 'Rescheduled by host'
+            );
+            flash('success', $res['message'] ?? 'Travel package rescheduled successfully.');
         } catch (\Throwable $e) {
             flash('error', $e->getMessage());
         }

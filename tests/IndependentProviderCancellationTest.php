@@ -156,28 +156,36 @@ assertTest(isset($summary['alternative_options']['replace']) && isset($summary['
 // ---------------------------------------------------------------------
 echo "\n3. Testing Option A: Replace Cancelled Service...\n";
 
-// Find or create an alternative hotel listing
-$altHotel = Database::first("SELECT id, user_id FROM listings WHERE category_id = (SELECT id FROM categories WHERE slug = 'hotels' LIMIT 1) AND id != ? LIMIT 1", [$pkgListingId]);
+// Find or create an alternative hotel listing with price <= original (5000 / 2 nights = 2500/night)
+$altHotel = Database::first("SELECT id, user_id FROM listings WHERE category_id = (SELECT id FROM categories WHERE slug = 'hotels' LIMIT 1) AND price <= 2500.00 AND id != ? LIMIT 1", [$pkgListingId]);
 if (!$altHotel) {
     $altCatId = Database::first("SELECT id FROM categories WHERE slug = 'hotels' LIMIT 1")['id'] ?? 2;
-    $altHotelId = Database::insert("INSERT INTO listings (user_id, category_id, title, slug, price, area, status, created_at, updated_at) VALUES (?, ?, 'Replacement Beach Resort', 'replacement-beach-resort', 2600.00, 'Moalboal', 'approved', NOW(), NOW())", [$hotelPartnerId, $altCatId]);
+    $altHotelId = Database::insert("INSERT INTO listings (user_id, category_id, title, slug, price, area, status, created_at, updated_at) VALUES (?, ?, 'Replacement Beach Resort', 'replacement-beach-resort-" . time() . "', 2400.00, 'Moalboal', 'approved', NOW(), NOW())", [$hotelPartnerId, $altCatId]);
     $altHotelProviderId = $hotelPartnerId;
+    $altRoomId = (int) Database::insert("INSERT INTO hotel_rooms (listing_id, name, price_per_night, max_guests) VALUES (?, 'Standard Room', 2400.00, 2)", [$altHotelId]);
 } else {
     $altHotelId = (int) $altHotel['id'];
     $altHotelProviderId = (int) $altHotel['user_id'];
+    $altRoom = Database::first("SELECT id FROM hotel_rooms WHERE listing_id = ? AND price_per_night <= 2500.00 LIMIT 1", [$altHotelId]);
+    $altRoomId = $altRoom ? (int) $altRoom['id'] : 0;
 }
 
-$altRoom = Database::first("SELECT id FROM hotel_rooms WHERE listing_id = ? LIMIT 1", [$altHotelId]);
-$altRoomId = $altRoom ? (int) $altRoom['id'] : 0;
-
-$replaceRes = PackageBookingService::replaceCancelledService($pkgRef1, $hotelItemId, $altHotelProviderId, $altHotelId, ['room_id' => $altRoomId], $touristId);
+$replaceRes = PackageBookingService::replaceCancelledService($pkgRef1, $hotelItemId, $altHotelProviderId, $altHotelId, ['room_id' => $altRoomId], $guideId);
 assertTest($replaceRes['success'] === true, 'replaceCancelledService executed successfully');
 
-$hotelItemAfterReplace = Database::first("SELECT status, service_name, sub_booking_id, allocated_amount FROM package_booking_items WHERE id = ?", [$hotelItemId]);
-$parentAfterReplace = Database::first("SELECT status, package_overall_status, total_amount FROM bookings WHERE id = ?", [$parentBookingId]);
-$newSubBooking = Database::first("SELECT status, hotel_status FROM bookings WHERE id = ?", [(int) $hotelItemAfterReplace['sub_booking_id']]);
+// Replacement item is initially pending provider confirmation
+$repHotelItem = Database::first("SELECT id, status, service_name, sub_booking_id, allocated_amount FROM package_booking_items WHERE replaces_item_id = ?", [$hotelItemId]);
+assertTest($repHotelItem !== null, 'New replacement hotel item created');
+assertTest($repHotelItem['status'] === 'pending', 'Replacement hotel item is initially pending');
 
-assertTest($hotelItemAfterReplace['status'] === 'confirmed', 'Replaced hotel service item is now CONFIRMED');
+// Replacement provider confirms the booking
+PackageBookingService::respond($pkgRef1, 'hotel', $altHotelProviderId, 'confirm');
+
+$repHotelItemAfterConfirm = Database::first("SELECT status, service_name, sub_booking_id, allocated_amount FROM package_booking_items WHERE replaces_item_id = ?", [$hotelItemId]);
+$parentAfterReplace = Database::first("SELECT status, package_overall_status, total_amount FROM bookings WHERE id = ?", [$parentBookingId]);
+$newSubBooking = Database::first("SELECT status, hotel_status FROM bookings WHERE id = ?", [(int) $repHotelItemAfterConfirm['sub_booking_id']]);
+
+assertTest($repHotelItemAfterConfirm['status'] === 'confirmed', 'Replaced hotel service item is now CONFIRMED');
 assertTest($newSubBooking !== null && $newSubBooking['status'] === 'confirmed', 'New hotel sub-booking created and confirmed');
 assertTest($parentAfterReplace['package_overall_status'] === 'confirmed', 'Package overall status transitioned back to CONFIRMED');
 

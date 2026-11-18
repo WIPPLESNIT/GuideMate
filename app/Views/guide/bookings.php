@@ -354,7 +354,9 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                         $isActionRequired = $isPkg && $overallPkgStatus === 'action_required';
                                         $isCompleted = !$isActionRequired && ($bStatus === 'completed' || $overallPkgStatus === 'completed');
                                         $isCancelled = !$isActionRequired && (in_array($bStatus, ['cancelled', 'refunded'], true) || $overallPkgStatus === 'cancelled');
-                                        $isAwaiting = $isPkg && !$isCompleted && !$isCancelled && !$isActionRequired && ($overallPkgStatus === 'partially_confirmed' || $overallPkgStatus === 'pending' || ($bStatus === 'pending' && empty($overallPkgStatus)));
+                                        $isAwaiting = $isPkg && !$isCompleted && !$isCancelled && !$isActionRequired && ($overallPkgStatus === 'partially_confirmed');
+                                        $isPkgConfirmed = $isPkg && !$isCompleted && !$isCancelled && !$isActionRequired && ($overallPkgStatus === 'confirmed' || ($bStatus === 'confirmed' && $overallPkgStatus !== 'partially_confirmed' && $overallPkgStatus !== 'pending'));
+                                        $isPending = !$isCompleted && !$isCancelled && !$isActionRequired && !$isAwaiting && !$isPkgConfirmed && ($bStatus === 'pending' || $overallPkgStatus === 'pending');
 
                                         if ($isActionRequired): ?>
                                             <span class="pill pill-warning pill-action-required" style="display:inline-flex;align-items:center;justify-content:center;gap:0.35rem;padding:0.28rem 0.75rem;font-size:0.74rem;font-weight:700;line-height:1.2;white-space:nowrap;border-radius:9999px;background:#FEF3C7;color:#92400E;border:1.5px solid #F59E0B;box-shadow:0 1px 3px rgba(245, 158, 11, 0.15);">
@@ -370,7 +372,7 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                 <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#F59E0B;flex-shrink:0;"></span>
                                                 Awaiting Providers Confirmation
                                             </span>
-                                        <?php elseif ($isPkg && ($overallPkgStatus === 'confirmed' || ($bStatus === 'confirmed' && empty($overallPkgStatus)))): ?>
+                                        <?php elseif ($isPkgConfirmed): ?>
                                             <span class="pill pill-confirmed" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;border-radius:9999px;"><?= e(__('confirmed', 'Confirmed')) ?></span>
                                         <?php else: ?>
                                             <span class="pill pill-<?= e($bStatus) ?>" style="display:inline-flex;align-items:center;justify-content:center;padding:0.25rem 0.65rem;font-size:0.75rem;font-weight:600;line-height:1.2;white-space:nowrap;border-radius:9999px;"><?= e(status_label($bStatus)) ?></span>
@@ -400,7 +402,18 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                             <span class="res-action-restricted-badge"><?= admin_icon('alert-triangle', 13) ?> Actions Restricted</span>
                                                             <span>Unavailable due to an active administrator warning.</span>
                                                         </div>
-                                                        <?php if ($b['status'] === 'pending'): ?>
+                                                        <?php if ($isActionRequired): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-manage-disruption" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('alert-circle', 14) ?> Manage Service Disruption
+                                                            </button>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
+                                                            </button>
+                                                        <?php elseif ($isPkg && $isAwaiting): ?>
+                                                            <button type="button" class="res-action-item is-disabled action-cancel" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
+                                                            </button>
+                                                        <?php elseif ($b['status'] === 'pending' || ($isPkg && $overallPkgStatus === 'pending')): ?>
                                                             <button type="button" class="res-action-item is-disabled action-accept" disabled title="Unavailable: Active administrator warning on your account." role="menuitem">
                                                                 <?= admin_icon('check-circle', 14) ?> <?= e(__('g_confirm', 'Confirm')) ?>
                                                             </button>
@@ -415,7 +428,30 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                                 <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
                                                             </button>
                                                         <?php endif; ?>
-                                                    <?php elseif ($b['status'] === 'pending'): ?>
+                                                    <?php else: ?>
+                                                        <?php if ($isActionRequired): ?>
+                                                            <?php
+                                                            $pkgSum = !empty($b['package_booking_ref']) ? \App\Services\PackageBookingService::getPackageBookingSummary($b['package_booking_ref']) : null;
+                                                            ?>
+                                                        <button type="button" class="res-action-item action-manage-disruption" role="menuitem" style="color:#D97706;font-weight:700;display:flex;align-items:center;gap:6px;" onclick="openPackageOptionsModal(<?= htmlspecialchars(json_encode($pkgSum ?? []), ENT_QUOTES, 'UTF-8') ?>)">
+                                                            <?= admin_icon('alert-circle', 14) ?> Manage Service Disruption
+                                                        </button>
+                                                        <form method="post" action="<?= e(url('/dashboard/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form guide-booking-action" data-action="cancel" data-paid="<?= ($b['payment_status'] ?? '') === 'paid' ? '1' : '0' ?>" data-amount="<?= e((string) $b['total_amount']) ?>">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="status" class="guide-status-select" value="cancelled">
+                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
+                                                            </button>
+                                                        </form>
+                                                    <?php elseif ($isPkg && $isAwaiting): ?>
+                                                        <form method="post" action="<?= e(url('/dashboard/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form guide-booking-action" data-action="cancel" data-paid="<?= ($b['payment_status'] ?? '') === 'paid' ? '1' : '0' ?>" data-amount="<?= e((string) $b['total_amount']) ?>">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="status" class="guide-status-select" value="cancelled">
+                                                            <button type="submit" class="res-action-item action-cancel" role="menuitem">
+                                                                <?= admin_icon('x-circle', 14) ?> <?= e(__('booking_cancel', 'Cancel')) ?>
+                                                            </button>
+                                                        </form>
+                                                    <?php elseif ($b['status'] === 'pending' || ($isPkg && $overallPkgStatus === 'pending')): ?>
                                                         <form method="post" action="<?= e(url('/dashboard/bookings/' . $b['id'] . '/status')) ?>" class="res-action-form guide-booking-action" data-action="confirm">
                                                             <?= csrf_field() ?>
                                                             <input type="hidden" name="status" class="guide-status-select" value="confirmed">
@@ -450,25 +486,10 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                             <?= admin_icon('trash', 14) ?> <?= e(__('btn_delete', 'Delete Record')) ?>
                                                         </button>
                                                     <?php endif; ?>
-                                                    <?php if ($isActionRequired): ?>
-                                                        <?php
-                                                        $pkgSum = !empty($b['package_booking_ref']) ? \App\Services\PackageBookingService::getPackageBookingSummary($b['package_booking_ref']) : null;
-                                                        ?>
-                                                        <button type="button" class="res-action-item action-replace-service" role="menuitem" style="color:#059669;font-weight:700;display:flex;align-items:center;gap:6px;" onclick="openOptionAModal('<?= e($b['package_booking_ref'] ?? '') ?>', <?= htmlspecialchars(json_encode($pkgSum ?? []), ENT_QUOTES, 'UTF-8') ?>)">
-                                                            <?= admin_icon('refresh-cw', 14) ?> Option A – Replace Cancelled Service
-                                                        </button>
-                                                        <button type="button" class="res-action-item action-reschedule-service" role="menuitem" style="color:#2563EB;font-weight:600;display:flex;align-items:center;gap:6px;" onclick="openOptionBModal('<?= e($b['package_booking_ref'] ?? '') ?>', <?= htmlspecialchars(json_encode($pkgSum ?? []), ENT_QUOTES, 'UTF-8') ?>)">
-                                                            <?= admin_icon('clock', 14) ?> Option B – Reschedule Cancelled Service
-                                                        </button>
-                                                        <?php if (!empty($pkgSum)): ?>
-                                                            <button type="button" class="res-action-item" role="menuitem" style="color:#D97706;font-weight:600;display:flex;align-items:center;gap:6px;" onclick="openPackageOptionsModal(<?= htmlspecialchars(json_encode($pkgSum), ENT_QUOTES, 'UTF-8') ?>, 'replace')">
-                                                                <?= admin_icon('alert-circle', 14) ?> Review All Alternatives
-                                                            </button>
-                                                        <?php endif; ?>
-                                                    <?php endif; ?>
-                                                    <?php if ($isPkg && !$isCancelled && !$isWarned): ?>
-                                                        <button type="button" class="res-action-item action-reschedule-pkg" role="menuitem" style="color:#2563EB;font-weight:600;display:flex;align-items:center;gap:6px;" onclick="openReschedulePackageModal(<?= (int) $b['id'] ?>, '<?= e($b['package_booking_ref'] ?? '') ?>', '<?= e($b['booking_date'] ?? '') ?>', <?= htmlspecialchars(json_encode($b['listing_title'] ?? 'Travel Package'), ENT_QUOTES, 'UTF-8') ?>)">
-                                                            <?= admin_icon('calendar', 14) ?> Reschedule Travel Date
+                                                 <?php endif; ?>
+                                                    <?php if ($isPkg && !$isActionRequired): ?>
+                                                        <button type="button" class="res-action-item" onclick="openPackageDetailsModal(<?= htmlspecialchars(json_encode($pkgSum ?? ($b['package_booking_ref'] ?? $b['id'])), ENT_QUOTES, 'UTF-8') ?>)" role="menuitem">
+                                                            <?= admin_icon('eye', 14) ?> View Package Details
                                                         </button>
                                                     <?php endif; ?>
                                                     <?php if (!$isPkg && !$isCompleted && !$isCancelled): ?>
@@ -493,66 +514,6 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
         </div>
     </div>
 </div>
-<!-- Reschedule Package Modal -->
-<div id="reschedulePackageModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:9999;align-items:center;justify-content:center;padding:16px;">
-    <div style="background:#FFFFFF;border-radius:16px;max-width:520px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);overflow:hidden;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #E2E8F0;background:#F8FAFC;">
-            <div>
-                <h3 style="margin:0;font-size:1.1rem;font-weight:800;color:#0F172A;">Reschedule Travel Package</h3>
-                <span id="reschedulePkgRef" style="font-size:0.8rem;color:#64748B;font-weight:600;"></span>
-            </div>
-            <button type="button" onclick="closeReschedulePackageModal()" style="border:none;background:transparent;cursor:pointer;font-size:1.4rem;color:#64748B;line-height:1;">&times;</button>
-        </div>
-        <form id="reschedulePackageForm" method="post" action="">
-            <?= csrf_field() ?>
-            <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
-                <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;font-size:0.82rem;color:#1E40AF;line-height:1.4;">
-                    Rescheduling updates the trip date for the guide, hotel, and rental services. Package status will become <strong>Pending</strong> while providers re-confirm, and the traveler's <strong>Paid</strong> status is preserved.
-                </div>
-                <div>
-                    <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Package Title</label>
-                    <input type="text" id="reschedulePkgTitle" disabled class="form-control" style="width:100%;padding:8px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:0.85rem;background:#F8FAFC;color:#64748B;">
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                    <div>
-                        <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">New Travel Date *</label>
-                        <input type="date" name="new_date" id="reschedulePkgDate" required min="<?= date('Y-m-d') ?>" class="form-control" style="width:100%;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.85rem;">
-                    </div>
-                    <div>
-                        <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">New Start Time (Optional)</label>
-                        <input type="time" name="new_time" id="reschedulePkgTime" class="form-control" style="width:100%;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.85rem;">
-                    </div>
-                </div>
-                <div>
-                    <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Notes for Providers &amp; Traveler</label>
-                    <textarea name="notes" rows="2" placeholder="e.g. Adjusted itinerary schedule coordinated with guest" class="form-control" style="width:100%;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.85rem;resize:none;"></textarea>
-                </div>
-            </div>
-            <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid #E2E8F0;background:#F8FAFC;">
-                <button type="button" onclick="closeReschedulePackageModal()" class="btn btn-ghost btn-sm" style="font-weight:700;">Cancel</button>
-                <button type="submit" class="btn btn-primary btn-sm" style="font-weight:700;background:#2563EB;border-color:#2563EB;">Confirm Reschedule</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<script>
-function openReschedulePackageModal(bookingId, pkgRef, currentDate, pkgTitle) {
-    const modal = document.getElementById('reschedulePackageModal');
-    const form = document.getElementById('reschedulePackageForm');
-    if (!modal || !form) return;
-
-    form.action = '<?= url('/dashboard/bookings/') ?>' + bookingId + '/reschedule-package';
-    document.getElementById('reschedulePkgRef').textContent = 'Ref: #' + (pkgRef || ('BK-' + bookingId));
-    document.getElementById('reschedulePkgTitle').value = pkgTitle || 'Travel Package';
-    document.getElementById('reschedulePkgDate').value = currentDate || '';
-    modal.style.display = 'flex';
-}
-
-function closeReschedulePackageModal() {
-    const modal = document.getElementById('reschedulePackageModal');
-    if (modal) modal.style.display = 'none';
-}
-</script>
 
 <?= \App\Core\View::partial('partials/package_alternatives_modal') ?>
+<?= \App\Core\View::partial('partials/package_details_modal') ?>

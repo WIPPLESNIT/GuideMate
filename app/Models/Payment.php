@@ -27,7 +27,7 @@ final class Payment
      */
     public static function forBooking(int $bookingId): ?array
     {
-        return Database::first('SELECT * FROM payments WHERE booking_id = ? ORDER BY id DESC', [$bookingId]);
+        return Database::first('SELECT * FROM payments WHERE booking_id = ? ORDER BY (CASE WHEN status = "paid" THEN 0 ELSE 1 END), id DESC LIMIT 1', [$bookingId]);
     }
 
     public static function totalRevenue(): float
@@ -48,7 +48,7 @@ final class Payment
 
     public static function isPaid(int $bookingId): bool
     {
-        $payment = self::forBooking($bookingId);
-        return $payment !== null && $payment['status'] === 'paid';
+        $row = Database::first('SELECT id FROM payments WHERE booking_id = ? AND status = "paid" LIMIT 1', [$bookingId]);
+        return $row !== null;
     }
 }

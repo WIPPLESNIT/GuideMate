@@ -179,10 +179,14 @@ final class Booking
                     c.slug AS category_slug,
                     u.id AS guide_id, u.name AS guide_name, u.avatar AS guide_avatar, u.phone AS guide_phone,
                     hr.name AS room_name,
-                    (SELECT status FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_status,
-                    (SELECT method FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_method,
-                    (SELECT reference FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_reference,
-                    (SELECT paid_at FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_paid_at,
+                    (SELECT CASE
+                        WHEN b.status IN ("cancelled", "refunded") AND (b.package_overall_status = "cancelled" OR b.package_overall_status IS NULL) AND NOT EXISTS (SELECT 1 FROM payments WHERE booking_id = b.id AND status = "paid") THEN "refunded"
+                        WHEN EXISTS (SELECT 1 FROM payments WHERE booking_id = b.id AND status = "paid") THEN "paid"
+                        ELSE (SELECT status FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1)
+                     END) AS payment_status,
+                    (SELECT method FROM payments WHERE booking_id = b.id ORDER BY (CASE WHEN status = "paid" THEN 0 ELSE 1 END), id DESC LIMIT 1) AS payment_method,
+                    (SELECT reference FROM payments WHERE booking_id = b.id ORDER BY (CASE WHEN status = "paid" THEN 0 ELSE 1 END), id DESC LIMIT 1) AS payment_reference,
+                    (SELECT paid_at FROM payments WHERE booking_id = b.id ORDER BY (CASE WHEN status = "paid" THEN 0 ELSE 1 END), id DESC LIMIT 1) AS payment_paid_at,
                     (SELECT id FROM disputes WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS dispute_id,
                     (SELECT status FROM disputes WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS dispute_status
              FROM bookings b
@@ -366,7 +370,11 @@ final class Booking
         return Database::all(
             'SELECT b.*, l.title AS listing_title, l.slug AS listing_slug, hr.name AS room_name,
                     u.name AS customer_name, u.email AS customer_email,
-                    (SELECT status FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1) AS payment_status
+                    (SELECT CASE
+                        WHEN b.status IN ("cancelled", "refunded") AND (b.package_overall_status = "cancelled" OR b.package_overall_status IS NULL) AND NOT EXISTS (SELECT 1 FROM payments WHERE booking_id = b.id AND status = "paid") THEN "refunded"
+                        WHEN EXISTS (SELECT 1 FROM payments WHERE booking_id = b.id AND status = "paid") THEN "paid"
+                        ELSE (SELECT status FROM payments WHERE booking_id = b.id ORDER BY id DESC LIMIT 1)
+                     END) AS payment_status
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
              JOIN users u ON u.id = b.user_id
@@ -899,7 +907,12 @@ final class Booking
     public static function hasCompletedBooking(int $listingId, int $userId): bool
     {
         return Database::first(
-            'SELECT id FROM bookings WHERE listing_id = ? AND user_id = ? AND status IN ("completed","confirmed")',
+            'SELECT id FROM bookings
+             WHERE listing_id = ?
+               AND user_id = ?
+               AND status = "completed"
+               AND (package_overall_status IS NULL OR package_overall_status = "completed")
+               AND status NOT IN ("cancelled", "refunded")',
             [$listingId, $userId]
         ) !== null;
     }
