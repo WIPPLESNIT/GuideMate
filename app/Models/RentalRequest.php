@@ -208,9 +208,6 @@ final class RentalRequest
             if ($vehicle !== null && !empty($vehicle['user_id'])) {
                 $providerId = (int) $vehicle['user_id'];
                 User::incrementRequests($providerId);
-                if ($paid) {
-                    User::addRevenue($providerId, $total);
-                }
             }
         }
 
@@ -252,7 +249,7 @@ final class RentalRequest
             if ($vehicleId !== null && is_numeric($vehicleId)) {
                 $vehicle = Vehicle::find((int) $vehicleId);
                 if ($vehicle !== null && !empty($vehicle['user_id'])) {
-                    User::deductRevenue((int) $vehicle['user_id'], (float) ($rental['total_amount'] ?? 0));
+                    \App\Services\RevenueService::syncUserRevenue((int) $vehicle['user_id']);
                 }
             }
         }
@@ -291,6 +288,23 @@ final class RentalRequest
              WHERE id = ?',
             [$status, $adminNote, $contacted, $id]
         );
+
+        if ($status === 'completed') {
+            \App\Services\RevenueService::recordRentalCompletion($id);
+        } elseif (in_array($status, ['cancelled', 'refunded'], true)) {
+            $rental = self::find($id);
+            if ($rental && !empty($rental['vehicle_id'])) {
+                $v = Vehicle::find((int) $rental['vehicle_id']);
+                if ($v && !empty($v['user_id'])) {
+                    \App\Services\RevenueService::syncUserRevenue((int) $v['user_id']);
+                }
+            }
+        }
+    }
+
+    public static function revenueForProvider(int $providerId): float
+    {
+        return \App\Services\RevenueService::getProviderRevenue($providerId);
     }
 
     public static function statusLabel(string $status): string
@@ -350,6 +364,8 @@ final class RentalRequest
                     'model' => (string) $v['model'],
                     'year' => (int) $v['year'],
                     'type' => (string) $v['type'],
+                    'passenger_capacity' => (int) ($v['passenger_capacity'] ?? 0),
+                    'capacity' => (int) ($v['passenger_capacity'] ?? 0),
                     'price_per_day' => (float) $v['price_per_day'],
                     'specs' => Vehicle::parseSpecs($v['specs'] ?? null),
                     'shop' => (string) ($v['provider_name'] ?? 'Rental Partner'),
@@ -374,7 +390,39 @@ final class RentalRequest
 
     public static function delete(int $id): bool
     {
-        return Database::run('DELETE FROM rental_requests WHERE id = ?', [$id])->rowCount() > 0;
+        $req = Database::first('
+            SELECT rr.*, v.user_id AS vehicle_owner_id
+            FROM rental_requests rr
+            LEFT JOIN vehicles v ON (v.id = rr.vehicle_id OR v.id = CAST(rr.vehicle_id AS UNSIGNED))
+            WHERE rr.id = ?
+        ', [$id]);
+
+        if (!$req) {
+            return false;
+        }
+
+        $providerId = (int) ($req['vehicle_owner_id'] ?? $req['provider_id'] ?? 0);
+
+        try {
+            Database::run('DELETE FROM rental_report_files WHERE rental_id = ?', [$id]);
+        } catch (\Throwable $e) {}
+
+        try {
+            Database::run('DELETE FROM rental_reviews WHERE rental_id = ?', [$id]);
+        } catch (\Throwable $e) {}
+
+        try {
+            Database::run('DELETE FROM package_booking_items WHERE rental_request_id = ?', [$id]);
+        } catch (\Throwable $e) {}
+
+        $deleted = Database::run('DELETE FROM rental_requests WHERE id = ?', [$id])->rowCount() > 0;
+
+        \App\Services\RevenueService::recordRentalDeletion($id, [
+            'vehicle_owner_id' => $providerId,
+            'provider_id' => $providerId,
+        ]);
+
+        return $deleted;
     }
 
     /**

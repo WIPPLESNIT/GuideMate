@@ -108,6 +108,65 @@ final class BookingController extends Controller
             return;
         }
 
+        // Travel Package booking flow
+        $isPackage = in_array($listing['category_slug'] ?? '', ['packages', 'travel-packages'], true) ||
+                     str_contains(strtolower((string) ($listing['title'] ?? '')), 'package');
+
+        if ($isPackage) {
+            $date = (string) $this->input('booking_date', '');
+            $guests = max(1, (int) $this->input('guests', 2));
+            $notes = (string) $this->input('notes', '');
+            $minPax = (int) ($listing['min_pax'] ?? 2);
+            $maxPax = (int) ($listing['capacity'] ?? 8);
+
+            $errors = [];
+            if ($date === '' || strtotime($date) === false) {
+                $errors['booking_date'] = 'Please choose a valid date.';
+            } elseif (strtotime($date) < strtotime('today')) {
+                $errors['booking_date'] = 'The date cannot be in the past.';
+            } elseif (Booking::isDateBooked((int) $listing['id'], $date)) {
+                $errors['booking_date'] = 'Sorry, this guide or package service is already booked on that date. Please pick another date.';
+            }
+
+            if ($guests < $minPax) {
+                $errors['guests'] = "This package requires a minimum of {$minPax} participants.";
+            } elseif ($guests > $maxPax) {
+                $errors['guests'] = "This package allows a maximum of {$maxPax} participants.";
+            }
+
+            if ($errors !== []) {
+                flash_keep_old($errors, [], '/listing/' . $listing['slug']);
+            }
+
+            $activeBooking = Booking::getActiveBookingForListing((int) $listing['id'], (int) Auth::id());
+            if ($activeBooking !== null) {
+                flash('error', "You already have an active booking for this travel package. You can book again once your current trip is completed.");
+                redirect('/listing/' . $listing['slug']);
+                return;
+            }
+
+            $user = Auth::user();
+            try {
+                $res = \App\Services\PackageBookingService::createPackageBooking((int) $listing['id'], (int) Auth::id(), [
+                    'guestsCount' => $guests,
+                    'travelDate' => $date,
+                    'contactName' => (string) ($user['name'] ?? 'Tourist'),
+                    'contactPhone' => (string) ($user['phone'] ?? '0917 123 4567'),
+                    'contactEmail' => (string) ($user['email'] ?? ''),
+                    'notes' => $notes,
+                    'paymentMethod' => 'card',
+                ]);
+
+                flash('info', 'Your travel package booking has been created (Ref #' . $res['package_booking_ref'] . '). Complete payment to confirm with all participating providers.');
+                redirect('/checkout/' . $res['parent_booking_id']);
+                return;
+            } catch (\Throwable $e) {
+                flash('error', $e->getMessage());
+                redirect('/listing/' . $listing['slug']);
+                return;
+            }
+        }
+
         // Tour guide booking flow
         $activeBooking = Booking::getActiveBookingForListing((int) $listing['id'], (int) Auth::id());
         if ($activeBooking !== null) {
@@ -282,7 +341,10 @@ final class BookingController extends Controller
             );
         }
 
-        if ($isHotel && $deposit > 0) {
+        $isPackage = !empty($booking['package_booking_ref']);
+        if ($isPackage) {
+            flash('success', 'Payment received! Your travel package booking request has been sent to all participating providers (Guide, Hotel, Rental). Each provider will review and confirm their reservation.');
+        } elseif ($isHotel && $deposit > 0) {
             flash('success', 'Room deposit of ' . money($chargeAmount) . ' received! The hotel partner will confirm your stay. Remaining ' . money($booking['balance_amount'] ?? 0) . ' is payable at check-in.');
         } else {
             flash('success', 'Payment received. Your booking is waiting for the partner to confirm it. You can track it under My Bookings.');

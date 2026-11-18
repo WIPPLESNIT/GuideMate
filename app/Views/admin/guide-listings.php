@@ -450,6 +450,7 @@ $isCatFiltered = ($category !== 'all');
 <script>
 var activeListingId = null;
 var pendingDeleteId = null;
+var isDeleting = false;
 var baseActionUrl = <?= json_encode(url('/admin/guide-listings')) ?>;
 
 function openRejectModal(id, title) {
@@ -480,14 +481,20 @@ function closeRejectModal() {
 }
 
 function openDeleteModal(id, title) {
+    if (isDeleting) return;
     pendingDeleteId = id;
     var modal = document.getElementById('adminDeleteModal');
     var form = document.getElementById('adminDeleteForm');
     var nameEl = document.getElementById('deleteItemName');
+    var btn = document.getElementById('confirmDeleteBtn');
     if (!modal || !form) return;
     form.action = baseActionUrl + '/' + id + '/delete';
     if (nameEl) {
         nameEl.textContent = title;
+    }
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Permanently Delete';
     }
     modal.hidden = false;
     modal.setAttribute('aria-hidden', 'false');
@@ -499,15 +506,29 @@ function closeDeleteModal() {
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
     pendingDeleteId = null;
+    var btn = document.getElementById('confirmDeleteBtn');
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Permanently Delete';
+    }
+    var nameEl = document.getElementById('deleteItemName');
+    if (nameEl) {
+        nameEl.textContent = '';
+    }
+    var form = document.getElementById('adminDeleteForm');
+    if (form) {
+        form.action = '';
+    }
 }
 
 function handleDeleteSubmit(e) {
     e.preventDefault();
-    if (!pendingDeleteId) return;
+    if (!pendingDeleteId || isDeleting) return;
     var form = document.getElementById('adminDeleteForm');
     var btn = document.getElementById('confirmDeleteBtn');
     if (!form || !btn) return;
     var targetId = pendingDeleteId;
+    isDeleting = true;
     btn.disabled = true;
     btn.textContent = 'Deleting...';
     var tokenInput = form.querySelector('input[name="_token"]') || form.querySelector('input[name="_csrf"]');
@@ -530,22 +551,65 @@ function handleDeleteSubmit(e) {
         });
     })
     .then(function (result) {
+        isDeleting = false;
         if (result.ok && result.data && result.data.success !== false) {
+            closeDeleteModal();
+            showAdminAlert('success', (result.data && (result.data.message || result.data.title)) || 'Guide listing permanently deleted.');
             var row = document.getElementById('listing-row-' + targetId);
             if (row) {
-                row.remove();
+                row.style.transition = 'all 0.3s ease';
+                row.style.opacity = '0';
+                row.style.transform = 'translateX(20px)';
+                setTimeout(function() {
+                    row.remove();
+                    var remaining = document.querySelectorAll('.guide-listing-row:not([hidden])');
+                    var emptyRow = document.getElementById('guideFilterEmptyRow');
+                    if (emptyRow && remaining.length === 0) {
+                        emptyRow.style.display = '';
+                    }
+                }, 300);
             }
-            closeDeleteModal();
         } else {
-            var errorMsg = (result.data && (result.data.message || result.data.error)) || 'Error deleting listing.';
-            alert(errorMsg);
+            var errorMsg = (result.data && (result.data.message || result.data.error)) || 'Failed to delete listing. Please try again.';
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Permanently Delete';
+            }
+            showAdminAlert('error', errorMsg);
+        }
+    })
+    .catch(function (err) {
+        isDeleting = false;
+        if (btn) {
             btn.disabled = false;
             btn.textContent = 'Permanently Delete';
         }
-    })
-    .catch(function () {
-        form.submit();
+        showAdminAlert('error', (err && err.message) || 'Network error occurred. Please try again.');
     });
+}
+
+function showAdminAlert(type, message) {
+    var container = document.getElementById('adminAlertContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'adminAlertContainer';
+        container.style.cssText = 'position:fixed;top:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.75rem;max-width:420px;pointer-events:none;';
+        document.body.appendChild(container);
+    }
+    var isSuccess = type === 'success';
+    var alert = document.createElement('div');
+    alert.className = 'status-banner ' + (isSuccess ? 'banner-green' : 'banner-red');
+    alert.style.cssText = 'pointer-events:auto;margin:0;box-shadow:0 10px 30px rgba(0,0,0,0.5);border-radius:10px;padding:0.9rem 1.25rem;display:flex;align-items:center;gap:0.75rem;background:' + (isSuccess ? '#064e3b' : '#7f1d1d') + ';color:#ffffff;border:1px solid ' + (isSuccess ? '#059669' : '#dc2626') + ';animation:gmModalIn 0.2s ease-out;';
+    alert.innerHTML = '<span style="font-size:1.25rem;">' + (isSuccess ? '✓' : '⚠️') + '</span>' +
+        '<div style="flex:1;font-size:0.9rem;font-weight:500;line-height:1.4;">' + message + '</div>' +
+        '<button type="button" style="background:none;border:none;color:rgba(255,255,255,0.7);cursor:pointer;font-size:1.25rem;line-height:1;padding:0 4px;" onclick="this.parentElement.remove()">&times;</button>';
+    container.appendChild(alert);
+    setTimeout(function() {
+        alert.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+        alert.style.opacity = '0';
+        alert.style.transform = 'translateY(-10px)';
+        setTimeout(function() { alert.remove(); }, 400);
+    }, 5000);
 }
 
 document.addEventListener('DOMContentLoaded', function () {

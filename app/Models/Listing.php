@@ -623,6 +623,7 @@ final class Listing
             } catch (\Throwable $e) {}
             Database::run('DELETE FROM listings WHERE id = ?', [$id]);
         });
+        \App\Services\RevenueService::syncAllProvidersRevenue();
     }
 
     /**

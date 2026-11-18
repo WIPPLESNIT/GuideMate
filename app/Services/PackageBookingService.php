@@ -384,13 +384,23 @@ final class PackageBookingService
         $rentalReturnDate = date('Y-m-d', strtotime("{$travelDate} +{$days} days"));
 
         // Validate provider availability for the matched duration
+        // 1. Validate Guide Availability for every day of package duration
+        for ($d = 0; $d < $days; $d++) {
+            $checkDate = date('Y-m-d', strtotime("{$travelDate} +{$d} days"));
+            if (Booking::isGuideDateBooked($guideId, $checkDate) || Booking::isDateBooked($packageId, $checkDate)) {
+                $gName = $guideUser['name'] ?? 'The assigned tour guide';
+                throw new RuntimeException("Guide {$gName} is already booked on {$checkDate}. Please choose another start date.");
+            }
+        }
+
+        // 2. Validate Hotel Accommodation Availability
         if ($hotelIncluded && !empty($hotelDetails['room_id'])) {
             $roomId = (int) $hotelDetails['room_id'];
             $roomConflict = Database::first("
                 SELECT id FROM bookings
                 WHERE room_id = ?
-                  AND status NOT IN ('cancelled', 'refunded')
-                  AND hotel_status NOT IN ('cancelled', 'refunded')
+                  AND status NOT IN ('cancelled', 'refunded', 'completed')
+                  AND (hotel_status IS NULL OR hotel_status NOT IN ('cancelled', 'refunded', 'completed', 'no_show'))
                   AND check_in_date < ?
                   AND check_out_date > ?
                 LIMIT 1
@@ -804,6 +814,9 @@ final class PackageBookingService
                 ", [(int) $it['rental_request_id']]);
             }
         }
+
+        // Record completed revenue for all participating package providers
+        \App\Services\RevenueService::recordPackageCompletion($pkgRef);
 
         // 4. Notify tourist
         $parent = Database::first("
@@ -1348,12 +1361,10 @@ final class PackageBookingService
             WHERE package_booking_ref = ? AND status NOT IN ('completed', 'cancelled', 'refunded')
         ", [$pkgRef]);
 
-        // Release payment allocations into provider balances
+        // Increment request count for confirmed providers (revenue is only recorded when completed)
         foreach ($items as $it) {
             $providerId = (int) $it['provider_id'];
-            $amount = (float) $it['allocated_amount'];
-            if ($providerId > 0 && $amount > 0) {
-                User::addRevenue($providerId, $amount);
+            if ($providerId > 0) {
                 User::incrementRequests($providerId);
             }
         }
@@ -1699,6 +1710,7 @@ final class PackageBookingService
                    rr.refund_status AS rental_refund_status,
                    rr.payment_status AS rental_payment_status,
                    rr.rental_days,
+                   rr.rental_days AS rental_days_count,
                    rr.pickup_date AS rental_pickup_date,
                    DATE_ADD(rr.pickup_date, INTERVAL COALESCE(rr.rental_days, 1) DAY) AS rental_return_date,
                    COALESCE(rr.vehicle_name, v.name, 'Rental Vehicle') AS vehicle_name,
@@ -1718,7 +1730,7 @@ final class PackageBookingService
             LEFT JOIN rental_requests rr ON rr.id = pbi.rental_request_id
             LEFT JOIN vehicles v ON (v.id = rr.vehicle_id OR v.id = CAST(rr.vehicle_id AS UNSIGNED))
             LEFT JOIN users v_owner ON v_owner.id = v.user_id
-            LEFT JOIN bookings sub_b ON sub_b.id = pbi.sub_booking_id
+            LEFT JOIN bookings sub_b ON (sub_b.id = pbi.sub_booking_id OR (pbi.sub_booking_id IS NULL AND sub_b.id = pbi.parent_booking_id))
             LEFT JOIN listings sub_l ON sub_l.id = sub_b.listing_id
             LEFT JOIN users h_owner ON h_owner.id = sub_l.user_id
             WHERE pbi.package_booking_ref = ?
@@ -1752,7 +1764,17 @@ final class PackageBookingService
                 }
             } elseif ($it['service_type'] === 'guide') {
                 $subStatus = (string) ($it['sub_booking_status'] ?? '');
-                if ($subStatus === 'completed' && $it['status'] !== 'completed') {
+                $parentBooking = Database::first("SELECT status, package_overall_status FROM bookings WHERE id = ? OR package_booking_ref = ?", [(int) ($it['parent_booking_id'] ?? 0), $pkgRef]);
+                $parentSt = (string) ($parentBooking['status'] ?? '');
+                $parentPkgSt = (string) ($parentBooking['package_overall_status'] ?? '');
+                $effectiveGuideStatus = ($subStatus !== '' && $subStatus !== 'pending')
+                    ? $subStatus
+                    : ($parentSt !== '' ? $parentSt : $parentPkgSt);
+
+                if (in_array($effectiveGuideStatus, ['confirmed', 'accepted'], true) && $it['status'] === 'pending') {
+                    Database::run("UPDATE package_booking_items SET status = 'confirmed' WHERE id = ?", [$it['id']]);
+                    $it['status'] = 'confirmed';
+                } elseif (in_array($effectiveGuideStatus, ['completed'], true) && $it['status'] !== 'completed') {
                     Database::run("UPDATE package_booking_items SET status = 'completed' WHERE id = ?", [$it['id']]);
                     $it['status'] = 'completed';
                 }
@@ -1876,6 +1898,7 @@ final class PackageBookingService
             if ($parent && ($parentOverall !== 'completed' || $parentStatus !== 'completed')) {
                 Database::run("UPDATE bookings SET status = 'completed', package_overall_status = 'completed', updated_at = NOW() WHERE package_booking_ref = ? OR id = ?", [$pkgRef, (int) $parent['id']]);
             }
+            \App\Services\RevenueService::recordPackageCompletion($pkgRef);
         } elseif ($hasRejection || $parentOverall === 'action_required') {
             $overallStatus = 'action_required';
         } elseif ($allActiveConfirmed) {
@@ -1938,6 +1961,10 @@ final class PackageBookingService
             'total_amount' => (float) ($parent['total_amount'] ?? 0),
             'refund_amount' => (float) ($parent['refund_amount'] ?? 0),
             'refund_status' => (string) ($parent['refund_status'] ?? 'none'),
+            'guests' => max(1, (int) ($parent['guests'] ?? 1)),
+            'guests_count' => max(1, (int) ($parent['guests'] ?? 1)),
+            'travel_date' => (string) ($parent['booking_date'] ?? ''),
+            'booking_date' => (string) ($parent['booking_date'] ?? ''),
         ];
     }
 
@@ -2179,8 +2206,8 @@ final class PackageBookingService
                     $isBooked = Database::first("
                         SELECT id FROM bookings
                         WHERE room_id = ?
-                          AND status NOT IN ('cancelled', 'refunded')
-                          AND hotel_status NOT IN ('cancelled', 'refunded')
+                          AND status NOT IN ('cancelled', 'refunded', 'completed')
+                          AND (hotel_status IS NULL OR hotel_status NOT IN ('cancelled', 'refunded', 'completed', 'no_show'))
                           AND check_in_date < ?
                           AND check_out_date > ?
                         LIMIT 1
@@ -2225,22 +2252,55 @@ final class PackageBookingService
             }
         } elseif ($serviceType === 'vehicle') {
             $targetType = '';
+            $cancelledVehicleId = 0;
             $pickupDate = $travelDate;
-            $rentalDays = 1;
-            $returnDate = date('Y-m-d', strtotime($travelDate . ' + 1 day'));
+            $dur = self::derivePackageDurations($parent['listing_id'] ?? null, (int) ($parent['days_count'] ?? 0));
+            $rentalDays = max(1, (int) ($parent['days_count'] ?? $dur['rental_days']));
+            $returnDate = date('Y-m-d', strtotime("{$travelDate} + {$rentalDays} days"));
+
             if (!empty($item['rental_request_id'])) {
                 $req = Database::first("SELECT * FROM rental_requests WHERE id = ?", [(int) $item['rental_request_id']]);
                 if ($req) {
                     $pickupDate = !empty($req['pickup_date']) ? $req['pickup_date'] : $travelDate;
-                    $rentalDays = max(1, (int) ($req['rental_days'] ?? 1));
-                    $returnDate = date('Y-m-d', strtotime($pickupDate . " + {$rentalDays} day"));
+                    $rentalDays = max(1, (int) ($req['rental_days'] ?? $rentalDays));
+                    $returnDate = date('Y-m-d', strtotime("{$pickupDate} + {$rentalDays} days"));
                     if (!empty($req['vehicle_id'])) {
-                        $origV = Database::first("SELECT COALESCE(type, 'Vehicle') as vehicle_type FROM vehicles WHERE id = ?", [(int) $req['vehicle_id']]);
+                        $cancelledVehicleId = (int) $req['vehicle_id'];
+                        $origV = Database::first("SELECT COALESCE(type, 'Vehicle') as vehicle_type FROM vehicles WHERE id = ?", [$cancelledVehicleId]);
                         $targetType = (string) ($origV['vehicle_type'] ?? '');
                     }
                 }
             }
 
+            // Fallback to inspect parent notes if targetType or cancelledVehicleId is missing
+            if ($targetType === '' || $cancelledVehicleId === 0) {
+                $pNotes = !empty($parent['notes']) ? json_decode((string) $parent['notes'], true) : [];
+                $rentalNotes = $pNotes['package_details']['rental'] ?? [];
+                if (!empty($rentalNotes['id']) && $cancelledVehicleId === 0) {
+                    $cancelledVehicleId = (int) $rentalNotes['id'];
+                }
+                if (!empty($rentalNotes['vehicle_type']) && $targetType === '') {
+                    $targetType = (string) $rentalNotes['vehicle_type'];
+                }
+            }
+
+            // Fallback to package_services
+            if ($cancelledVehicleId === 0 && !empty($item['package_id'])) {
+                $ps = Database::first("SELECT vehicle_id FROM package_services WHERE package_id = ? AND service_type = 'vehicle'", [(int) $item['package_id']]);
+                if ($ps && !empty($ps['vehicle_id'])) {
+                    $cancelledVehicleId = (int) $ps['vehicle_id'];
+                    if ($targetType === '') {
+                        $origV = Database::first("SELECT COALESCE(type, 'Vehicle') as vehicle_type FROM vehicles WHERE id = ?", [$cancelledVehicleId]);
+                        $targetType = (string) ($origV['vehicle_type'] ?? '');
+                    }
+                }
+            }
+
+            $origTypeNorm = strtolower(trim($targetType));
+            $isTwoWheeler = in_array($origTypeNorm, ['scooter', 'motorcycle', 'moped', 'bike'], true);
+            $isVan = in_array($origTypeNorm, ['van', 'minivan', 'minibus', 'mpv', 'family van', 'mpv / family van'], true);
+
+            // Fetch active, approved vehicles that meet the package passenger capacity
             $vehicles = Database::all("
                 SELECT v.*,
                        COALESCE(v.name, CONCAT(COALESCE(v.make, ''), ' ', COALESCE(v.model, ''))) AS make_model,
@@ -2252,36 +2312,44 @@ final class PackageBookingService
                 WHERE (v.status = 'available' OR v.status = 'approved')
                   AND (v.is_available = 1 OR v.is_available IS NULL)
                   AND (u.is_active = 1 OR u.is_active IS NULL)
-                  AND v.user_id != ?
-                ORDER BY (CASE WHEN v.type = ? AND ? != '' THEN 0 ELSE 1 END), v.id DESC
-                LIMIT 20
-            ", [(int) $item['provider_id'], $targetType, $targetType]);
+                  AND COALESCE(u.guide_warned, 0) = 0
+                  AND COALESCE(v.passenger_capacity, 0) >= ?
+                  AND (? = 0 OR v.id != ?)
+                ORDER BY (CASE WHEN v.user_id != ? THEN 0 ELSE 1 END),
+                         (CASE WHEN LOWER(v.type) = LOWER(?) AND ? != '' THEN 0 ELSE 1 END),
+                         v.id DESC
+                LIMIT 50
+            ", [$guestsCount, $cancelledVehicleId, $cancelledVehicleId, (int) $item['provider_id'], $targetType, $targetType]);
 
             foreach ($vehicles as $v) {
                 $vId = (int) $v['id'];
                 $vType = (string) ($v['vehicle_type'] ?? $v['type'] ?? 'Vehicle');
-                $vCapacity = match (strtolower(trim($vType))) {
-                    'scooter', 'motorcycle', 'moped', 'bike' => 2,
-                    'sedan', 'hatchback', 'coupe' => 4,
-                    'suv', 'crossover' => 5,
-                    'van', 'minivan', 'minibus' => 10,
-                    default => 4,
-                };
-                if (!empty($v['capacity'])) {
-                    $vCapacity = (int) $v['capacity'];
+                $vTypeNorm = strtolower(trim($vType));
+
+                // Compatibility check:
+                if ($isTwoWheeler && !in_array($vTypeNorm, ['scooter', 'motorcycle', 'moped', 'bike'], true)) {
+                    continue; // Two-wheelers only replace with two-wheelers
                 }
+                if ($isVan && in_array($vTypeNorm, ['scooter', 'motorcycle', 'moped', 'bike'], true)) {
+                    continue; // Van cannot be replaced by scooter
+                }
+
+                // Passenger capacity check: Only display vehicles that can accommodate the package's required number of passengers
+                $vCapacity = (int) ($v['passenger_capacity'] ?? $v['capacity'] ?? 0);
                 if ($vCapacity < $guestsCount) {
                     continue;
                 }
 
+                // Check reservation conflicts based on original package rental schedule
                 $isReserved = Database::first("
                     SELECT id FROM rental_requests
                     WHERE vehicle_id = ?
+                      AND id != ?
                       AND status IN ('approved', 'confirmed', 'contacted', 'pending')
                       AND pickup_date < ?
-                      AND DATE_ADD(pickup_date, INTERVAL rental_days DAY) > ?
+                      AND DATE_ADD(pickup_date, INTERVAL COALESCE(NULLIF(rental_days, 0), 1) DAY) > ?
                     LIMIT 1
-                ", [$vId, $returnDate, $pickupDate]);
+                ", [$vId, (int) ($item['rental_request_id'] ?? 0), $returnDate, $pickupDate]);
 
                 if ($isReserved) {
                     continue;
@@ -2289,14 +2357,8 @@ final class PackageBookingService
 
                 $title = !empty($v['make_model']) ? trim((string) $v['make_model']) : (!empty($v['name']) ? (string) $v['name'] : 'Vehicle Rental');
                 $dailyRate = (float) ($v['daily_rate'] ?? $v['price_per_day'] ?? 0);
-                $dur = self::derivePackageDurations($parent['listing_id'] ?? null, (int) ($parent['days_count'] ?? 0));
-                $vDays = max(1, (int) ($parent['days_count'] ?? $dur['rental_days']));
+                $vDays = $rentalDays;
                 $totalCost = round($dailyRate * $vDays, 2);
-
-                // Price restriction: Replacement service price must not exceed original cancelled service price
-                if ($totalCost > (float) $item['allocated_amount']) {
-                    continue;
-                }
 
                 $alternatives[] = [
                     'type' => 'vehicle',
@@ -2305,16 +2367,24 @@ final class PackageBookingService
                     'provider_name' => (string) $v['provider_name'],
                     'vehicle_id' => $vId,
                     'title' => $title,
+                    'make' => (string) ($v['make'] ?? ''),
+                    'model' => (string) ($v['model'] ?? ''),
+                    'vehicle_name' => $title,
                     'vehicle_type' => $vType,
+                    'passenger_capacity' => $vCapacity,
                     'capacity' => $vCapacity,
                     'location' => (string) ($v['location'] ?? 'Cebu'),
+                    'pickup_location' => (string) ($v['location'] ?? 'Cebu'),
                     'price' => $dailyRate,
+                    'daily_rate' => $dailyRate,
                     'pricing' => $totalCost,
                     'total_cost' => $totalCost,
                     'days' => $vDays,
+                    'pickup_date' => $pickupDate,
+                    'return_date' => $returnDate,
                     'surplus' => max(0.00, round((float) $item['allocated_amount'] - $totalCost, 2)),
                     'image' => (string) ($v['image'] ?? ''),
-                    'availability_status' => 'Available',
+                    'availability_status' => 'Available for package dates (' . $vDays . ' day(s))',
                 ];
             }
         } elseif (in_array($serviceType, ['things_to_do', 'activity', 'attraction', 'attractions'], true)) {
@@ -2459,8 +2529,8 @@ final class PackageBookingService
                 $isBooked = Database::first("
                     SELECT id FROM bookings
                     WHERE room_id = ?
-                      AND status NOT IN ('cancelled', 'refunded')
-                      AND hotel_status NOT IN ('cancelled', 'refunded')
+                      AND status NOT IN ('cancelled', 'refunded', 'completed')
+                      AND (hotel_status IS NULL OR hotel_status NOT IN ('cancelled', 'refunded', 'completed', 'no_show'))
                       AND check_in_date < ?
                       AND check_out_date > ?
                     LIMIT 1
@@ -2506,30 +2576,62 @@ final class PackageBookingService
             if (!$vehicle) {
                 throw new RuntimeException("Selected replacement vehicle not found.");
             }
+            if (($vehicle['status'] ?? '') !== 'approved' && ($vehicle['status'] ?? '') !== 'available') {
+                throw new RuntimeException("Selected replacement vehicle is not approved.");
+            }
+            if (isset($vehicle['is_available']) && (int) $vehicle['is_available'] === 0) {
+                throw new RuntimeException("Selected replacement vehicle is no longer available.");
+            }
             $newProviderUser = Database::first("SELECT * FROM users WHERE id = ?", [$newProviderId]);
+            if (!$newProviderUser || ((int) ($newProviderUser['is_active'] ?? 1) === 0)) {
+                throw new RuntimeException("Replacement vehicle provider is currently inactive or ineligible.");
+            }
+
+            // 1. Revalidate Passenger Capacity against package requirements
+            $reqGuests = max(1, (int) ($parent['guests'] ?? 1));
+            $pNotes = !empty($parent['notes']) ? json_decode((string) $parent['notes'], true) : [];
+            if (!empty($pNotes['guests_count']) && (int) $pNotes['guests_count'] > $reqGuests) {
+                $reqGuests = (int) $pNotes['guests_count'];
+            }
+            $vehicleCapacity = (int) ($vehicle['passenger_capacity'] ?? $vehicle['capacity'] ?? 0);
+            if ($vehicleCapacity < $reqGuests) {
+                throw new RuntimeException("Selected replacement vehicle cannot accommodate the {$reqGuests} passenger(s) required by this travel package (Vehicle capacity: {$vehicleCapacity}).");
+            }
+
+            // 2. Derive Package Rental Schedule & Duration
+            $dur = self::derivePackageDurations($parent['listing_id'] ?? null, (int) ($parent['days_count'] ?? $packageDays));
+            $days = max(1, (int) ($parent['days_count'] ?? $dur['rental_days']));
+            $pickupDate = (string) ($parent['booking_date'] ?? date('Y-m-d'));
+            if (!empty($item['rental_request_id'])) {
+                $origReq = Database::first("SELECT * FROM rental_requests WHERE id = ?", [(int) $item['rental_request_id']]);
+                if ($origReq) {
+                    $pickupDate = !empty($origReq['pickup_date']) ? $origReq['pickup_date'] : $pickupDate;
+                    $days = max(1, (int) ($origReq['rental_days'] ?? $days));
+                }
+            }
+            $returnDate = date('Y-m-d', strtotime("{$pickupDate} +{$days} days"));
+
             $vehicleName = !empty($vehicle['name']) ? (string) $vehicle['name'] : (!empty($vehicle['make']) ? trim($vehicle['make'] . ' ' . ($vehicle['model'] ?? '')) : 'Vehicle Rental');
             $newServiceName = $vehicleName;
             $dailyRate = (float) ($vehicle['daily_rate'] ?? $vehicle['price_per_day'] ?? 0);
             $vehicleType = (string) ($vehicle['type'] ?? $vehicle['vehicle_type'] ?? 'Vehicle');
-            $days = max(1, (int) ($parent['days_count'] ?? $packageDays));
             $newAllocated = round($dailyRate * $days, 2);
 
-            // Price restriction: Replacement service price must not exceed original cancelled service price
-            if ($newAllocated > $oldAllocated) {
+            // 3. Price restriction: Replacement service price must not exceed original cancelled service price
+            if ($oldAllocated > 0 && $newAllocated > $oldAllocated) {
                 throw new RuntimeException("Replacement service price (₱" . number_format($newAllocated, 2) . ") cannot exceed original cancelled service price (₱" . number_format($oldAllocated, 2) . ").");
             }
 
-            $pickupDate = (string) $parent['booking_date'];
-            $returnDate = date('Y-m-d', strtotime("{$pickupDate} +{$days} days"));
-
+            // 4. Revalidate Date Conflicts / Existing Reservations
             $vehicleConflict = Database::first("
                 SELECT id FROM rental_requests
                 WHERE vehicle_id = ?
+                  AND id != ?
                   AND status IN ('approved', 'confirmed', 'contacted', 'pending')
                   AND pickup_date < ?
-                  AND DATE_ADD(pickup_date, INTERVAL COALESCE(rental_days, 1) DAY) > ?
+                  AND DATE_ADD(pickup_date, INTERVAL COALESCE(NULLIF(rental_days, 0), 1) DAY) > ?
                 LIMIT 1
-            ", [(int) $vehicle['id'], $returnDate, $pickupDate]);
+            ", [(int) $vehicle['id'], (int) ($item['rental_request_id'] ?? 0), $returnDate, $pickupDate]);
             if ($vehicleConflict) {
                 throw new RuntimeException("Selected vehicle '{$vehicleName}' is already reserved for the package rental dates ({$pickupDate} to {$returnDate}).");
             }
@@ -2679,7 +2781,8 @@ final class PackageBookingService
                 'vehicle_name' => $vehicleName,
                 'model' => (string) ($vehicle['model'] ?? $vehicleName),
                 'vehicle_type' => $vehicleType,
-                'capacity' => (int) ($vehicle['capacity'] ?? $vehicle['seats'] ?? 4),
+                'passenger_capacity' => (int) ($vehicle['passenger_capacity'] ?? $vehicle['capacity'] ?? 0),
+                'capacity' => (int) ($vehicle['passenger_capacity'] ?? $vehicle['capacity'] ?? 0),
                 'location' => (string) ($vehicle['location'] ?? 'Designated Location'),
                 'pickup_date' => (string) $parent['booking_date'],
                 'pickup_time' => (string) (!empty($parent['booking_time']) ? $parent['booking_time'] : '09:00 AM'),
@@ -2789,8 +2892,8 @@ final class PackageBookingService
                     SELECT id FROM bookings
                     WHERE room_id = ?
                       AND id != ?
-                      AND status NOT IN ('cancelled', 'refunded')
-                      AND hotel_status NOT IN ('cancelled', 'refunded')
+                      AND status NOT IN ('cancelled', 'refunded', 'completed')
+                      AND (hotel_status IS NULL OR hotel_status NOT IN ('cancelled', 'refunded', 'completed', 'no_show'))
                       AND check_in_date < ?
                       AND check_out_date > ?
                     LIMIT 1
@@ -2964,7 +3067,8 @@ final class PackageBookingService
                 WHERE room_id = ?
                   AND id != ?
                   AND (package_booking_ref IS NULL OR package_booking_ref != ?)
-                  AND status NOT IN ('cancelled', 'refunded')
+                  AND status NOT IN ('cancelled', 'refunded', 'completed')
+                  AND (hotel_status IS NULL OR hotel_status NOT IN ('cancelled', 'refunded', 'completed', 'no_show'))
                   AND check_in_date < ?
                   AND check_out_date > ?
             ", [$roomId, (int) $hotelSub['id'], $pkgRef, $newCheckOut, $newDate]);

@@ -498,6 +498,14 @@ export default function VehicleDetailsScreen() {
                 <Text style={[styles.specLabel, { color: colors.textSub }]}>Category</Text>
                 <Text style={[styles.specValue, { color: colors.text }]}>{vehicle.type}</Text>
               </View>
+              <View style={[styles.specGridItem, { backgroundColor: isDark ? colors.cardAlt : '#F8FAFC' }]}>
+                <Text style={[styles.specLabel, { color: colors.textSub }]}>Passenger Capacity</Text>
+                <Text style={[styles.specValue, { color: colors.text }]}>
+                  {vehicle.passenger_capacity !== undefined && vehicle.passenger_capacity !== null
+                    ? vehicle.passenger_capacity
+                    : (vehicle.capacity !== undefined && vehicle.capacity !== null ? vehicle.capacity : 0)}
+                </Text>
+              </View>
             </View>
 
             {vehicle.specs && vehicle.specs.length > 0 && (

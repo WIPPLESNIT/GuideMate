@@ -125,6 +125,10 @@ $vStatus = (string) ($vehicle['status'] ?? 'pending');
                     <strong><?= e($vehicle['type']) ?></strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border);">
+                    <span class="hint">Passenger Capacity</span>
+                    <strong><?= (int) ($vehicle['passenger_capacity'] ?? $vehicle['capacity'] ?? 0) ?> Passengers</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border);">
                     <span class="hint">Daily Rate</span>
                     <strong style="color:var(--primary);font-size:1.05rem;"><?= money((float) $vehicle['price_per_day']) ?></strong>
                 </div>

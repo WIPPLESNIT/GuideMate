@@ -424,6 +424,7 @@ CREATE TABLE `vehicles` (
     `model` VARCHAR(80) NOT NULL,
     `year` INT NOT NULL,
     `type` VARCHAR(50) NOT NULL,
+    `passenger_capacity` INT UNSIGNED NOT NULL DEFAULT 0,
     `name` VARCHAR(160) NOT NULL,
     `slug` VARCHAR(180) NOT NULL,
     `description` TEXT NOT NULL,

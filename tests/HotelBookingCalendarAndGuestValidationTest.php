@@ -24,6 +24,7 @@ class HotelBookingCalendarAndGuestValidationTest
         $this->testMaxGuestValidationBackendApiAndController();
         $this->testListingDetailSlugMobileComponent();
         $this->testWebViewMaxGuestValidation();
+        $this->testCompletedHotelBookingReleasesDates();
 
         $this->cleanup();
         echo "All tests passed successfully!\n";
@@ -224,6 +225,90 @@ class HotelBookingCalendarAndGuestValidationTest
         $this->assert(str_contains($showCode, 'function updateGuestsCapacity(maxGuests)'), 'updateGuestsCapacity updates max and clamps input');
         $this->assert(str_contains($showCode, 'function validateHotelGuests(input)'), 'validateHotelGuests clamps input to maxGuests');
         $this->assert(str_contains($showCode, 'hotelGuestsHint'), 'hotelGuestsHint element provides real-time feedback');
+    }
+
+    private function testCompletedHotelBookingReleasesDates(): void
+    {
+        echo "\n6. Testing completed hotel bookings release calendar dates and keep them available...\n";
+
+        $userId = Database::first("SELECT id FROM users WHERE role = 'tourist' LIMIT 1")['id'] ?? 1;
+
+        $listingId = Database::insert(
+            "INSERT INTO listings (user_id, category_id, title, slug, description, area, price, capacity, status, created_at)
+             VALUES (?, (SELECT id FROM categories WHERE slug = 'hotels' LIMIT 1), 'Test Hotel Release', 'test-hotel-release-" . uniqid() . "', 'Testing date release', 'Lapu-Lapu, Cebu', 5000.00, 2, 'approved', NOW())",
+            [$userId]
+        );
+        $this->cleanupListingIds[] = $listingId;
+
+        $roomId = Database::insert(
+            "INSERT INTO hotel_rooms (listing_id, name, price_per_night, max_guests, total_units, status, created_at)
+             VALUES (?, 'Deluxe Pool Villa', 5000.00, 2, 1, 'available', NOW())",
+            [$listingId]
+        );
+        $this->cleanupRoomIds[] = $roomId;
+
+        $checkIn = date('Y-m-d', strtotime('+20 days'));
+        $checkOut = date('Y-m-d', strtotime('+23 days')); // 3 nights
+        $night1 = date('Y-m-d', strtotime('+20 days'));
+        $night2 = date('Y-m-d', strtotime('+21 days'));
+        $night3 = date('Y-m-d', strtotime('+22 days'));
+
+        // 1. Initially create a confirmed booking for the hotel room
+        $bookingId = Database::insert(
+            "INSERT INTO bookings (listing_id, room_id, user_id, booking_date, check_in_date, check_out_date, nights, guests, total_amount, deposit_amount, balance_amount, payment_stage, hotel_status, status)
+             VALUES (?, ?, ?, ?, ?, ?, 3, 2, 15000.00, 3000.00, 12000.00, 'deposit_paid', 'confirmed', 'confirmed')",
+            [$listingId, $roomId, $userId, $checkIn, $checkIn, $checkOut]
+        );
+        $this->cleanupBookingIds[] = $bookingId;
+
+        // Verify active booking blocks the dates
+        $bookedDates = Booking::bookedDates($listingId, $roomId);
+        $this->assert(in_array($night1, $bookedDates, true), "Active booking: Night 1 is marked booked in calendar");
+        $this->assert(in_array($night2, $bookedDates, true), "Active booking: Night 2 is marked booked in calendar");
+        $this->assert(in_array($night3, $bookedDates, true), "Active booking: Night 3 is marked booked in calendar");
+        $this->assert(!HotelRoom::isAvailableForDates($roomId, $checkIn, $checkOut), "Active booking: Room is NOT available for overlapping dates");
+
+        // 2. Complete the booking (status = 'completed', hotel_status = 'completed')
+        Database::run(
+            "UPDATE bookings SET status = 'completed', hotel_status = 'completed', unit_completed_at = NOW() WHERE id = ?",
+            [$bookingId]
+        );
+
+        // Verify completed booking releases dates
+        $releasedBookedDates = Booking::bookedDates($listingId, $roomId);
+        $this->assert(!in_array($night1, $releasedBookedDates, true), "Completed booking: Night 1 is NO LONGER marked booked (active and available again)");
+        $this->assert(!in_array($night2, $releasedBookedDates, true), "Completed booking: Night 2 is NO LONGER marked booked (active and available again)");
+        $this->assert(!in_array($night3, $releasedBookedDates, true), "Completed booking: Night 3 is NO LONGER marked booked (active and available again)");
+
+        $listingBookedDates = Booking::bookedDates($listingId);
+        $this->assert(!in_array($night1, $listingBookedDates, true), "Completed booking: Listing level booked dates released Night 1");
+
+        $this->assert(!Booking::isDateBooked($listingId, $night1), "Completed booking: Booking::isDateBooked returns false for completed date");
+        $this->assert(HotelRoom::isAvailableForDates($roomId, $checkIn, $checkOut), "Completed booking: HotelRoom::isAvailableForDates returns true (room is available again)");
+
+        // Verify record is preserved in history
+        $savedBooking = Booking::find($bookingId);
+        $this->assert($savedBooking !== null, "Completed booking record is preserved in database (not deleted)");
+        $this->assert($savedBooking['status'] === 'completed', "Completed booking maintains 'completed' status in history");
+        $this->assert($savedBooking['hotel_status'] === 'completed', "Completed booking maintains 'completed' hotel_status");
+
+        // 3. Test that other statuses (e.g. pending or checked_in) still block the room
+        $booking2Id = Database::insert(
+            "INSERT INTO bookings (listing_id, room_id, user_id, booking_date, check_in_date, check_out_date, nights, guests, total_amount, deposit_amount, balance_amount, payment_stage, hotel_status, status)
+             VALUES (?, ?, ?, ?, ?, ?, 3, 2, 15000.00, 3000.00, 12000.00, 'deposit_paid', 'pending', 'pending')",
+            [$listingId, $roomId, $userId, $checkIn, $checkIn, $checkOut]
+        );
+        $this->cleanupBookingIds[] = $booking2Id;
+
+        $newBookedDates = Booking::bookedDates($listingId, $roomId);
+        $this->assert(in_array($night1, $newBookedDates, true), "Pending booking: dates become booked again");
+        $this->assert(!HotelRoom::isAvailableForDates($roomId, $checkIn, $checkOut), "Pending booking: room is not available");
+
+        // Cancel the pending booking -> should release again
+        Database::run("UPDATE bookings SET status = 'cancelled', hotel_status = 'cancelled' WHERE id = ?", [$booking2Id]);
+        $afterCancelDates = Booking::bookedDates($listingId, $roomId);
+        $this->assert(!in_array($night1, $afterCancelDates, true), "Cancelled booking: dates released again");
+        $this->assert(HotelRoom::isAvailableForDates($roomId, $checkIn, $checkOut), "Cancelled booking: room is available again");
     }
 
     private function cleanup(): void

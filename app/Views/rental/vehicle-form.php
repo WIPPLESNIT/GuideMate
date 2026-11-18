@@ -118,10 +118,19 @@ $commonSpecs = [
                                 </div>
                             </div>
 
-                            <div class="field-row" style="margin-top:1rem;">
-                                <label for="v_name">Listing Display Title <small class="hint">(Optional - defaults to "Year Make Model")</small></label>
-                                <input class="input" id="v_name" name="name" value="<?= e(old('name', $vehicle['name'] ?? '')) ?>" placeholder="e.g. 2023 Honda Click 125i (Automatic · Dual Helmet)">
-                                <?php if (isset($errors['name'])): ?><div class="field-error"><?= e($errors['name']) ?></div><?php endif; ?>
+                            <div class="form-grid-2" style="margin-top:1rem;">
+                                <div class="field-row">
+                                    <label for="v_passenger_capacity">Passenger Capacity <span class="req" style="color:var(--red-600);">*</span></label>
+                                    <input type="number" class="input" id="v_passenger_capacity" name="passenger_capacity" min="1" max="100" value="<?= e(old('passenger_capacity', (string) ($vehicle['passenger_capacity'] ?? $vehicle['capacity'] ?? ''))) ?>" placeholder="e.g. 2 for scooter, 4 for sedan" required>
+                                    <small class="hint">Maximum number of passengers the vehicle accommodates.</small>
+                                    <?php if (isset($errors['passenger_capacity'])): ?><div class="field-error"><?= e($errors['passenger_capacity']) ?></div><?php endif; ?>
+                                </div>
+
+                                <div class="field-row">
+                                    <label for="v_name">Listing Display Title <small class="hint">(Optional - defaults to "Year Make Model")</small></label>
+                                    <input class="input" id="v_name" name="name" value="<?= e(old('name', $vehicle['name'] ?? '')) ?>" placeholder="e.g. 2023 Honda Click 125i (Automatic · Dual Helmet)">
+                                    <?php if (isset($errors['name'])): ?><div class="field-error"><?= e($errors['name']) ?></div><?php endif; ?>
+                                </div>
                             </div>
                         </div>
 

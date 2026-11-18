@@ -530,11 +530,164 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                     </div>
                     <form method="post" action="<?= e(url('/listing/' . $listing['id'] . '/book')) ?>" id="bookingForm" data-price="<?= e((string) ($displayPrice ?? $listing['price'])) ?>" data-logged-in="<?= $user ? '1' : '0' ?>" data-login-url="<?= e(url('/login?redirect=' . rawurlencode('/listing/' . ($listing['slug'] ?? $listing['id'])))) ?>">
                         <?= csrf_field() ?>
+                        <style>
+                        .gm-calendar-widget {
+                            background: #ffffff;
+                            border: 1px solid var(--border, #E2E8F0);
+                            border-radius: 12px;
+                            padding: 12px;
+                            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+                        }
+                        .gm-cal-header {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            margin-bottom: 8px;
+                        }
+                        .gm-cal-title {
+                            font-weight: 700;
+                            font-size: 0.95rem;
+                            color: var(--text, #1E293B);
+                        }
+                        .gm-cal-nav {
+                            background: #F1F5F9;
+                            border: 1px solid #E2E8F0;
+                            border-radius: 6px;
+                            width: 28px;
+                            height: 28px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 1.1rem;
+                            cursor: pointer;
+                            color: #334155;
+                            transition: all 0.15s ease;
+                        }
+                        .gm-cal-nav:hover {
+                            background: #E2E8F0;
+                            color: #0F172A;
+                        }
+                        .gm-cal-weekdays {
+                            display: grid;
+                            grid-template-columns: repeat(7, 1fr);
+                            text-align: center;
+                            font-size: 0.72rem;
+                            font-weight: 700;
+                            color: #64748B;
+                            margin-bottom: 4px;
+                        }
+                        .gm-cal-grid {
+                            display: grid;
+                            grid-template-columns: repeat(7, 1fr);
+                            gap: 3px;
+                        }
+                        .gm-cal-day {
+                            aspect-ratio: 1;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            border-radius: 8px;
+                            font-size: 0.82rem;
+                            font-weight: 600;
+                            cursor: pointer;
+                            transition: all 0.15s ease;
+                            user-select: none;
+                        }
+                        .gm-cal-day.is-empty {
+                            cursor: default;
+                            background: transparent;
+                        }
+                        .gm-cal-day.is-past {
+                            color: #CBD5E1;
+                            cursor: not-allowed;
+                            pointer-events: none;
+                            opacity: 0.45;
+                        }
+                        .gm-cal-day.is-booked {
+                            color: #94A3B8 !important;
+                            background: #F8FAFC !important;
+                            text-decoration: line-through !important;
+                            text-decoration-color: #EF4444 !important;
+                            cursor: not-allowed !important;
+                            pointer-events: none !important;
+                            opacity: 0.55 !important;
+                        }
+                        .gm-cal-day.is-available {
+                            color: #1E293B;
+                            background: #F8FAFC;
+                            border: 1px solid #E2E8F0;
+                        }
+                        .gm-cal-day.is-available:hover {
+                            background: #E6FFFA;
+                            border-color: #008489;
+                            color: #006C70;
+                        }
+                        .gm-cal-day.is-selected {
+                            background: #008489 !important;
+                            color: #FFFFFF !important;
+                            border-color: #008489 !important;
+                            font-weight: 800 !important;
+                            box-shadow: 0 2px 4px rgba(0, 132, 137, 0.35);
+                        }
+                        .gm-cal-legend {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            margin-top: 8px;
+                            padding-top: 6px;
+                            border-top: 1px solid #F1F5F9;
+                            font-size: 0.72rem;
+                            color: #64748B;
+                        }
+                        .legend-item {
+                            display: flex;
+                            align-items: center;
+                            gap: 4px;
+                        }
+                        .legend-dot {
+                            width: 7px;
+                            height: 7px;
+                            border-radius: 50%;
+                            display: inline-block;
+                        }
+                        .legend-avail {
+                            background: #008489;
+                        }
+                        .legend-booked {
+                            background: #EF4444;
+                        }
+                        .legend-booked-text {
+                            text-decoration: line-through;
+                            color: #94A3B8;
+                        }
+                        </style>
+
                         <div class="field-row">
-                            <label for="booking_date">Date</label>
-                            <input class="input" type="date" id="booking_date" name="booking_date" min="<?= date('Y-m-d') ?>" value="<?= e(old('booking_date')) ?>" required data-booked="<?= e(implode(',', $bookedDates ?? [])) ?>">
+                            <label for="booking_date" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                                <span style="font-weight:700;">Select Date</span>
+                                <span id="calSelectedDisplay" style="font-weight:700;color:var(--teal-700,#008489);font-size:0.85rem;">No date selected</span>
+                            </label>
+                            <input type="hidden" id="booking_date" name="booking_date" value="<?= e(old('booking_date')) ?>" required data-booked="<?= e(implode(',', $bookedDates ?? [])) ?>">
+
+                            <div class="gm-calendar-widget" id="gmCalendarWidget">
+                                <div class="gm-cal-header">
+                                    <button type="button" class="gm-cal-nav" id="gmCalPrev" aria-label="Previous month">&lsaquo;</button>
+                                    <span class="gm-cal-title" id="gmCalTitle"></span>
+                                    <button type="button" class="gm-cal-nav" id="gmCalNext" aria-label="Next month">&rsaquo;</button>
+                                </div>
+                                <div class="gm-cal-weekdays">
+                                    <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                                </div>
+                                <div class="gm-cal-grid" id="gmCalGrid"></div>
+                                <div class="gm-cal-legend">
+                                    <span class="legend-item"><span class="legend-dot legend-avail"></span> Available</span>
+                                    <span class="legend-item"><span class="legend-dot legend-booked"></span> <span class="legend-booked-text">Booked / Unavailable</span></span>
+                                </div>
+                            </div>
                             <?php if (isset($errors['booking_date'])): ?><div class="field-error"><?= e($errors['booking_date']) ?></div><?php endif; ?>
-                            <?php if (!empty($bookedDates)): ?><span class="hint">Some dates are already booked and can't be selected.</span><?php endif; ?>
+                            <noscript>
+                                <input class="input" type="date" name="booking_date" min="<?= date('Y-m-d') ?>" value="<?= e(old('booking_date')) ?>" required>
+                            </noscript>
                         </div>
                         <div class="field-row">
                             <label for="guests">Guests</label>
@@ -868,26 +1021,167 @@ document.addEventListener('DOMContentLoaded', function() {
     var guestsInput = document.getElementById('guests');
     var loggedIn = form.getAttribute('data-logged-in') === '1';
     var loginUrl = form.getAttribute('data-login-url') || '';
+    var calWidget = document.getElementById('gmCalendarWidget');
+    var calTitle = document.getElementById('gmCalTitle');
+    var calGrid = document.getElementById('gmCalGrid');
+    var calPrev = document.getElementById('gmCalPrev');
+    var calNext = document.getElementById('gmCalNext');
+    var calDisplay = document.getElementById('calSelectedDisplay');
 
     var booked = (dateInput && dateInput.getAttribute('data-booked') || '')
         .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
 
+    var MONTH_NAMES = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    function padZero(n) { return n < 10 ? '0' + n : '' + n; }
+
+    function formatDateYMD(y, m, d) {
+        return y + '-' + padZero(m + 1) + '-' + padZero(d);
+    }
+
+    function formatDisplayDate(ymd) {
+        if (!ymd) { return 'No date selected'; }
+        var parts = ymd.split('-');
+        if (parts.length !== 3) { return ymd; }
+        var y = parseInt(parts[0], 10);
+        var m = parseInt(parts[1], 10) - 1;
+        var d = parseInt(parts[2], 10);
+        return MONTH_NAMES[m] + ' ' + d + ', ' + y;
+    }
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var todayYMD = formatDateYMD(today.getFullYear(), today.getMonth(), today.getDate());
+
+    var selectedYMD = (dateInput && dateInput.value) ? dateInput.value.trim() : '';
+    var viewYear = today.getFullYear();
+    var viewMonth = today.getMonth();
+
+    if (selectedYMD) {
+        var sp = selectedYMD.split('-');
+        if (sp.length === 3) {
+            viewYear = parseInt(sp[0], 10);
+            viewMonth = parseInt(sp[1], 10) - 1;
+        }
+    }
+
+    function renderCalendar() {
+        if (!calGrid || !calTitle) { return; }
+        calTitle.textContent = MONTH_NAMES[viewMonth] + ' ' + viewYear;
+        calGrid.innerHTML = '';
+
+        var firstDayIdx = new Date(viewYear, viewMonth, 1).getDay();
+        var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+        // Padding before day 1
+        for (var i = 0; i < firstDayIdx; i++) {
+            var emptyCell = document.createElement('div');
+            emptyCell.className = 'gm-cal-day is-empty';
+            calGrid.appendChild(emptyCell);
+        }
+
+        // Days of current month
+        for (var d = 1; d <= daysInMonth; d++) {
+            var cell = document.createElement('div');
+            var cellYMD = formatDateYMD(viewYear, viewMonth, d);
+            cell.className = 'gm-cal-day';
+            cell.textContent = d;
+            cell.setAttribute('data-date', cellYMD);
+
+            if (cellYMD < todayYMD) {
+                cell.className += ' is-past';
+                cell.setAttribute('title', 'Past date');
+            } else if (booked.indexOf(cellYMD) !== -1) {
+                cell.className += ' is-booked';
+                cell.setAttribute('title', 'Unavailable / Already booked');
+            } else {
+                cell.className += ' is-available';
+                if (cellYMD === selectedYMD) {
+                    cell.className += ' is-selected';
+                }
+                (function (chosenDate) {
+                    cell.addEventListener('click', function () {
+                        selectedYMD = chosenDate;
+                        if (dateInput) { dateInput.value = chosenDate; }
+                        if (calDisplay) { calDisplay.textContent = formatDisplayDate(chosenDate); }
+                        renderCalendar();
+                        clearError(dateInput);
+                    });
+                })(cellYMD);
+            }
+            calGrid.appendChild(cell);
+        }
+
+        if (calDisplay) {
+            calDisplay.textContent = selectedYMD ? formatDisplayDate(selectedYMD) : 'No date selected';
+        }
+    }
+
+    if (calPrev) {
+        calPrev.addEventListener('click', function () {
+            if (viewMonth === 0) {
+                viewMonth = 11;
+                viewYear--;
+            } else {
+                viewMonth--;
+            }
+            renderCalendar();
+        });
+    }
+
+    if (calNext) {
+        calNext.addEventListener('click', function () {
+            if (viewMonth === 11) {
+                viewMonth = 0;
+                viewYear++;
+            } else {
+                viewMonth++;
+            }
+            renderCalendar();
+        });
+    }
+
+    // Auto-select earliest available date if none initially chosen
+    if (!selectedYMD) {
+        for (var off = 2; off < 60; off++) {
+            var cand = new Date();
+            cand.setDate(today.getDate() + off);
+            var candYMD = formatDateYMD(cand.getFullYear(), cand.getMonth(), cand.getDate());
+            if (booked.indexOf(candYMD) === -1) {
+                selectedYMD = candYMD;
+                if (dateInput) { dateInput.value = candYMD; }
+                viewYear = cand.getFullYear();
+                viewMonth = cand.getMonth();
+                break;
+            }
+        }
+    }
+
+    renderCalendar();
+
     function showError(el, msg) {
         if (!el) { return; }
-        el.style.outline = '2px solid #DC2626';
-        var next = el.parentNode.querySelector('.js-field-error');
-        if (!next) {
+        var targetWrap = calWidget || el;
+        targetWrap.style.outline = '2px solid #DC2626';
+        var parent = el.parentNode;
+        var next = parent ? parent.querySelector('.js-field-error') : null;
+        if (!next && parent) {
             next = document.createElement('div');
             next.className = 'field-error js-field-error';
-            el.parentNode.appendChild(next);
+            parent.appendChild(next);
         }
-        next.textContent = msg;
+        if (next) { next.textContent = msg; }
     }
 
     function clearError(el) {
         if (!el) { return; }
-        el.style.outline = '';
-        var next = el.parentNode.querySelector('.js-field-error');
+        var targetWrap = calWidget || el;
+        targetWrap.style.outline = '';
+        var parent = el.parentNode;
+        var next = parent ? parent.querySelector('.js-field-error') : null;
         if (next) { next.remove(); }
     }
 
@@ -898,16 +1192,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
         var val = dateInput ? dateInput.value : '';
         if (!val) {
-            showError(dateInput, 'Please choose a date.');
+            showError(dateInput, 'Please choose an available date on the calendar.');
             ok = false;
         } else {
-            var today = new Date(); today.setHours(0, 0, 0, 0);
             var chosen = new Date(val + 'T00:00:00');
-            if (chosen < today) {
+            if (val < todayYMD) {
                 showError(dateInput, 'Please choose a date in the future.');
                 ok = false;
             } else if (booked.indexOf(val) !== -1) {
-                showError(dateInput, 'That date is already booked. Please pick another.');
+                showError(dateInput, 'That date is already booked. Please pick an available date.');
                 ok = false;
             }
         }

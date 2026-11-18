@@ -96,10 +96,7 @@ final class DashboardController extends Controller
         $user = Auth::user() ?? $user;
         $uid = (int) $user['id'];
         $stats = Booking::guideRatingStats($uid);
-        $revenue = Booking::revenueForHotelOwner($uid);
-        if ($revenue === 0.0 && isset($user['revenue']) && (float) $user['revenue'] > 0) {
-            $revenue = (float) $user['revenue'];
-        }
+        $revenue = \App\Services\RevenueService::syncUserRevenue($uid);
         $this->view('dashboard/hotel', [
             'title' => 'Hotel Dashboard',
             'user' => $user,
@@ -135,17 +132,7 @@ final class DashboardController extends Controller
 
         // Account metrics: directly assigned on creation, isolated per account
         $totalRequests = isset($user['total_requests']) ? (int) $user['total_requests'] : count($requests);
-        $revenue = isset($user['revenue']) ? (float) $user['revenue'] : 0.0;
-
-        // If revenue column was not set or fallback needed:
-        if ($revenue === 0.0 && $totalRequests === 0 && $requests !== []) {
-            $totalRequests = count($requests);
-            foreach ($requests as $r) {
-                if (in_array($r['status'] ?? '', ['approved', 'contacted', 'completed'], true)) {
-                    $revenue += (float) ($r['total_amount'] ?? 0);
-                }
-            }
-        }
+        $revenue = \App\Services\RevenueService::syncUserRevenue($providerId);
 
         $this->view('dashboard/rental', [
             'title' => 'Rental Dashboard',
@@ -203,20 +190,21 @@ final class DashboardController extends Controller
         Booking::reconcileOrphanRefunds();
         Auth::refreshUser();
         $user = Auth::user() ?? $user;
-        $listings = Listing::forGuideOwner((int) $user['id']);
+        $guideId = (int) $user['id'];
+        $listings = Listing::forGuideOwner($guideId);
         $this->view('dashboard/guide', [
             'title' => 'Guide Dashboard',
             'user' => $user,
             'isFirstLogin' => User::isFirstLogin($user),
-            'isWarned' => User::isGuideWarned((int) $user['id']),
+            'isWarned' => User::isGuideWarned($guideId),
             'listings' => $listings,
-            'recentBookings' => array_slice(Booking::forGuide((int) $user['id']), 0, 6),
-            'bookingCount' => Booking::countForGuide((int) $user['id']),
-            'revenue' => Booking::revenueForGuide((int) $user['id']),
-            'guideStats' => Booking::guideRatingStats((int) $user['id']),
-            'guideBadge' => guide_badge((int) $user['id']),
-            'earningsByMonth' => Booking::earningsPerMonth((int) $user['id'], 6),
-            'unread' => Message::unreadCount((int) $user['id']),
+            'recentBookings' => array_slice(Booking::forGuide($guideId), 0, 6),
+            'bookingCount' => Booking::countForGuide($guideId),
+            'revenue' => \App\Services\RevenueService::syncUserRevenue($guideId),
+            'guideStats' => Booking::guideRatingStats($guideId),
+            'guideBadge' => guide_badge($guideId),
+            'earningsByMonth' => Booking::earningsPerMonth($guideId, 6),
+            'unread' => Message::unreadCount($guideId),
         ]);
     }
 

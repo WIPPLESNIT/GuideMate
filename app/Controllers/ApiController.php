@@ -155,6 +155,10 @@ final class ApiController extends Controller
             return $rm;
         }, $rawRooms);
 
+        $catSlug = (string) ($listing['category_slug'] ?? '');
+        $catId = (int) ($listing['category_id'] ?? 0);
+        $isActivityOrAttraction = in_array($catSlug, ['things-to-do', 'attractions'], true) || in_array($catId, [1, 2], true);
+
         $listingCap = (int) (!empty($listing['capacity']) ? $listing['capacity'] : 10);
         $totalBookedSum = Database::first(
             'SELECT COALESCE(SUM(guests), 0) AS total_booked
@@ -168,7 +172,7 @@ final class ApiController extends Controller
         $listingAvailSlots = max(0, $listingCap - $totalListingBooked);
 
         $dateBookedRows = Database::all(
-            'SELECT booking_date, COALESCE(SUM(guests), 0) AS booked_count
+            'SELECT booking_date, COALESCE(SUM(COALESCE(guests, 1)), 0) AS booked_count
              FROM bookings
              WHERE listing_id = ?
                AND status IN ("pending", "confirmed")
@@ -177,18 +181,24 @@ final class ApiController extends Controller
             [$listingId]
         );
         $dateBookedMap = [];
+        $dateRemainingMap = [];
         foreach ($dateBookedRows as $dr) {
             if (!empty($dr['booking_date'])) {
-                $dateBookedMap[(string) $dr['booking_date']] = (int) $dr['booked_count'];
+                $bDate = (string) $dr['booking_date'];
+                $bCount = (int) $dr['booked_count'];
+                $dateBookedMap[$bDate] = $bCount;
+                $dateRemainingMap[$bDate] = max(0, $listingCap - $bCount);
             }
         }
 
         $listingPayload['capacity'] = $listingCap;
         $listingPayload['total_capacity'] = $listingCap;
         $listingPayload['booked_count'] = $totalListingBooked;
-        $listingPayload['available_slots'] = $listingAvailSlots;
-        $listingPayload['is_available'] = $listingAvailSlots > 0;
+        $listingPayload['available_slots'] = $isActivityOrAttraction ? $listingCap : $listingAvailSlots;
+        $listingPayload['is_available'] = $isActivityOrAttraction ? true : ($listingAvailSlots > 0);
         $listingPayload['date_booked_counts'] = $dateBookedMap;
+        $listingPayload['date_remaining_slots'] = $dateRemainingMap;
+        $listingPayload['daily_capacity'] = $listingCap;
 
         $this->json([
             'listing' => $listingPayload,
@@ -233,7 +243,7 @@ final class ApiController extends Controller
             'booked_dates' => \App\Models\Booking::bookedDates($listingId),
             // Guide-level: disable every slot where this guide is already busy
             // (on this or any of their other listings) to avoid double-booking.
-            'booked_slots' => Booking::guideBookedSlots((int) ($listing['user_id'] ?? 0)),
+            'booked_slots' => $isActivityOrAttraction ? [] : Booking::guideBookedSlots((int) ($listing['user_id'] ?? 0)),
             'gallery' => array_map(
                 static fn (array $img): array => [
                     'id' => (int) $img['id'],
@@ -662,7 +672,7 @@ final class ApiController extends Controller
         if ($configured !== '') {
             return $configured;
         }
-        return 'https://concinnous-unobliging-max.ngrok-free.dev/GuideMate/public/api/auth/google/callback';
+        return 'https://wireless-unsoiled-ride.ngrok-free.dev/GuideMate/public/api/auth/google/callback';
     }
 
     /**
@@ -694,7 +704,7 @@ final class ApiController extends Controller
         $candidates = [
             trim((string) $preferred),
             $this->googleRegisteredRedirect(),
-            'https://concinnous-unobliging-max.ngrok-free.dev/GuideMate/public/api/auth/google/callback',
+            'https://wireless-unsoiled-ride.ngrok-free.dev/GuideMate/public/api/auth/google/callback',
             'http://localhost/GuideMate/public/api/auth/google/callback',
             'http://127.0.0.1/GuideMate/public/api/auth/google/callback',
         ];
@@ -982,9 +992,12 @@ final class ApiController extends Controller
         header('Content-Type: text/html; charset=utf-8');
         echo '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>'
             . '<body style="font-family:sans-serif;text-align:center;padding:40px;color:#111;">'
-            . '<p>Signing you inâ€¦</p>'
+            . '<p>Signing you in…</p>'
             . '<p><a href="' . htmlspecialchars($url, ENT_QUOTES) . '">Tap here if you are not redirected</a></p>'
-            . '<script>window.location.href=' . json_encode($url) . ';</script>'
+            . '<script>'
+            . 'try { if (window.ReactNativeWebView) { window.ReactNativeWebView.postMessage(JSON.stringify({ type: "nav", url: ' . json_encode($url) . ' })); } } catch (e) {}'
+            . 'window.location.href=' . json_encode($url) . ';'
+            . '</script>'
             . '</body></html>';
     }
 
@@ -1913,19 +1926,35 @@ final class ApiController extends Controller
             }
         }
 
+        $catSlug = (string) ($listing['category_slug'] ?? '');
+        $catId = (int) ($listing['category_id'] ?? 0);
+        $isActivityOrAttraction = in_array($catSlug, ['things-to-do', 'attractions'], true) || in_array($catId, [1, 2], true);
+
         foreach ($dates as $d) {
             if (strtotime($d) < strtotime('today')) {
                 $this->json(['error' => "Date {$d} cannot be in the past."], 422);
                 return;
             }
-            $excludeListingId = ($sched !== null) ? $listingId : null;
-            if ($time !== '' && Booking::isGuideSlotBooked($guideId, $d, $time, null, $excludeListingId)) {
-                $this->json(['error' => "This guide is already booked on {$d} at {$time}. Please pick another slot."], 409);
-                return;
-            }
-            if ($time === '' && Booking::isGuideDateBooked($guideId, $d)) {
-                $this->json(['error' => "This guide is already booked on {$d}. Please pick another day."], 409);
-                return;
+            $excludeListingId = ($sched !== null || $isActivityOrAttraction) ? $listingId : null;
+            if (!$isActivityOrAttraction) {
+                if ($time !== '' && Booking::isGuideSlotBooked($guideId, $d, $time, null, $excludeListingId)) {
+                    $this->json(['error' => "This guide is already booked on {$d} at {$time}. Please pick another slot."], 409);
+                    return;
+                }
+                if ($time === '' && Booking::isGuideDateBooked($guideId, $d, null, $excludeListingId)) {
+                    $this->json(['error' => "This guide is already booked on {$d}. Please pick another day."], 409);
+                    return;
+                }
+            } else {
+                $remSlots = Booking::getRemainingSlots($listingId, $d);
+                if ($remSlots <= 0) {
+                    $this->json(['error' => "Date {$d} is already fully booked. Please choose another date."], 422);
+                    return;
+                }
+                if ($guests > $remSlots) {
+                    $this->json(['error' => "Only {$remSlots} slot(s) remaining on {$d}."], 422);
+                    return;
+                }
             }
         }
 
@@ -2370,6 +2399,8 @@ final class ApiController extends Controller
                         'model' => (string) ($v['model'] ?? ''),
                         'year' => (int) ($v['year'] ?? 0),
                         'type' => (string) $v['type'],
+                        'passenger_capacity' => (int) ($v['passenger_capacity'] ?? ($v['capacity'] ?? 0)),
+                        'capacity' => (int) ($v['passenger_capacity'] ?? ($v['capacity'] ?? 0)),
                         'price_per_day' => (float) $v['price_per_day'],
                         'specs' => $v['specs'],
                         'shop' => (string) $v['shop'],
@@ -2440,6 +2471,8 @@ final class ApiController extends Controller
                 'model' => (string) $vehicle['model'],
                 'year' => (int) $vehicle['year'],
                 'type' => (string) $vehicle['type'],
+                'passenger_capacity' => (int) ($vehicle['passenger_capacity'] ?? ($vehicle['capacity'] ?? 0)),
+                'capacity' => (int) ($vehicle['passenger_capacity'] ?? ($vehicle['capacity'] ?? 0)),
                 'price_per_day' => (float) $vehicle['price_per_day'],
                 'specs' => $specs,
                 'shop' => (string) $providerName,
@@ -3667,7 +3700,9 @@ final class ApiController extends Controller
 
         $providerStatuses = !empty($pkgSummary['active_items']) ? $pkgSummary['active_items'] : ($pkgSummary['items'] ?? []);
         if (empty($providerStatuses) && $isPackage) {
-            $guideItemStatus = ($status === 'confirmed' && empty($booking['package_overall_status'])) ? 'pending' : ($status === 'cancelled' ? 'cancelled' : 'pending');
+            $guideItemStatus = ($status === 'confirmed' || ($booking['status'] ?? '') === 'confirmed' || ($booking['package_overall_status'] ?? '') === 'confirmed')
+                ? 'confirmed'
+                : ($status === 'completed' ? 'completed' : ($status === 'cancelled' ? 'cancelled' : 'pending'));
             $providerStatuses = [
                 [
                     'service_type' => 'guide',
@@ -3679,24 +3714,41 @@ final class ApiController extends Controller
             ];
             if (!empty($packageDetails['hotel_included']) && (!empty($packageDetails['accommodation']) || !empty($packageDetails['accommodation_replacement']))) {
                 $hotel = $packageDetails['accommodation_replacement'] ?? $packageDetails['accommodation'];
+                $hStatus = (string) ($hotel['hotel_reservation_status'] ?? $hotel['status'] ?? 'pending');
                 $providerStatuses[] = [
                     'service_type' => 'hotel',
                     'provider_id' => (int) ($hotel['provider_id'] ?? $hotel['hotel_id'] ?? $hotel['user_id'] ?? 0),
                     'provider_name' => (string) ($hotel['provider_name'] ?? $hotel['hotel_name'] ?? $hotel['name'] ?? 'Hotel Provider'),
                     'service_title' => (string) ($hotel['room_name'] ?? $hotel['roomType'] ?? 'Room Accommodation'),
                     'status' => (string) ($hotel['status'] ?? 'pending'),
+                    'hotel_reservation_status' => $hStatus,
                 ];
             }
             if (!empty($packageDetails['rental_included']) && (!empty($packageDetails['rental']) || !empty($packageDetails['rental_replacement']))) {
                 $rental = $packageDetails['rental_replacement'] ?? $packageDetails['rental'];
+                $rStatus = (string) ($rental['rental_request_status'] ?? $rental['status'] ?? 'pending');
                 $providerStatuses[] = [
                     'service_type' => 'vehicle',
                     'provider_id' => (int) ($rental['provider_id'] ?? $rental['vehicle_id'] ?? $rental['user_id'] ?? 0),
                     'provider_name' => (string) ($rental['provider_name'] ?? $rental['owner_name'] ?? $rental['rental_name'] ?? 'Rental Provider'),
                     'service_title' => (string) ($rental['vehicle_name'] ?? $rental['model'] ?? $rental['name'] ?? 'Vehicle Rental'),
                     'status' => (string) ($rental['status'] ?? 'pending'),
+                    'rental_request_status' => $rStatus,
                 ];
             }
+        } elseif ($isPackage && !empty($providerStatuses)) {
+            foreach ($providerStatuses as &$pSt) {
+                if (($pSt['service_type'] ?? '') === 'guide') {
+                    if (($status === 'confirmed' || ($booking['status'] ?? '') === 'confirmed' || $overallPackageStatus === 'confirmed') && ($pSt['status'] ?? '') === 'pending') {
+                        $pSt['status'] = 'confirmed';
+                        $pSt['sub_booking_status'] = 'confirmed';
+                    } elseif (($status === 'completed' || ($booking['status'] ?? '') === 'completed' || $overallPackageStatus === 'completed') && ($pSt['status'] ?? '') !== 'completed') {
+                        $pSt['status'] = 'completed';
+                        $pSt['sub_booking_status'] = 'completed';
+                    }
+                }
+            }
+            unset($pSt);
         }
 
         if ($isPackage) {
@@ -4474,8 +4526,8 @@ final class ApiController extends Controller
         if ($userId === null) {
             $userId = \App\Core\Auth::id() ?? ($_SESSION['user_id'] ?? null);
             if ($userId === null) {
-                $firstTourist = \App\Core\Database::first("SELECT id FROM users WHERE role = 'tourist' LIMIT 1");
-                $userId = $firstTourist ? (int) $firstTourist['id'] : 1;
+                $this->json(['error' => 'Please log in to book this travel package.'], 401);
+                return;
             }
         }
 
@@ -4581,6 +4633,14 @@ final class ApiController extends Controller
             return;
         }
 
+        // Validate date availability before proceeding
+        if (\App\Models\Booking::isDateBooked((int) $listingId, $travelDate)) {
+            $this->json([
+                'error' => 'The selected date (' . $travelDate . ') is already booked for this travel package. Please choose an available date.',
+            ], 409);
+            return;
+        }
+
         try {
             $bookingRes = \App\Services\PackageBookingService::createPackageBooking((int) $listingId, (int) $userId, [
                 'guestsCount' => $guestsCount,
@@ -4640,108 +4700,21 @@ final class ApiController extends Controller
                 'message' => 'Your travel package booking has been submitted (Ref #' . $pkgRef . ')! All participating providers have received reservation requests.',
             ]);
             return;
-        } catch (\Throwable) {}
-
-        $txnRef = 'TXN-PKG-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
-
-        // Build rich package details JSON for storage in bookings.notes
-        $packageNotesData = [
-            'type' => 'package_booking',
-            'package_id' => $target['id'],
-            'package_title' => $target['title'],
-            'travel_date' => $travelDate,
-            'guests_count' => $guestsCount,
-            'contact_name' => $contactName,
-            'contact_phone' => $contactPhone,
-            'special_notes' => $notes,
-            'payment_method' => $paymentMethod,
-            'payment_reference' => $txnRef,
-            'package_base_price' => $packageBasePrice,
-            'taxes' => $taxes,
-            'environmental_fees' => $environmentalFees,
-            'voucher_code' => $voucherCode,
-            'voucher_discount' => $voucherDiscount,
-            'final_total' => $finalTotal,
-            'inclusions' => $target['inclusions'] ?? [],
-            'exclusions' => $target['exclusions'] ?? [],
-            'itinerary' => $target['itinerary'] ?? [],
-            'accommodation' => $target['accommodationDetail'] ?? null,
-            'rental' => $target['rentalDetail'] ?? null,
-            'guide' => [
-                'id' => $guideId,
-                'name' => $guideName,
-                'avatar' => $guideAvatar,
-                'phone' => $guidePhone,
-            ],
-            'destination' => $target['destination'] ?? 'Moalboal & Badian, South Cebu',
-            'duration' => $target['duration'] ?? '3D2N',
-        ];
-
-        $notesJson = json_encode($packageNotesData, JSON_UNESCAPED_SLASHES);
-
-        // Insert into bookings table
-        $bookingId = \App\Core\Database::insert(
-            "INSERT INTO bookings (
-                listing_id, user_id, booking_date, guests,
-                total_amount, deposit_amount, balance_amount,
-                payment_stage, status, notes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'settled', 'confirmed', ?, NOW(), NOW())",
-            [
-                $listingId,
-                $userId,
-                $travelDate,
-                $guestsCount,
-                $finalTotal,
-                $finalTotal,
-                0.00,
-                $notesJson,
-            ]
-        );
-
-        // Insert payment record
-        \App\Core\Database::insert(
-            "INSERT INTO payments (booking_id, amount, method, status, reference, paid_at, created_at)
-             VALUES (?, ?, ?, 'paid', ?, NOW(), NOW())",
-            [
-                $bookingId,
-                $finalTotal,
-                $paymentMethod,
-                $txnRef,
-            ]
-        );
-
-        // Increment promo code usage if applicable
-        if ($voucherCode !== '' && $voucherDiscount > 0) {
-            try {
-                $codeRow = \App\Core\Database::first("SELECT id FROM promo_codes WHERE code = ?", [$voucherCode]);
-                if ($codeRow) {
-                    \App\Core\Database::run("UPDATE promo_codes SET uses_count = uses_count + 1 WHERE id = ?", [$codeRow['id']]);
-                    \App\Core\Database::run("UPDATE bookings SET promo_code_id = ?, discount_amount = ? WHERE id = ?", [
-                        $codeRow['id'],
-                        $voucherDiscount,
-                        $bookingId,
-                    ]);
-                }
-            } catch (\Throwable) {}
+        } catch (\Throwable $e) {
+            $msg = $e->getMessage();
+            $statusCode = 422;
+            if (str_contains(strtolower($msg), 'already booked') ||
+                str_contains(strtolower($msg), 'not available') ||
+                str_contains(strtolower($msg), 'already reserved') ||
+                str_contains(strtolower($msg), 'conflict')) {
+                $statusCode = 409;
+            }
+            $this->json([
+                'success' => false,
+                'error' => $msg ?: 'Could not process travel package booking. Please try again.',
+            ], $statusCode);
+            return;
         }
-
-        $this->json([
-            'success' => true,
-            'bookingId' => 'BK-' . $bookingId,
-            'rawBookingId' => (int) $bookingId,
-            'packageTitle' => $target['title'],
-            'totalPrice' => $finalTotal,
-            'basePrice' => $packageBasePrice,
-            'taxes' => $taxes,
-            'environmentalFees' => $environmentalFees,
-            'voucherDiscount' => $voucherDiscount,
-            'status' => 'confirmed',
-            'travelDate' => $travelDate,
-            'guestsCount' => $guestsCount,
-            'guideName' => $guideName,
-            'paymentReference' => $txnRef,
-            'message' => 'Your travel package has been booked and confirmed! Guide ' . $guideName . ' has received your reservation details and will coordinate your itinerary with you.',
-        ]);
     }
 
     /**
@@ -5067,6 +5040,8 @@ final class ApiController extends Controller
                     return [];
                 }
             })(),
+            'booked_dates' => \App\Models\Booking::bookedDates((int) $id),
+            'bookedDates' => \App\Models\Booking::bookedDates((int) $id),
             'policy' => [
                 'cancellation' => (string) $inspected['cancellation_policy'],
                 'confirmation' => "Instant confirmation. Guide {$hostInfo['name']} will coordinate your itinerary.",

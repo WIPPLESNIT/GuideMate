@@ -473,16 +473,18 @@ export default function ListingDetailScreen() {
   const activeTargetDate = bookingDates[0] || '';
   const dateBookedCount = (activeTargetDate && listing?.date_booked_counts?.[activeTargetDate] !== undefined)
     ? (listing.date_booked_counts[activeTargetDate] ?? 0)
-    : (listing?.booked_count ?? 0);
+    : 0;
   const attractionAvailableSlots = Math.max(
     0,
-    listing?.available_slots !== undefined && !activeTargetDate
-      ? listing.available_slots
-      : (totalAttractionCapacity - dateBookedCount)
+    activeTargetDate
+      ? (listing?.date_remaining_slots?.[activeTargetDate] !== undefined
+          ? (listing.date_remaining_slots[activeTargetDate] ?? 0)
+          : (totalAttractionCapacity - dateBookedCount))
+      : (listing?.available_slots !== undefined ? listing.available_slots : totalAttractionCapacity)
   );
   const isAttractionFullyBooked = !isHotel && (hasSchedule
     ? (schedules.length > 0 && schedules.every((s) => s.is_available === false || (s.available_slots !== undefined && s.available_slots <= 0)))
-    : attractionAvailableSlots <= 0);
+    : (activeTargetDate ? attractionAvailableSlots <= 0 : false));
 
   const selectedDateSessions = React.useMemo(() => {
     if (!hasSchedule || bookingDates.length === 0) return [];
@@ -561,12 +563,21 @@ export default function ListingDetailScreen() {
   // Set of "YYYY-MM-DD|HH:MM" slots already taken, and dates where every slot
   // is taken (so the calendar can fully disable them).
   const fullyBookedDates = React.useMemo(() => {
+    const fromApi = (listing?.booked_dates as string[]) || (listingBookedDates as string[]) || [];
     const counts: Record<string, number> = {};
     bookedSlots.forEach((s) => {
       counts[s.date] = (counts[s.date] ?? 0) + 1;
     });
-    return Object.keys(counts).filter((d) => counts[d] >= START_TIME_SLOTS.length);
-  }, [bookedSlots]);
+    const fromSlots = Object.keys(counts).filter((d) => counts[d] >= START_TIME_SLOTS.length);
+    return Array.from(new Set([...fromApi, ...listingBookedDates, ...fromSlots]));
+  }, [bookedSlots, listing?.booked_dates, listingBookedDates]);
+
+  // Enforce attraction guest limit whenever activeTargetDate changes remaining slots
+  useEffect(() => {
+    if (!isHotel && maxGuestsAllowed > 0 && guests > maxGuestsAllowed) {
+      setGuests(maxGuestsAllowed);
+    }
+  }, [isHotel, maxGuestsAllowed, guests]);
   const updateBookingDates = (dates: string[]) => {
     setBookingDates(dates);
     if (!isHotel && dates.length > 0) {
@@ -881,15 +892,22 @@ export default function ListingDetailScreen() {
           const totalCap = prev.total_capacity ?? prev.capacity ?? 10;
           const newAvail = Math.max(0, totalCap - newBooked);
           const prevDateCounts = prev.date_booked_counts ? { ...prev.date_booked_counts } : {};
+          const prevDateRemaining = prev.date_remaining_slots ? { ...prev.date_remaining_slots } : {};
           if (targetDate) {
-            prevDateCounts[targetDate] = (prevDateCounts[targetDate] ?? 0) + addedGuests;
+            const dateBooked = (prevDateCounts[targetDate] ?? 0) + addedGuests;
+            prevDateCounts[targetDate] = dateBooked;
+            prevDateRemaining[targetDate] = Math.max(0, totalCap - dateBooked);
+            if (dateBooked >= totalCap) {
+              setListingBookedDates((dList) => Array.from(new Set([...dList, targetDate])));
+            }
           }
           return {
             ...prev,
             booked_count: newBooked,
             available_slots: newAvail,
-            is_available: newAvail > 0,
+            is_available: true,
             date_booked_counts: prevDateCounts,
+            date_remaining_slots: prevDateRemaining,
           };
         });
       }
@@ -2836,7 +2854,9 @@ export default function ListingDetailScreen() {
                             ? 'Fully Booked · No slots available'
                             : hasSchedule && currentSession
                               ? `${currentSession.available_slots ?? listing?.capacity ?? 10} of ${currentSession.capacity ?? listing?.capacity ?? 10} slots available`
-                              : `${attractionAvailableSlots} of ${totalAttractionCapacity} slots available (Available Slots: ${attractionAvailableSlots}/${totalAttractionCapacity})`}
+                              : activeTargetDate
+                                ? `${attractionAvailableSlots} of ${totalAttractionCapacity} slots available on ${activeTargetDate} (Available Slots: ${attractionAvailableSlots}/${totalAttractionCapacity})`
+                                : `${attractionAvailableSlots} of ${totalAttractionCapacity} slots available (Available Slots: ${attractionAvailableSlots}/${totalAttractionCapacity})`}
                         </Text>
                       )}
 

@@ -30,18 +30,6 @@ $completedStays = array_filter($reservations, fn($b) => ($b['hotel_status'] ?? '
 $completedStaysCount = count($completedStays);
 
 $revenue = (float) ($revenue ?? 0.0);
-if ($revenue === 0.0 && $reservations !== []) {
-    foreach ($reservations as $b) {
-        $st = $b['status'] ?? '';
-        $hst = $b['hotel_status'] ?? '';
-        if (in_array($st, ['cancelled', 'refunded'], true) || in_array($hst, ['cancelled', 'refunded'], true)) {
-            continue;
-        }
-        if (in_array($st, ['confirmed', 'completed'], true) || in_array($hst, ['confirmed', 'checked_in', 'completed'], true)) {
-            $revenue += (float) ($b['total_amount'] ?? 0);
-        }
-    }
-}
 
 $totalOutstandingBalance = 0.0;
 foreach ($reservations as $res) {

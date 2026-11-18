@@ -51,7 +51,7 @@ final class Vehicle
     public static function find(int $id): ?array
     {
         return Database::first(
-            'SELECT v.*, u.name AS provider_name, u.email AS provider_email, u.phone AS provider_phone,
+            'SELECT v.*, v.passenger_capacity AS capacity, u.name AS provider_name, u.email AS provider_email, u.phone AS provider_phone,
                     u.avatar AS provider_avatar, u.role AS provider_role, u.guide_status AS provider_status,
                     r.name AS reviewer_name
              FROM vehicles v
@@ -68,7 +68,7 @@ final class Vehicle
     public static function findBySlug(string $slug): ?array
     {
         return Database::first(
-            'SELECT v.*, u.name AS provider_name, u.email AS provider_email, u.phone AS provider_phone,
+            'SELECT v.*, v.passenger_capacity AS capacity, u.name AS provider_name, u.email AS provider_email, u.phone AS provider_phone,
                     u.avatar AS provider_avatar, u.role AS provider_role, u.guide_status AS provider_status,
                     r.name AS reviewer_name
              FROM vehicles v
@@ -87,7 +87,7 @@ final class Vehicle
     public static function forOwner(int $userId): array
     {
         return Database::all(
-            'SELECT * FROM vehicles WHERE user_id = ? ORDER BY created_at DESC',
+            'SELECT *, passenger_capacity AS capacity FROM vehicles WHERE user_id = ? ORDER BY created_at DESC',
             [$userId]
         );
     }
@@ -137,7 +137,7 @@ final class Vehicle
         }
 
         return Database::all(
-            "SELECT v.*, u.name AS provider_name, u.email AS provider_email,
+            "SELECT v.*, v.passenger_capacity AS capacity, u.name AS provider_name, u.email AS provider_email,
                     r.name AS reviewer_name
              FROM vehicles v
              JOIN users u ON u.id = v.user_id
@@ -191,7 +191,7 @@ final class Vehicle
             };
         }
 
-        $sql = 'SELECT v.*, u.name AS provider_name, u.email AS provider_email
+        $sql = 'SELECT v.*, v.passenger_capacity AS capacity, u.name AS provider_name, u.email AS provider_email
                 FROM vehicles v
                 JOIN users u ON u.id = v.user_id
                 WHERE ' . implode(' AND ', $where) . '
@@ -213,19 +213,21 @@ final class Vehicle
         $status = (string) ($data['status'] ?? 'pending');
         $isAvailable = $status === 'approved' ? 1 : 0;
         $submittedAt = in_array($status, ['pending', 'approved'], true) ? date('Y-m-d H:i:s') : null;
+        $capacity = (int) ($data['passenger_capacity'] ?? ($data['capacity'] ?? 0));
 
         return Database::insert(
             'INSERT INTO vehicles (
-                user_id, make, model, year, type, name, slug, description, specs,
+                user_id, make, model, year, type, passenger_capacity, name, slug, description, specs,
                 location, address, price_per_day, image, status, is_available,
                 submitted_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 (int) $data['user_id'],
                 (string) ($data['make'] ?? ''),
                 (string) ($data['model'] ?? ''),
                 (int) ($data['year'] ?? date('Y')),
                 (string) ($data['type'] ?? 'Scooter'),
+                $capacity,
                 $name,
                 $slug,
                 (string) ($data['description'] ?? ''),
@@ -246,6 +248,11 @@ final class Vehicle
      */
     public static function update(int $id, array $data): void
     {
+        if (isset($data['capacity']) && !isset($data['passenger_capacity'])) {
+            $data['passenger_capacity'] = (int) $data['capacity'];
+        }
+        unset($data['capacity']);
+
         $fields = [];
         $params = [];
 

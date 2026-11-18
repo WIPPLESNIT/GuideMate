@@ -15,7 +15,7 @@ if (!fs.existsSync(expoStatic)) {
 }
 process.env.EXPO_PUBLIC_FOLDER = 'expo-static';
 
-const NGROK_DOMAIN = 'concinnous-unobliging-max.ngrok-free.dev';
+const NGROK_DOMAIN = 'wireless-unsoiled-ride.ngrok-free.dev';
 
 function spawnDetached(command, args, extra = {}) {
   const child = spawn(command, args, {

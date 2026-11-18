@@ -136,6 +136,7 @@ $sidePhoto2 = $galleryPaths[1] ?? $galleryPaths[0] ?? $mainPhoto;
                     <ul class="inclusion-list inclusion-list-muted">
                         <li><strong>Vehicle:</strong> <?= e($vehicle['make']) ?> <?= e($vehicle['model']) ?> (<?= (int) $vehicle['year'] ?>)</li>
                         <li><strong>Category:</strong> <?= e($vehicle['type']) ?></li>
+                        <li><strong>Passenger Capacity:</strong> <?= (int) ($vehicle['passenger_capacity'] ?? $vehicle['capacity'] ?? 0) ?> Passengers</li>
                         <li><strong>Driver’s License:</strong> Valid Philippine or International Driver's License</li>
                         <li><strong>Security Deposit / ID:</strong> Government ID or passport held during rental</li>
                         <li><strong>Fuel Policy:</strong> Same-to-same fuel level on return</li>

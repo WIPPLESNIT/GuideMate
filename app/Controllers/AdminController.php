@@ -27,6 +27,7 @@ final class AdminController extends Controller
     public function index(): void
     {
         Booking::reconcileOrphanRefunds();
+        \App\Services\RevenueService::syncAllProvidersRevenue();
         $complaints = Dispute::all();
         $this->view('dashboard/admin', [
             'title' => 'Admin Dashboard',
@@ -491,6 +492,24 @@ final class AdminController extends Controller
             $serviceIds = json_decode($jm[1], true);
         }
 
+        if (!is_array($serviceIds) && $id > 0) {
+            try {
+                $dbServices = Database::all("SELECT * FROM package_services WHERE package_id = ? AND status IN ('agreed', 'approved')", [$id]);
+                if (!empty($dbServices)) {
+                    $serviceIds = [];
+                    foreach ($dbServices as $s) {
+                        if ($s['service_type'] === 'hotel' && !empty($s['hotel_room_id'])) {
+                            $serviceIds['hotel_room_id'] = (int) $s['hotel_room_id'];
+                        } elseif ($s['service_type'] === 'vehicle' && !empty($s['vehicle_id'])) {
+                            $serviceIds['vehicle_id'] = (int) $s['vehicle_id'];
+                        } elseif (in_array($s['service_type'], ['activity', 'attraction'], true) && !empty($s['listing_id'])) {
+                            $serviceIds['activity_ids'][] = (int) $s['listing_id'];
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
         $thingsToDo = [];
         $attractions = [];
         $hotel = null;
@@ -607,6 +626,7 @@ final class AdminController extends Controller
             try {
                 $rental = Database::first("
                     SELECT v.id, v.user_id, v.make, v.model, v.type as vehicle_type, v.name as vehicle_name,
+                           v.passenger_capacity, v.passenger_capacity as capacity,
                            v.price_per_day as daily_rate, v.image as vehicle_image, v.location, v.specs,
                            u.name as partner_name, u.id as partner_id, u.email as partner_email, u.phone as partner_phone
                     FROM vehicles v
@@ -625,6 +645,7 @@ final class AdminController extends Controller
                     try {
                         $rental = Database::first("
                             SELECT v.id, v.user_id, v.make, v.model, v.type as vehicle_type, v.name as vehicle_name,
+                                   v.passenger_capacity, v.passenger_capacity as capacity,
                                    v.price_per_day as daily_rate, v.image as vehicle_image, v.location, v.specs,
                                    u.name as partner_name, u.id as partner_id, u.email as partner_email, u.phone as partner_phone
                             FROM vehicles v
@@ -1129,6 +1150,7 @@ final class AdminController extends Controller
         $providerId = (int) ($vehicle['user_id'] ?? 0);
 
         Vehicle::delete($vehicleId);
+        \App\Services\RevenueService::syncAllProvidersRevenue();
 
         AuditLog::recordAction('vehicle.delete', 'vehicle', $vehicleId, [
             'vehicle_name' => $vehicleName,
@@ -1418,6 +1440,7 @@ final class AdminController extends Controller
         }
 
         User::delete((int) $id);
+        \App\Services\RevenueService::syncAllProvidersRevenue();
         AuditLog::recordAction('user.delete', 'user', (int) $id, [
             'name' => $user['name'],
             'email' => $user['email'],

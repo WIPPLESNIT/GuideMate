@@ -336,8 +336,8 @@ final class HotelRoom
             "SELECT COUNT(*) as cnt 
              FROM bookings 
              WHERE room_id = ?
-               AND status NOT IN ('cancelled', 'refunded')
-               AND (hotel_status IS NULL OR hotel_status NOT IN ('cancelled', 'no_show'))
+               AND status NOT IN ('cancelled', 'refunded', 'completed')
+               AND (hotel_status IS NULL OR hotel_status NOT IN ('cancelled', 'no_show', 'completed'))
                AND (check_in_date < ? AND check_out_date > ?)",
             [$roomId, $checkOut, $checkIn]
         );

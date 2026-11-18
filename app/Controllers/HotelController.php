@@ -627,16 +627,19 @@ final class HotelController extends Controller
                     Payment::create($bookingId, $balance, 'front_desk_checkout', 'paid');
                 }
                 $db->prepare("UPDATE bookings SET hotel_status = 'completed', payment_stage = 'settled', balance_amount = 0.00, status = 'completed', unit_completed_at = NOW() WHERE id = ?")->execute([$bookingId]);
+                \App\Services\RevenueService::recordBookingCompletion($bookingId);
                 flash('success', "Guest checked out! Reservation #{$bookingId} is Settled and completed.");
                 break;
 
             case 'no_show':
                 $db->prepare("UPDATE bookings SET hotel_status = 'no_show', status = 'cancelled' WHERE id = ?")->execute([$bookingId]);
+                \App\Services\RevenueService::syncUserRevenue((int) Auth::id());
                 flash('warning', "Reservation #{$bookingId} marked as No-Show. Room returned to availability.");
                 break;
 
             case 'cancel':
                 $db->prepare("UPDATE bookings SET hotel_status = 'cancelled', status = 'cancelled' WHERE id = ?")->execute([$bookingId]);
+                \App\Services\RevenueService::syncUserRevenue((int) Auth::id());
                 flash('info', "Reservation #{$bookingId} cancelled.");
                 break;
 

@@ -213,7 +213,11 @@ function openPackageOptionsModal(summary, defaultTab = 'replace') {
         if (cancelledItem.service_type === 'hotel') {
             sched = 'Stay dates: ' + (cancelledItem.hotel_check_in || 'Check-in') + ' to ' + (cancelledItem.hotel_check_out || 'Check-out');
         } else if (cancelledItem.service_type === 'vehicle') {
-            sched = 'Pickup date: ' + (cancelledItem.rental_pickup_date || 'Pickup') + ' (' + (cancelledItem.rental_days_count || 1) + ' day(s))';
+            sched = 'Pickup date: ' + (cancelledItem.rental_pickup_date || 'Pickup') + ' (' + (cancelledItem.rental_days_count || cancelledItem.rental_days || 1) + ' day(s))';
+        }
+        const pax = summary.guests || summary.guests_count || cancelledItem.required_passengers || 0;
+        if (pax > 0) {
+            sched += ' • Required Capacity: ' + pax + ' passenger' + (pax > 1 ? 's' : '');
         }
         document.getElementById('pkgCancelledSchedule').textContent = 'Affected Schedule: ' + sched;
 
@@ -308,7 +312,16 @@ function loadAlternatives(ref, itemId, originalAllocated, currentPackageTotal) {
                 : (Array.isArray(data.alternatives?.alternatives) ? data.alternatives.alternatives : []);
 
             if (alts.length === 0) {
-                listEl.innerHTML = '<div style="font-size:0.875rem;color:#64748B;text-align:center;padding:18px 12px;background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:8px;line-height:1.5;">No available replacement services found for this cancelled service. Please try again later or consider another available service disruption option.</div>';
+                listEl.innerHTML = `
+                    <div style="font-size:0.875rem;color:#64748B;text-align:center;padding:18px 12px;background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:8px;line-height:1.5;">
+                        No suitable replacement services matching the required passenger capacity and schedule are currently available for this package.
+                        <div style="margin-top:10px;">
+                            <button type="button" onclick="toggleOptionSection('none')" class="btn btn-sm btn-ghost" style="border-color:#CBD5E1;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;">
+                                &larr; Return to Service Disruption Options
+                            </button>
+                        </div>
+                    </div>
+                `;
                 return;
             }
 
@@ -342,12 +355,16 @@ function loadAlternatives(ref, itemId, originalAllocated, currentPackageTotal) {
                 } else if (alt.type === 'vehicle') {
                     detailsHtml = `
                         <div style="font-size:0.78rem;color:#475569;margin-top:2px;">
-                            <strong>Type:</strong> ${alt.vehicle_type || 'Vehicle'} &bull;
-                            <strong>Passenger Capacity:</strong> ${alt.capacity || 4} seats &bull;
-                            <strong>Location:</strong> ${alt.location || alt.area || 'Cebu'}
+                            <strong>Type / Category:</strong> ${alt.vehicle_type || 'Vehicle'} &bull;
+                            <strong>Passenger Capacity:</strong> ${(alt.passenger_capacity !== undefined && alt.passenger_capacity !== null) ? alt.passenger_capacity : ((alt.capacity !== undefined && alt.capacity !== null) ? alt.capacity : 0)} seats &bull;
+                            <strong>Pickup Location:</strong> ${alt.location || alt.pickup_location || 'Cebu'}
                         </div>
-                        <div style="font-size:0.76rem;color:#64748B;margin-top:2px;">
-                            Provider: ${alt.provider_name}
+                        <div style="font-size:0.78rem;color:#475569;margin-top:2px;">
+                            <strong>Rental Provider:</strong> ${alt.provider_name} &bull;
+                            <strong>Daily Rate:</strong> ₱${altRate.toLocaleString('en-US', {minimumFractionDigits: 2})}/day
+                        </div>
+                        <div style="font-size:0.76rem;color:#059669;font-weight:600;margin-top:2px;">
+                            <strong>Dates Available:</strong> ${alt.pickup_date || 'Travel Date'} to ${alt.return_date || 'Return'} (${alt.days || 1} day(s))
                         </div>
                     `;
                 } else {
@@ -375,7 +392,7 @@ function loadAlternatives(ref, itemId, originalAllocated, currentPackageTotal) {
                             </div>
                             ${detailsHtml}
                             <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:0.82rem;flex-wrap:wrap;">
-                                <span style="color:#059669;font-weight:700;">Cost: ₱${altTotal.toLocaleString('en-US', {minimumFractionDigits:2})}</span>
+                                <span style="color:#059669;font-weight:700;">Total Rental Price (${alt.days || 1} day${(alt.days || 1) > 1 ? 's' : ''}): ₱${altTotal.toLocaleString('en-US', {minimumFractionDigits:2})}</span>
                                 <span style="color:${isExceeding ? '#DC2626' : (priceDiff < 0 ? '#059669' : '#2563EB')};font-weight:700;font-size:0.76rem;background:${isExceeding ? '#FEF2F2' : (priceDiff < 0 ? '#ECFDF5' : '#EFF6FF')};padding:2px 7px;border-radius:4px;">${priceDiffText}</span>
                             </div>
                         </div>

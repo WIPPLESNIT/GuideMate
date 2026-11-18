@@ -184,6 +184,7 @@ final class RentalController extends Controller
             'model' => $data['model'],
             'year' => $data['year'],
             'type' => $data['type'],
+            'passenger_capacity' => $data['passenger_capacity'],
             'name' => $data['name'],
             'description' => $data['description'],
             'specs' => $data['specs'],
@@ -263,6 +264,7 @@ final class RentalController extends Controller
             || (string) $data['model'] !== (string) $vehicle['model']
             || (int) $data['year'] !== (int) $vehicle['year']
             || (string) $data['type'] !== (string) $vehicle['type']
+            || (int) $data['passenger_capacity'] !== (int) ($vehicle['passenger_capacity'] ?? 0)
             || (float) $data['price_per_day'] !== (float) $vehicle['price_per_day']
             || (string) $data['location'] !== (string) $vehicle['location']
             || (string) $data['description'] !== (string) $vehicle['description']
@@ -300,6 +302,7 @@ final class RentalController extends Controller
             'model' => $data['model'],
             'year' => $data['year'],
             'type' => $data['type'],
+            'passenger_capacity' => $data['passenger_capacity'],
             'name' => $data['name'],
             'description' => $data['description'],
             'specs' => $data['specs'],
@@ -701,6 +704,18 @@ final class RentalController extends Controller
             $errors['type'] = 'Vehicle type must not exceed 50 characters.';
         }
 
+        // 4b. Passenger Capacity validation (required, positive integer > 0)
+        $rawCapacity = $input['passenger_capacity'] ?? ($input['capacity'] ?? '');
+        if ($rawCapacity === '' || $rawCapacity === null || !is_numeric($rawCapacity)) {
+            $errors['passenger_capacity'] = 'Passenger capacity is required and must be a valid number.';
+            $passengerCapacity = 0;
+        } else {
+            $passengerCapacity = (int) $rawCapacity;
+            if ($passengerCapacity <= 0) {
+                $errors['passenger_capacity'] = 'Passenger capacity must be a positive number (at least 1 passenger).';
+            }
+        }
+
         // 5. Daily Rental Rate validation (required, numeric, >= 50, <= 500,000)
         if ($rawPrice === '' || $rawPrice === null || !is_numeric($rawPrice)) {
             $errors['price_per_day'] = 'Daily rental rate is required and must be a valid number.';
@@ -814,6 +829,8 @@ final class RentalController extends Controller
                 'model' => $model,
                 'year' => $finalYear,
                 'type' => $type,
+                'passenger_capacity' => $passengerCapacity,
+                'capacity' => $passengerCapacity,
                 'name' => $name,
                 'price_per_day' => $price,
                 'location' => $location,
@@ -837,6 +854,7 @@ final class RentalController extends Controller
             'model' => $this->input('model', ''),
             'year' => $this->input('year', ''),
             'type' => $this->input('type', ''),
+            'passenger_capacity' => $this->input('passenger_capacity', $this->input('capacity', '')),
             'name' => $this->input('name', ''),
             'price_per_day' => $this->input('price_per_day', ''),
             'location' => $this->input('location', ''),

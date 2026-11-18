@@ -394,22 +394,7 @@ final class Booking
      */
     public static function transactionsForGuide(int $guideId): array
     {
-        return Database::all(
-            'SELECT b.id, b.booking_date, b.booking_time, b.guests, b.status,
-                    b.total_amount, b.created_at,
-                    l.title AS listing_title, l.slug AS listing_slug,
-                    u.name AS customer_name,
-                    p.amount AS paid_amount, p.method AS payment_method,
-                    p.status AS payment_status, p.reference AS payment_reference,
-                    p.paid_at AS paid_at
-             FROM bookings b
-             JOIN listings l ON l.id = b.listing_id
-             JOIN users u ON u.id = b.user_id
-             LEFT JOIN payments p ON p.booking_id = b.id
-             WHERE l.user_id = ?
-             ORDER BY COALESCE(p.paid_at, b.created_at) DESC',
-            [$guideId]
-        );
+        return \App\Services\RevenueService::getCompletedTransactionsForProvider($guideId);
     }
 
     public static function updateStatus(int $id, string $status): void
@@ -421,8 +406,18 @@ final class Booking
                     package_overall_status = CASE WHEN package_booking_ref IS NOT NULL THEN 'completed' ELSE package_overall_status END
                 WHERE id = ?
             ", [$id]);
+            \App\Services\RevenueService::recordBookingCompletion($id);
         } else {
             Database::run('UPDATE bookings SET status = ? WHERE id = ?', [$status, $id]);
+            if (in_array($status, ['cancelled', 'refunded'], true)) {
+                $b = self::find($id);
+                if ($b) {
+                    $l = Listing::find((int) $b['listing_id']);
+                    if ($l && !empty($l['user_id'])) {
+                        \App\Services\RevenueService::syncUserRevenue((int) $l['user_id']);
+                    }
+                }
+            }
         }
     }
 
@@ -489,18 +484,178 @@ final class Booking
      */
     public static function isDateBooked(int $listingId, string $date, ?int $excludeBookingId = null): bool
     {
+        $listing = Listing::find($listingId);
+        if ($listing === null) {
+            return false;
+        }
+
+        $isHotel = ((string) ($listing['category_slug'] ?? '')) === 'hotels';
+        if ($isHotel) {
+            if (GuideAvailability::isBlocked($listingId, $date)) {
+                return true;
+            }
+            $sql = 'SELECT id FROM bookings
+                    WHERE listing_id = ?
+                      AND (booking_date = ? OR booking_dates LIKE ?)
+                      AND status IN ("pending", "confirmed")
+                      AND (hotel_status IS NULL OR hotel_status NOT IN ("cancelled", "no_show", "completed"))';
+            $params = [$listingId, $date, '%"' . $date . '"%'];
+            if ($excludeBookingId !== null) {
+                $sql .= ' AND id <> ?';
+                $params[] = $excludeBookingId;
+            }
+            return Database::first($sql, $params) !== null;
+        }
+
+        $catSlug = (string) ($listing['category_slug'] ?? '');
+        $catId = (int) ($listing['category_id'] ?? 0);
+        $isActivityOrAttraction = in_array($catSlug, ['things-to-do', 'attractions'], true) || in_array($catId, [1, 2], true);
+
+        if ($isActivityOrAttraction) {
+            if (GuideAvailability::isBlocked($listingId, $date)) {
+                return true;
+            }
+            $guideId = (int) ($listing['user_id'] ?? 0);
+            if ($guideId > 0 && GuideAvailability::isGuideBlocked($guideId, $date)) {
+                return true;
+            }
+            return self::getRemainingSlots($listingId, $date, $excludeBookingId) <= 0;
+        }
+
         if (GuideAvailability::isBlocked($listingId, $date)) {
             return true;
         }
-        $sql = 'SELECT id FROM bookings
-                WHERE listing_id = ? AND (booking_date = ? OR booking_dates LIKE ?) AND status IN ("pending","confirmed","completed")';
+        $guideId = (int) ($listing['user_id'] ?? 0);
+        if ($guideId > 0 && GuideAvailability::isGuideBlocked($guideId, $date)) {
+            return true;
+        }
+
+        $booked = self::bookedDates($listingId, null, $excludeBookingId);
+        return in_array($date, $booked, true);
+    }
+
+    /**
+     * Get remaining slot capacity for a listing on a specific date.
+     * Strictly scopes to active bookings (pending, confirmed).
+     * Completed bookings release their slots.
+     */
+    public static function getRemainingSlots(int $listingId, string $date, ?int $excludeBookingId = null): int
+    {
+        $listing = Listing::find($listingId);
+        if ($listing === null) {
+            return 0;
+        }
+        if (GuideAvailability::isBlocked($listingId, $date)) {
+            return 0;
+        }
+        $guideId = (int) ($listing['user_id'] ?? 0);
+        if ($guideId > 0 && GuideAvailability::isGuideBlocked($guideId, $date)) {
+            return 0;
+        }
+        $capacity = max(1, (int) ($listing['capacity'] ?? 10));
+
+        $sql = 'SELECT booking_date, booking_dates, guests
+                FROM bookings
+                WHERE listing_id = ?
+                  AND status IN ("pending", "confirmed")
+                  AND (booking_date = ? OR booking_dates LIKE ?)';
         $params = [$listingId, $date, '%"' . $date . '"%'];
         if ($excludeBookingId !== null) {
             $sql .= ' AND id <> ?';
             $params[] = $excludeBookingId;
         }
+        $rows = Database::all($sql, $params);
+        $bookedCount = 0;
+        foreach ($rows as $r) {
+            $guests = max(1, (int) ($r['guests'] ?? 1));
+            $dates = [];
+            if (!empty($r['booking_date'])) {
+                $dates[] = (string) $r['booking_date'];
+            }
+            if (!empty($r['booking_dates'])) {
+                $extra = json_decode((string) $r['booking_dates'], true);
+                if (is_array($extra)) {
+                    foreach ($extra as $d) {
+                        $dates[] = (string) $d;
+                    }
+                }
+            }
+            if (in_array($date, $dates, true)) {
+                $bookedCount += $guests;
+            }
+        }
 
-        return Database::first($sql, $params) !== null;
+        return max(0, $capacity - $bookedCount);
+    }
+
+    /**
+     * Calculate daily slot availability breakdown for a listing across all active dates.
+     *
+     * @return array<string, array{capacity: int, booked: int, remaining: int, is_fully_booked: bool}>
+     */
+    public static function dailySlotAvailability(int $listingId): array
+    {
+        $listing = Listing::find($listingId);
+        if ($listing === null) {
+            return [];
+        }
+        $capacity = max(1, (int) ($listing['capacity'] ?? 10));
+
+        $sql = 'SELECT booking_date, booking_dates, guests
+                FROM bookings
+                WHERE listing_id = ?
+                  AND status IN ("pending", "confirmed")
+                  AND (booking_date >= CURDATE() OR booking_date IS NULL)';
+        $rows = Database::all($sql, [$listingId]);
+
+        $dateCounts = [];
+        foreach ($rows as $r) {
+            $guests = max(1, (int) ($r['guests'] ?? 1));
+            $dates = [];
+            if (!empty($r['booking_date'])) {
+                $dates[] = (string) $r['booking_date'];
+            }
+            if (!empty($r['booking_dates'])) {
+                $extra = json_decode((string) $r['booking_dates'], true);
+                if (is_array($extra)) {
+                    foreach ($extra as $d) {
+                        $dates[] = (string) $d;
+                    }
+                }
+            }
+            foreach (array_unique($dates) as $d) {
+                $dateCounts[$d] = ($dateCounts[$d] ?? 0) + $guests;
+            }
+        }
+
+        $result = [];
+        foreach ($dateCounts as $d => $count) {
+            $remaining = max(0, $capacity - $count);
+            $result[$d] = [
+                'capacity' => $capacity,
+                'booked' => $count,
+                'remaining' => $remaining,
+                'is_fully_booked' => ($remaining <= 0),
+            ];
+        }
+
+        $blocked = GuideAvailability::blockedDates($listingId);
+        $guideId = (int) ($listing['user_id'] ?? 0);
+        if ($guideId > 0) {
+            $blocked = array_merge($blocked, GuideAvailability::blockedDatesForGuide($guideId));
+        }
+        foreach (array_unique($blocked) as $bd) {
+            if ($bd >= date('Y-m-d')) {
+                $result[$bd] = [
+                    'capacity' => $capacity,
+                    'booked' => $capacity,
+                    'remaining' => 0,
+                    'is_fully_booked' => true,
+                ];
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -511,7 +666,7 @@ final class Booking
      *
      * @return array<int, string>
      */
-    public static function bookedDates(int $listingId, ?int $roomId = null): array
+    public static function bookedDates(int $listingId, ?int $roomId = null, ?int $excludeBookingId = null): array
     {
         $listing = Listing::find($listingId);
         $isHotel = ((string) ($listing['category_slug'] ?? '')) === 'hotels';
@@ -520,17 +675,21 @@ final class Booking
             $room = HotelRoom::find($roomId);
             $totalUnits = max(1, (int) ($room['total_units'] ?? 1));
 
-            $rows = Database::all(
-                'SELECT booking_date, booking_dates, check_in_date, check_out_date
-                 FROM bookings
-                 WHERE listing_id = ?
-                   AND (room_id = ? OR room_id IS NULL)
-                   AND status NOT IN ("cancelled", "refunded")
-                   AND (hotel_status IS NULL OR hotel_status NOT IN ("cancelled", "no_show"))
-                   AND (booking_date >= CURDATE() OR check_out_date >= CURDATE())
-                 ORDER BY booking_date',
-                [$listingId, $roomId]
-            );
+            $sql = 'SELECT booking_date, booking_dates, check_in_date, check_out_date
+                    FROM bookings
+                    WHERE listing_id = ?
+                      AND (room_id = ? OR room_id IS NULL)
+                      AND status NOT IN ("cancelled", "refunded", "completed")
+                      AND (hotel_status IS NULL OR hotel_status NOT IN ("cancelled", "no_show", "completed"))
+                      AND (booking_date >= CURDATE() OR check_out_date >= CURDATE())';
+            $params = [$listingId, $roomId];
+            if ($excludeBookingId !== null) {
+                $sql .= ' AND id <> ?';
+                $params[] = $excludeBookingId;
+            }
+            $sql .= ' ORDER BY booking_date';
+
+            $rows = Database::all($sql, $params);
 
             $dateCounts = [];
             foreach ($rows as $r) {
@@ -574,21 +733,179 @@ final class Booking
             return array_values(array_unique(array_merge($booked, $blocked)));
         }
 
-        $rows = Database::all(
-            'SELECT booking_date, booking_dates, check_in_date, check_out_date, room_id
-             FROM bookings
-             WHERE listing_id = ?
-               AND status NOT IN ("cancelled", "refunded")
-               AND (hotel_status IS NULL OR hotel_status NOT IN ("cancelled", "no_show"))
-               AND (booking_date >= CURDATE() OR check_out_date >= CURDATE())
-             ORDER BY booking_date',
-            [$listingId]
-        );
-        $booked = [];
-        foreach ($rows as $r) {
-            if (!empty($r['booking_date'])) {
-                $booked[] = (string) $r['booking_date'];
+        if ($isHotel) {
+            $sql = 'SELECT booking_date, booking_dates, check_in_date, check_out_date, room_id
+                    FROM bookings
+                    WHERE listing_id = ?
+                      AND status NOT IN ("cancelled", "refunded", "completed")
+                      AND (hotel_status IS NULL OR hotel_status NOT IN ("cancelled", "no_show", "completed"))
+                      AND (booking_date >= CURDATE() OR check_out_date >= CURDATE())';
+            $params = [$listingId];
+            if ($excludeBookingId !== null) {
+                $sql .= ' AND id <> ?';
+                $params[] = $excludeBookingId;
             }
+            $sql .= ' ORDER BY booking_date';
+            $rows = Database::all($sql, $params);
+
+            $booked = [];
+            foreach ($rows as $r) {
+                if (!empty($r['booking_date'])) {
+                    $booked[] = (string) $r['booking_date'];
+                }
+                if (!empty($r['booking_dates'])) {
+                    $extra = json_decode((string) $r['booking_dates'], true);
+                    if (is_array($extra)) {
+                        foreach ($extra as $d) {
+                            $booked[] = (string) $d;
+                        }
+                    }
+                }
+                if (!empty($r['check_in_date']) && !empty($r['check_out_date'])) {
+                    try {
+                        $curr = new \DateTime((string) $r['check_in_date']);
+                        $end = new \DateTime((string) $r['check_out_date']);
+                        while ($curr < $end) {
+                            $booked[] = $curr->format('Y-m-d');
+                            $curr->modify('+1 day');
+                        }
+                    } catch (\Throwable $e) {
+                        $booked[] = (string) $r['check_in_date'];
+                    }
+                }
+            }
+            return array_values(array_unique(array_merge($booked, GuideAvailability::blockedDates($listingId))));
+        }
+
+        $catSlug = (string) ($listing['category_slug'] ?? '');
+        $catId = (int) ($listing['category_id'] ?? 0);
+        $isActivityOrAttraction = in_array($catSlug, ['things-to-do', 'attractions'], true) || in_array($catId, [1, 2], true);
+
+        if ($isActivityOrAttraction) {
+            $capacity = max(1, (int) ($listing['capacity'] ?? 10));
+
+            $sql = 'SELECT booking_date, booking_dates, guests
+                    FROM bookings
+                    WHERE listing_id = ?
+                      AND status IN ("pending", "confirmed")
+                      AND (booking_date >= CURDATE() OR booking_date IS NULL)';
+            $params = [$listingId];
+            if ($excludeBookingId !== null) {
+                $sql .= ' AND id <> ?';
+                $params[] = $excludeBookingId;
+            }
+            $rows = Database::all($sql, $params);
+
+            $dateCounts = [];
+            foreach ($rows as $r) {
+                $guests = max(1, (int) ($r['guests'] ?? 1));
+                $dates = [];
+                if (!empty($r['booking_date'])) {
+                    $dates[] = (string) $r['booking_date'];
+                }
+                if (!empty($r['booking_dates'])) {
+                    $extra = json_decode((string) $r['booking_dates'], true);
+                    if (is_array($extra)) {
+                        foreach ($extra as $d) {
+                            $dates[] = (string) $d;
+                        }
+                    }
+                }
+                foreach (array_unique($dates) as $d) {
+                    $dateCounts[$d] = ($dateCounts[$d] ?? 0) + $guests;
+                }
+            }
+
+            $booked = [];
+            foreach ($dateCounts as $d => $count) {
+                if ($count >= $capacity) {
+                    $booked[] = $d;
+                }
+            }
+
+            $blocked = GuideAvailability::blockedDates($listingId);
+            $guideId = (int) ($listing['user_id'] ?? 0);
+            if ($guideId > 0) {
+                $blocked = array_merge($blocked, GuideAvailability::blockedDatesForGuide($guideId));
+            }
+
+            $today = date('Y-m-d');
+            $filtered = array_filter(
+                array_unique(array_merge($booked, $blocked)),
+                static fn($d) => $d >= $today
+            );
+            sort($filtered);
+            return array_values($filtered);
+        }
+
+        // Guide / Package availability: Check guide schedule across all listings and package items
+        $guideId = (int) ($listing['user_id'] ?? 0);
+
+        $sql = 'SELECT b.id, b.booking_date, b.booking_dates, b.check_in_date, b.check_out_date, b.notes
+                FROM bookings b
+                LEFT JOIN listings l ON l.id = b.listing_id
+                WHERE (b.listing_id = ?' . ($guideId > 0 ? ' OR l.user_id = ?' : '') . ')
+                  AND b.status IN ("pending", "confirmed")
+                  AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded", "completed"))
+                  AND (b.booking_date >= CURDATE() OR b.check_out_date >= CURDATE())';
+        $params = $guideId > 0 ? [$listingId, $guideId] : [$listingId];
+        if ($excludeBookingId !== null) {
+            $sql .= ' AND b.id <> ?';
+            $params[] = $excludeBookingId;
+        }
+        $rows = Database::all($sql, $params);
+
+        $guideItemRows = [];
+        if ($guideId > 0) {
+            try {
+                $itemSql = 'SELECT pbi.id, pbi.parent_booking_id, pbi.rescheduled_date,
+                                   b.booking_date, b.check_in_date, b.check_out_date, b.notes
+                            FROM package_booking_items pbi
+                            JOIN bookings b ON b.id = pbi.parent_booking_id
+                            WHERE pbi.provider_id = ?
+                              AND pbi.provider_role = "guide"
+                              AND pbi.status NOT IN ("cancelled", "removed")
+                              AND b.status NOT IN ("cancelled", "refunded")
+                              AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded"))
+                              AND (b.booking_date >= CURDATE() OR pbi.rescheduled_date >= CURDATE() OR b.check_out_date >= CURDATE())';
+                $itemParams = [$guideId];
+                if ($excludeBookingId !== null) {
+                    $itemSql .= ' AND b.id <> ?';
+                    $itemParams[] = $excludeBookingId;
+                }
+                $guideItemRows = Database::all($itemSql, $itemParams);
+            } catch (\Throwable) {}
+        }
+
+        $allRows = array_merge($rows, $guideItemRows);
+        $booked = [];
+
+        foreach ($allRows as $r) {
+            if (!empty($r['rescheduled_date'])) {
+                $booked[] = (string) $r['rescheduled_date'];
+                continue;
+            }
+
+            $startDate = !empty($r['booking_date']) ? (string) $r['booking_date'] : (!empty($r['check_in_date']) ? (string) $r['check_in_date'] : '');
+            if ($startDate !== '') {
+                $booked[] = $startDate;
+            }
+
+            // Expand multi-day package durations
+            $durationDays = 1;
+            if (!empty($r['notes'])) {
+                $noteData = json_decode((string) $r['notes'], true);
+                if (is_array($noteData) && !empty($noteData['duration_days'])) {
+                    $durationDays = max(1, (int) $noteData['duration_days']);
+                }
+            }
+
+            if ($startDate !== '' && $durationDays > 1) {
+                for ($d = 1; $d < $durationDays; $d++) {
+                    $booked[] = date('Y-m-d', strtotime("{$startDate} +{$d} days"));
+                }
+            }
+
             if (!empty($r['booking_dates'])) {
                 $extra = json_decode((string) $r['booking_dates'], true);
                 if (is_array($extra)) {
@@ -597,11 +914,12 @@ final class Booking
                     }
                 }
             }
+
             if (!empty($r['check_in_date']) && !empty($r['check_out_date'])) {
                 try {
                     $curr = new \DateTime((string) $r['check_in_date']);
                     $end = new \DateTime((string) $r['check_out_date']);
-                    while ($curr < $end) {
+                    while ($curr <= $end) {
                         $booked[] = $curr->format('Y-m-d');
                         $curr->modify('+1 day');
                     }
@@ -610,7 +928,19 @@ final class Booking
                 }
             }
         }
-        return array_values(array_unique(array_merge($booked, GuideAvailability::blockedDates($listingId))));
+
+        $manualBlocks = GuideAvailability::blockedDates($listingId);
+        if ($guideId > 0) {
+            $manualBlocks = array_merge($manualBlocks, GuideAvailability::blockedDatesForGuide($guideId));
+        }
+
+        $today = date('Y-m-d');
+        $filtered = array_filter(
+            array_unique(array_merge($booked, $manualBlocks)),
+            static fn($d) => $d >= $today
+        );
+        sort($filtered);
+        return array_values($filtered);
     }
 
     /**
@@ -730,7 +1060,7 @@ final class Booking
             'SELECT b.booking_date, b.booking_time, b.booking_end_time, b.booking_dates
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
-             WHERE l.user_id = ? AND b.status IN ("pending","confirmed","completed") AND b.booking_date >= CURDATE()',
+             WHERE l.user_id = ? AND b.status IN ("pending","confirmed") AND b.booking_date >= CURDATE()',
             [$guideId]
         );
 
@@ -801,7 +1131,7 @@ final class Booking
         $time = substr(trim($time), 0, 5);
         $sql = 'SELECT b.id, b.booking_time, b.booking_end_time FROM bookings b
                 JOIN listings l ON l.id = b.listing_id
-                WHERE l.user_id = ? AND (b.booking_date = ? OR b.booking_dates LIKE ?) AND b.status IN ("pending","confirmed","completed")';
+                WHERE l.user_id = ? AND (b.booking_date = ? OR b.booking_dates LIKE ?) AND b.status IN ("pending","confirmed")';
         $params = [$guideId, $date, '%"' . $date . '"%'];
         if ($excludeBookingId !== null) {
             $sql .= ' AND b.id <> ?';
@@ -841,22 +1171,107 @@ final class Booking
     /**
      * Is the GUIDE taken anywhere on this date (for time-less/whole-day bookings)?
      */
-    public static function isGuideDateBooked(int $guideId, string $date): bool
+    public static function isGuideDateBooked(int $guideId, string $date, ?int $excludeBookingId = null, ?int $excludeListingId = null): bool
     {
-        if (Database::first(
-            'SELECT b.id FROM bookings b
-             JOIN listings l ON l.id = b.listing_id
-             WHERE l.user_id = ? AND (b.booking_date = ? OR b.booking_dates LIKE ?) AND b.status IN ("pending","confirmed","completed")',
-            [$guideId, $date, '%"' . $date . '"%']
-        ) !== null) {
+        if (GuideAvailability::isGuideBlocked($guideId, $date)) {
             return true;
         }
-        return Database::first(
-            'SELECT ga.id FROM guide_availability ga
-             JOIN listings l ON l.id = ga.listing_id
-             WHERE l.user_id = ? AND ga.blocked_date = ?',
-            [$guideId, $date]
-        ) !== null;
+
+        $sql = 'SELECT b.id, b.booking_date, b.booking_dates, b.check_in_date, b.check_out_date, b.notes
+                FROM bookings b
+                JOIN listings l ON l.id = b.listing_id
+                WHERE l.user_id = ?
+                  AND b.status IN ("pending", "confirmed")
+                  AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded", "completed"))';
+        $params = [$guideId];
+        if ($excludeBookingId !== null) {
+            $sql .= ' AND b.id <> ?';
+            $params[] = $excludeBookingId;
+        }
+        if ($excludeListingId !== null) {
+            $sql .= ' AND l.id <> ?';
+            $params[] = $excludeListingId;
+        }
+        $rows = Database::all($sql, $params);
+
+        foreach ($rows as $r) {
+            $startDate = !empty($r['booking_date']) ? (string) $r['booking_date'] : (!empty($r['check_in_date']) ? (string) $r['check_in_date'] : '');
+            if ($startDate === $date) {
+                return true;
+            }
+
+            $durationDays = 1;
+            if (!empty($r['notes'])) {
+                $noteData = json_decode((string) $r['notes'], true);
+                if (is_array($noteData) && !empty($noteData['duration_days'])) {
+                    $durationDays = max(1, (int) $noteData['duration_days']);
+                }
+            }
+
+            if ($startDate !== '' && $durationDays > 1) {
+                for ($d = 1; $d < $durationDays; $d++) {
+                    if (date('Y-m-d', strtotime("{$startDate} +{$d} days")) === $date) {
+                        return true;
+                    }
+                }
+            }
+
+            if (!empty($r['booking_dates'])) {
+                $extra = json_decode((string) $r['booking_dates'], true);
+                if (is_array($extra) && in_array($date, $extra, true)) {
+                    return true;
+                }
+            }
+
+            if (!empty($r['check_in_date']) && !empty($r['check_out_date'])) {
+                if ($date >= (string) $r['check_in_date'] && $date <= (string) $r['check_out_date']) {
+                    return true;
+                }
+            }
+        }
+
+        try {
+            $itemSql = 'SELECT pbi.id, pbi.rescheduled_date, b.booking_date, b.check_in_date, b.check_out_date, b.notes
+                        FROM package_booking_items pbi
+                        JOIN bookings b ON b.id = pbi.parent_booking_id
+                        WHERE pbi.provider_id = ?
+                          AND pbi.provider_role = "guide"
+                          AND pbi.status NOT IN ("cancelled", "removed")
+                          AND b.status NOT IN ("cancelled", "refunded")
+                          AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded"))';
+            $itemParams = [$guideId];
+            if ($excludeBookingId !== null) {
+                $itemSql .= ' AND b.id <> ?';
+                $itemParams[] = $excludeBookingId;
+            }
+            $items = Database::all($itemSql, $itemParams);
+
+            foreach ($items as $it) {
+                if (!empty($it['rescheduled_date']) && (string) $it['rescheduled_date'] === $date) {
+                    return true;
+                }
+                $startDate = !empty($it['booking_date']) ? (string) $it['booking_date'] : (!empty($it['check_in_date']) ? (string) $it['check_in_date'] : '');
+                if ($startDate === $date) {
+                    return true;
+                }
+                $durationDays = 1;
+                if (!empty($it['notes'])) {
+                    $noteData = json_decode((string) $it['notes'], true);
+                    if (is_array($noteData) && !empty($noteData['duration_days'])) {
+                        $durationDays = max(1, (int) $noteData['duration_days']);
+                    }
+                }
+                if ($startDate !== '' && $durationDays > 1) {
+                    for ($d = 1; $d < $durationDays; $d++) {
+                        if (date('Y-m-d', strtotime("{$startDate} +{$d} days")) === $date) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable) {}
+
+        return false;
     }
 
     /**
@@ -928,25 +1343,11 @@ final class Booking
 
     /**
      * Total revenue generated for a service provider (guide or hotel owner)
-     * from applicable confirmed, checked-in, or completed bookings with verified payments.
+     * from eligible completed bookings with verified payments.
      */
     public static function revenueForProvider(int $providerId): float
     {
-        $row = Database::first(
-            'SELECT COALESCE(SUM(b.total_amount), 0) AS total
-             FROM bookings b
-             JOIN listings l ON l.id = b.listing_id
-             WHERE l.user_id = ?
-               AND (
-                   b.status IN ("confirmed", "completed")
-                   OR b.hotel_status IN ("confirmed", "checked_in", "completed")
-               )
-               AND b.status NOT IN ("cancelled", "refunded")
-               AND (b.hotel_status IS NULL OR b.hotel_status NOT IN ("cancelled", "refunded"))
-               AND EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.status = "paid")',
-            [$providerId]
-        );
-        return (float) ($row['total'] ?? 0);
+        return \App\Services\RevenueService::getProviderRevenue($providerId);
     }
 
     public static function revenueForGuide(int $guideId): float
@@ -970,7 +1371,7 @@ final class Booking
             'SELECT DATE_FORMAT(b.created_at, "%Y-%m") AS month, COALESCE(SUM(b.total_amount),0) AS total
              FROM bookings b
              JOIN listings l ON l.id = b.listing_id
-             WHERE l.user_id = ? AND b.status IN ("confirmed", "completed")
+             WHERE l.user_id = ? AND b.status = "completed"
                AND b.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
                AND EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.status = "paid")
              GROUP BY month ORDER BY month ASC',
@@ -1040,11 +1441,87 @@ final class Booking
 
     public static function delete(int $id): bool
     {
+        $booking = Database::first('
+            SELECT b.*, l.user_id AS listing_owner_id
+            FROM bookings b
+            LEFT JOIN listings l ON l.id = b.listing_id
+            WHERE b.id = ?
+        ', [$id]);
+
+        if (!$booking) {
+            return false;
+        }
+
+        $affectedProviderIds = [];
+        if (!empty($booking['listing_owner_id'])) {
+            $affectedProviderIds[] = (int) $booking['listing_owner_id'];
+        }
+        if (!empty($booking['guide_id'])) {
+            $affectedProviderIds[] = (int) $booking['guide_id'];
+        }
+
+        $pkgRef = $booking['package_booking_ref'] ?? null;
+        $items = Database::all('
+            SELECT provider_id FROM package_booking_items
+            WHERE parent_booking_id = ? OR sub_booking_id = ?' . ($pkgRef ? ' OR package_booking_ref = ?' : ''),
+            $pkgRef ? [$id, $id, $pkgRef] : [$id, $id]
+        );
+        foreach ($items as $it) {
+            if (!empty($it['provider_id'])) {
+                $affectedProviderIds[] = (int) $it['provider_id'];
+            }
+        }
+
         try {
             Database::run('UPDATE reviews SET booking_id = NULL WHERE booking_id = ?', [$id]);
-        } catch (\Throwable $e) {
-            // Ignore if reviews table or column differs
-        }
-        return Database::run('DELETE FROM bookings WHERE id = ?', [$id])->rowCount() > 0;
+        } catch (\Throwable $e) {}
+
+        try {
+            Database::run('DELETE FROM disputes WHERE booking_id = ?', [$id]);
+        } catch (\Throwable $e) {}
+
+        try {
+            Database::run('DELETE FROM payments WHERE booking_id = ?', [$id]);
+        } catch (\Throwable $e) {}
+
+        try {
+            Database::run('DELETE FROM package_booking_items WHERE parent_booking_id = ? OR sub_booking_id = ?', [$id, $id]);
+            if ($pkgRef) {
+                try {
+                    Database::run('DELETE FROM payments WHERE booking_id IN (SELECT b2.id FROM (SELECT id FROM bookings WHERE package_booking_ref = ?) b2)', [$pkgRef]);
+                } catch (\Throwable $e) {}
+                try {
+                    Database::run('DELETE FROM disputes WHERE booking_id IN (SELECT b2.id FROM (SELECT id FROM bookings WHERE package_booking_ref = ?) b2)', [$pkgRef]);
+                } catch (\Throwable $e) {}
+                try {
+                    Database::run('UPDATE reviews SET booking_id = NULL WHERE booking_id IN (SELECT b2.id FROM (SELECT id FROM bookings WHERE package_booking_ref = ?) b2)', [$pkgRef]);
+                } catch (\Throwable $e) {}
+                try {
+                    Database::run('DELETE FROM rental_report_files WHERE rental_id IN (SELECT r2.id FROM (SELECT id FROM rental_requests WHERE package_booking_ref = ?) r2)', [$pkgRef]);
+                } catch (\Throwable $e) {}
+                try {
+                    Database::run('DELETE FROM rental_reviews WHERE rental_id IN (SELECT r2.id FROM (SELECT id FROM rental_requests WHERE package_booking_ref = ?) r2)', [$pkgRef]);
+                } catch (\Throwable $e) {}
+                try {
+                    Database::run('DELETE FROM package_booking_items WHERE package_booking_ref = ?', [$pkgRef]);
+                } catch (\Throwable $e) {}
+                try {
+                    Database::run('DELETE FROM bookings WHERE package_booking_ref = ? AND id != ?', [$pkgRef, $id]);
+                } catch (\Throwable $e) {}
+                try {
+                    Database::run('DELETE FROM rental_requests WHERE package_booking_ref = ?', [$pkgRef]);
+                } catch (\Throwable $e) {}
+            }
+        } catch (\Throwable $e) {}
+
+        $deleted = Database::run('DELETE FROM bookings WHERE id = ?', [$id])->rowCount() > 0;
+
+        \App\Services\RevenueService::recordBookingDeletion($id, [
+            'listing_owner_id' => $booking['listing_owner_id'] ?? null,
+            'guide_id' => $booking['guide_id'] ?? null,
+            'provider_ids' => $affectedProviderIds,
+        ]);
+
+        return $deleted;
     }
 }

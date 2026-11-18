@@ -1225,23 +1225,33 @@ export default function TripsScreen() {
         {/* Provider Services Status Breakdown */}
         {(() => {
           const guideItem = item.provider_statuses?.find((p: any) => p.service_type === 'guide');
-          const guideSt = guideItem?.status || (overallStatus === 'completed' ? 'completed' : (overallStatus === 'confirmed' && (!item.provider_statuses || item.provider_statuses.length === 0) ? 'confirmed' : 'pending'));
+          const rawGuideStatus = (guideItem?.status || guideItem?.sub_booking_status || '').toLowerCase().trim();
+          const guideSt = (rawGuideStatus && rawGuideStatus !== 'pending')
+            ? rawGuideStatus
+            : (overallStatus === 'completed' || item.status === 'completed'
+              ? 'completed'
+              : ((overallStatus === 'confirmed' || item.status === 'confirmed' || rawGuideStatus === 'confirmed')
+                ? 'confirmed'
+                : 'pending'));
 
           const hotelItem = item.provider_statuses?.find((p: any) => p.service_type === 'hotel');
           const hasHotel = Boolean(hotelItem || details?.hotel_included || details?.accommodation);
-          const hotelSt = hotelItem?.status || (hasHotel && overallStatus === 'completed' ? 'completed' : 'pending');
+          const hotelSt = hotelItem?.hotel_reservation_status || hotelItem?.booking_status || hotelItem?.status || (hasHotel && overallStatus === 'completed' ? 'completed' : 'pending');
 
           const vehicleItem = item.provider_statuses?.find((p: any) => p.service_type === 'vehicle');
           const hasVehicle = Boolean(vehicleItem || details?.rental_included || details?.rental);
-          const vehicleSt = vehicleItem?.status || (hasVehicle && overallStatus === 'completed' ? 'completed' : 'pending');
+          const vehicleSt = vehicleItem?.rental_request_status || vehicleItem?.booking_status || vehicleItem?.status || (hasVehicle && overallStatus === 'completed' ? 'completed' : 'pending');
 
           const getStatusBadge = (st: string) => {
-            if (st === 'completed') return { text: 'Completed', color: '#10B981', bg: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7' };
-            if (st === 'confirmed' || st === 'approved' || st === 'contacted' || st === 'checked_in') return { text: 'Confirmed', color: '#059669', bg: isDark ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5' };
-            if (st === 'rescheduled') return { text: 'Rescheduled', color: '#2563EB', bg: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF' };
-            if (st === 'removed') return { text: 'Removed', color: '#64748B', bg: isDark ? 'rgba(100, 116, 139, 0.2)' : '#F1F5F9' };
-            if (st === 'cancelled') return { text: 'Cancelled', color: '#DC2626', bg: isDark ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2' };
-            if (st === 'rejected' || st === 'declined') return { text: 'Declined', color: '#DC2626', bg: isDark ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2' };
+            const norm = (st || '').toLowerCase().trim();
+            if (norm === 'completed') return { text: 'Completed', color: '#10B981', bg: isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7' };
+            if (norm === 'contacted') return { text: 'Contacted', color: '#059669', bg: isDark ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5' };
+            if (norm === 'checked_in' || norm === 'check_in' || norm === 'check in') return { text: 'Check in', color: '#059669', bg: isDark ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5' };
+            if (norm === 'confirmed' || norm === 'approved') return { text: 'Confirmed', color: '#059669', bg: isDark ? 'rgba(5, 150, 105, 0.2)' : '#ECFDF5' };
+            if (norm === 'rescheduled') return { text: 'Rescheduled', color: '#2563EB', bg: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF' };
+            if (norm === 'removed') return { text: 'Removed', color: '#64748B', bg: isDark ? 'rgba(100, 116, 139, 0.2)' : '#F1F5F9' };
+            if (norm === 'cancelled') return { text: 'Cancelled', color: '#DC2626', bg: isDark ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2' };
+            if (norm === 'rejected' || norm === 'declined') return { text: 'Declined', color: '#DC2626', bg: isDark ? 'rgba(220, 38, 38, 0.2)' : '#FEF2F2' };
             return { text: 'Pending', color: '#D97706', bg: isDark ? 'rgba(217, 119, 6, 0.2)' : '#FEF3C7' };
           };
 
@@ -2395,7 +2405,14 @@ export default function TripsScreen() {
                 const guideAvatar = selectedPackageDetails.guide_avatar || details?.guide?.avatar || '';
 
                 const guideItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'guide');
-                const guideSt = guideItem?.status || (overallStatus === 'completed' ? 'completed' : (overallStatus === 'confirmed' ? 'confirmed' : 'pending'));
+                const rawGuideStatus = (guideItem?.status || guideItem?.sub_booking_status || '').toLowerCase().trim();
+                const guideSt = (rawGuideStatus && rawGuideStatus !== 'pending')
+                  ? rawGuideStatus
+                  : (overallStatus === 'completed' || selectedPackageDetails.status === 'completed'
+                    ? 'completed'
+                    : ((overallStatus === 'confirmed' || selectedPackageDetails.status === 'confirmed' || rawGuideStatus === 'confirmed')
+                      ? 'confirmed'
+                      : 'pending'));
 
                 const hotelItem = selectedPackageDetails.provider_statuses?.find((p: any) => p.service_type === 'hotel');
                 const hasHotel = Boolean(hotelItem || details?.hotel_included || details?.accommodation);
@@ -2587,7 +2604,7 @@ export default function TripsScreen() {
                             {isHost ? (
                               'As the package host, select Option A to substitute with an available provider in the same category or Option B to reschedule the service date.'
                             ) : (
-                              'A service provider has cancelled. You can select Option C to proceed with remaining services and receive a partial refund, or Option D to cancel the entire package with a 100% full refund.'
+                              'A service provider has cancelled. You can select Option A to proceed with remaining services and receive a partial refund, or Option B to cancel the entire package with a 100% full refund.'
                             )}
                           </Text>
                         </View>
@@ -2630,7 +2647,7 @@ export default function TripsScreen() {
                                 <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 12 }} />
                               ) : pkgAlternativesList.length === 0 ? (
                                 <Text style={{ fontSize: 11, color: colors.textSub, textAlign: 'center', paddingVertical: 8 }}>
-                                  No direct alternatives found. You may also select Option B (Reschedule) or Option C (Continue Without).
+                                  No direct alternatives found. You may also select Option B (Reschedule).
                                 </Text>
                               ) : (
                                 <View style={{ gap: 8 }}>
@@ -2723,18 +2740,18 @@ export default function TripsScreen() {
                         </>
                       ) : null}
 
-                      {/* TRAVELER ONLY: Option C & Option D */}
+                      {/* TRAVELER ONLY: Option A & Option B */}
                       {isTraveler ? (
                         <>
-                        {/* Option C: Continue Without (THIRD) */}
+                        {/* Option A: Continue Without (FIRST FOR TRAVELER) */}
                         <View style={{ borderRadius: 12, borderWidth: 1.5, borderColor: isDark ? '#334155' : '#E2E8F0', backgroundColor: colors.card, padding: 12, marginBottom: 10 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
                               <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#475569' }}>C</Text>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#475569' }}>A</Text>
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>Option C: Continue Without Service</Text>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.text }}>Option A: Continue Without Service</Text>
                                 <Text style={{ fontSize: 10, color: colors.textSub }}>Drop service & receive partial refund</Text>
                               </View>
                             </View>
@@ -2775,15 +2792,15 @@ export default function TripsScreen() {
                           ) : null}
                         </View>
 
-                        {/* Option D: Cancel Entire Package (FOURTH) */}
+                        {/* Option B: Cancel Entire Package (SECOND FOR TRAVELER) */}
                         <View style={{ borderRadius: 12, borderWidth: 1.5, borderColor: '#FECACA', backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2', padding: 12 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
                               <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#DC2626' }}>D</Text>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#DC2626' }}>B</Text>
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#991B1B' }}>Option D: Cancel Entire Package</Text>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#991B1B' }}>Option B: Cancel Entire Package</Text>
                                 <Text style={{ fontSize: 10, color: '#B91C1C' }}>Cancel all services & receive 100% full refund</Text>
                               </View>
                             </View>
@@ -2871,7 +2888,7 @@ export default function TripsScreen() {
                               </View>
                             </View>
                             <Text style={{ fontSize: 12, fontWeight: '700', color: activeHotelConfirmed ? '#059669' : (activeHotelSt === 'rescheduled' ? '#2563EB' : (activeHotelSt === 'removed' ? '#64748B' : (activeHotelSt === 'cancelled' || activeHotelSt === 'rejected' || activeHotelSt === 'declined' ? '#DC2626' : '#D97706'))) }}>
-                              {activeHotelSt === 'checked_in' ? '\u2713 Checked In' : (activeHotelSt === 'completed' ? '\u2713 Completed' : (activeHotelConfirmed ? '\u2713 Confirmed' : (activeHotelSt === 'rescheduled' ? '↺ Rescheduled' : (activeHotelSt === 'removed' ? '— Removed' : (activeHotelSt === 'cancelled' || activeHotelSt === 'rejected' || activeHotelSt === 'declined' ? '\u2715 Declined' : '⏳ Pending')))))}
+                              {activeHotelSt === 'checked_in' || activeHotelSt === 'check_in' || activeHotelSt === 'check in' ? '\u2713 Check in' : (activeHotelSt === 'completed' ? '\u2713 Completed' : (activeHotelConfirmed ? '\u2713 Confirmed' : (activeHotelSt === 'rescheduled' ? '↺ Rescheduled' : (activeHotelSt === 'removed' ? '— Removed' : (activeHotelSt === 'cancelled' || activeHotelSt === 'rejected' || activeHotelSt === 'declined' ? '\u2715 Declined' : '⏳ Pending')))))}
                             </Text>
                           </View>
                         ) : null}
@@ -3046,6 +3063,9 @@ export default function TripsScreen() {
                     {/* Rental Transportation Replacement */}
                     {hasVehicleReplacement && vehicleReplacementObj ? (() => {
                       const repRentalDays = Math.max(1, Number(vehicleReplacementObj.rental_days || vehicleReplacementObj.duration_days || derivedDays));
+                      const repCap = (vehicleReplacementObj.passenger_capacity !== undefined && vehicleReplacementObj.passenger_capacity !== null)
+                        ? vehicleReplacementObj.passenger_capacity
+                        : (vehicleReplacementObj.capacity !== undefined && vehicleReplacementObj.capacity !== null ? vehicleReplacementObj.capacity : 0);
                       const repPickup = vehicleReplacementObj.pickup_date || selectedPackageDetails.booking_date;
                       const repReturn = vehicleReplacementObj.return_date || (function() {
                         const d = new Date(repPickup);
@@ -3069,7 +3089,7 @@ export default function TripsScreen() {
                             {vehicleReplacementObj.vehicle_name || vehicleReplacementObj.model || vehicleReplacementObj.service_name || 'Replacement Vehicle'}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
-                            {`${repRentalDays} Full Day${repRentalDays > 1 ? 's' : ''} \u2022 ${vehicleReplacementObj.model || vehicleReplacementObj.vehicle_name || 'Vehicle'} (${vehicleReplacementObj.vehicle_type || 'Vehicle'}) \u2022 Capacity: ${vehicleReplacementObj.capacity || 4} Passengers`}
+                            {`${repRentalDays} Full Day${repRentalDays > 1 ? 's' : ''} \u2022 ${vehicleReplacementObj.model || vehicleReplacementObj.vehicle_name || 'Vehicle'} (${vehicleReplacementObj.vehicle_type || 'Vehicle'}) \u2022 Capacity: ${repCap} Passengers`}
                           </Text>
                           <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
                             {`Pickup Location: ${vehicleReplacementObj.location || 'Designated Location'}`}

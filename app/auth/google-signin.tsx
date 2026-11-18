@@ -28,8 +28,19 @@ const GOOGLE_ORIGINS =
 
 const CAPTURE_JS = `
 (function() {
+  function checkNgrok() {
+    try {
+      var text = document.body ? (document.body.innerText || '') : '';
+      if (text.indexOf('ERR_NGROK') !== -1 || text.indexOf('is offline') !== -1) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ngrok_error', isNgrokError: true }));
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
   function report() {
     try {
+      if (checkNgrok()) return;
       var u = String(location.href || '');
       if (u && u !== 'about:blank') {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'nav', url: u }));
@@ -40,6 +51,8 @@ const CAPTURE_JS = `
   document.addEventListener('DOMContentLoaded', report);
   window.addEventListener('hashchange', report);
   window.addEventListener('popstate', report);
+  setTimeout(checkNgrok, 600);
+  setTimeout(checkNgrok, 1500);
 })();
 true;
 `;
@@ -57,13 +70,16 @@ function isGoogleCallback(url: string): boolean {
   if (GOOGLE_ORIGINS.test(url)) {
     return false;
   }
+  if (/^guidemate:/i.test(url) || /^exp:/i.test(url)) {
+    return true;
+  }
   if (/\.ngrok/i.test(url)) {
     return true;
   }
   if (/\/api\/auth\/google\/callback/i.test(url)) {
     return true;
   }
-  return /[?&](?:code|error)=/.test(url);
+  return /[?&](?:code|error|token)=/.test(url);
 }
 
 export default function GoogleSignInScreen() {
@@ -74,6 +90,7 @@ export default function GoogleSignInScreen() {
   const [authUrl, setAuthUrl] = useState('');
   const [redirectUri, setRedirectUri] = useState('');
   const [bootError, setBootError] = useState('');
+  const [tunnelOffline, setTunnelOffline] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const close = useCallback(
@@ -113,6 +130,18 @@ export default function GoogleSignInScreen() {
   const finishWithUrl = useCallback(
     async (url: string) => {
       if (handled.current) return;
+      const directToken = queryParam(url, 'token');
+      if (directToken) {
+        handled.current = true;
+        webRef.current?.stopLoading();
+        settleGoogleSignIn(directToken);
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
+        return;
+      }
       const oauthError = queryParam(url, 'error');
       const code = queryParam(url, 'code');
       const state = queryParam(url, 'state');
@@ -160,18 +189,35 @@ export default function GoogleSignInScreen() {
       if (!url || handled.current) return false;
       if (!isGoogleCallback(url)) return false;
       webRef.current?.stopLoading();
+
+      const directToken = queryParam(url, 'token');
+      if (directToken) {
+        handled.current = true;
+        settleGoogleSignIn(directToken);
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
+        return true;
+      }
+
       if (queryParam(url, 'code') || queryParam(url, 'error')) {
         void finishWithUrl(url);
       }
       return true;
     },
-    [finishWithUrl]
+    [finishWithUrl, router]
   );
 
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
       try {
-        const payload = JSON.parse(event.nativeEvent.data) as { url?: string };
+        const payload = JSON.parse(event.nativeEvent.data) as { url?: string; isNgrokError?: boolean };
+        if (payload.isNgrokError) {
+          setTunnelOffline(true);
+          return;
+        }
         if (payload.url) captureUrl(payload.url);
       } catch {
         captureUrl(event.nativeEvent.data);
@@ -221,6 +267,27 @@ export default function GoogleSignInScreen() {
             <Text style={styles.demoBtnText}>{busy ? 'Signing in…' : 'Continue with demo account'}</Text>
           </TouchableOpacity>
         </View>
+      ) : tunnelOffline ? (
+        <View style={styles.center}>
+          <Ionicons name="cloud-offline-outline" size={54} color="#EF4444" style={{ marginBottom: 12 }} />
+          <Text style={styles.err}>Google Sign-In Tunnel Offline</Text>
+          <Text style={[styles.hint, { textAlign: 'center', marginHorizontal: 20, marginTop: 8 }]}>
+            The public callback tunnel (ngrok) is offline (ERR_NGROK_3200). Run `start-ngrok.bat` on your PC, or continue with demo account below.
+          </Text>
+          <TouchableOpacity style={[styles.demoBtn, { marginTop: 20 }]} onPress={handleDemoSignIn} disabled={busy}>
+            <Text style={styles.demoBtnText}>{busy ? 'Signing in…' : 'Continue with demo account'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.retryBtn, { marginTop: 12 }]}
+            onPress={() => {
+              setTunnelOffline(false);
+              webRef.current?.reload();
+            }}
+            disabled={busy}
+          >
+            <Text style={styles.retryBtnText}>Retry Connection</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <View style={styles.webWrap}>
           {authUrl ? (
@@ -252,10 +319,19 @@ export default function GoogleSignInScreen() {
                 captureUrl(e.nativeEvent.url);
               }}
               onError={(e) => {
+                const desc = e.nativeEvent.description || '';
+                if (/ERR_NGROK|offline/i.test(desc)) {
+                  setTunnelOffline(true);
+                }
                 captureUrl(e.nativeEvent.url);
               }}
               onHttpError={(e) => {
-                captureUrl(e.nativeEvent.url);
+                const url = e.nativeEvent.url || '';
+                const status = e.nativeEvent.statusCode;
+                if (/\.ngrok/i.test(url) && (status >= 500 || status === 404)) {
+                  setTunnelOffline(true);
+                }
+                captureUrl(url);
               }}
               onOpenWindow={(e) => {
                 captureUrl(e.nativeEvent.targetUrl);
@@ -317,6 +393,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  retryBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 320,
+  },
+  retryBtnText: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '600',
   },
   hint: { color: '#6B7280', fontSize: 13, textAlign: 'center', marginTop: 8 },
 });

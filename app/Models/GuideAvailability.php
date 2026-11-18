@@ -54,4 +54,30 @@ final class GuideAvailability
         );
         return array_map(static fn($r) => (string) $r['blocked_date'], $rows);
     }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function blockedDatesForGuide(int $guideId): array
+    {
+        $rows = Database::all(
+            'SELECT DISTINCT ga.blocked_date
+             FROM guide_availability ga
+             JOIN listings l ON l.id = ga.listing_id
+             WHERE l.user_id = ? AND ga.blocked_date >= CURDATE()
+             ORDER BY ga.blocked_date',
+            [$guideId]
+        );
+        return array_map(static fn($r) => (string) $r['blocked_date'], $rows);
+    }
+
+    public static function isGuideBlocked(int $guideId, string $date): bool
+    {
+        return Database::first(
+            'SELECT ga.id FROM guide_availability ga
+             JOIN listings l ON l.id = ga.listing_id
+             WHERE l.user_id = ? AND ga.blocked_date = ?',
+            [$guideId, $date]
+        ) !== null;
+    }
 }

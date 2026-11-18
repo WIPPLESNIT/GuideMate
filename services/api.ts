@@ -119,6 +119,8 @@ export type ApiListing = {
   available_slots?: number;
   is_available?: boolean;
   date_booked_counts?: Record<string, number>;
+  date_remaining_slots?: Record<string, number>;
+  daily_capacity?: number;
   currency: string;
   rating: number;
   review_count: number;
@@ -142,6 +144,7 @@ export type ApiListing = {
   owner_id?: number;
   favorited?: boolean;
   is_new?: boolean;
+  booked_dates?: string[];
   nearest_hotel?: NearestHotel | null;
 };
 
@@ -582,6 +585,8 @@ export type ApiRentalVehicle = {
   model?: string;
   year?: number;
   type: string;
+  passenger_capacity?: number;
+  capacity?: number;
   price_per_day: number;
   specs: string[];
   shop: string;

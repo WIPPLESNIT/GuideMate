@@ -32,13 +32,7 @@ final class Payment
 
     public static function totalRevenue(): float
     {
-        $row = Database::first(
-            'SELECT COALESCE(SUM(p.amount), 0) AS total
-             FROM payments p
-             JOIN bookings b ON b.id = p.booking_id
-             WHERE p.status = "paid" AND b.status IN ("confirmed", "completed")'
-        );
-        return (float) ($row['total'] ?? 0);
+        return \App\Services\RevenueService::getAdminTotalRevenue();
     }
 
     public static function refund(int $bookingId): void

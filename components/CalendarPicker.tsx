@@ -31,6 +31,8 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+const STRIKE_THROUGH_STYLE = { textDecorationLine: "line-through" as const };
+
 function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
@@ -77,8 +79,10 @@ export default function CalendarPicker({
     if (initialDateStr) {
       const target = parseYMD(initialDateStr);
       if (target) {
-        setViewYear(target.year);
-        setViewMonth(target.month);
+        const y = target.year;
+        const m = target.month;
+        setViewYear(y);
+        setViewMonth(m);
       }
     }
   }
@@ -204,6 +208,7 @@ export default function CalendarPicker({
                         { color: isDisabled ? (isFull ? '#94A3B8' : theme.textSub) : theme.textMain },
                         isPast && { opacity: 0.35 },
                         isFull && styles.dayTextFull,
+                        isFull && STRIKE_THROUGH_STYLE,
                         isSelected && { color: '#FFFFFF', fontWeight: '800' },
                       ]}
                     >

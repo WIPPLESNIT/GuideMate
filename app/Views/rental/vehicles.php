@@ -312,10 +312,18 @@ $commonSpecs = [
                     </div>
                 </div>
 
-                <div class="field-row" style="margin-top:0.75rem;">
-                    <label for="vf_name">Listing Display Title <small class="hint">(Optional - defaults to "Year Make Model")</small></label>
-                    <input class="input" id="vf_name" name="name" placeholder="e.g. 2024 Honda Click 125i (Automatic · Dual Helmet)" maxlength="160">
-                    <div class="field-error" id="vf_name_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
+                <div class="form-grid-2" style="margin-top:0.75rem;">
+                    <div class="field-row">
+                        <label for="vf_passenger_capacity">Passenger Capacity <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
+                        <input type="number" class="input" id="vf_passenger_capacity" name="passenger_capacity" min="1" max="100" placeholder="e.g. 2 for scooter, 4 for sedan" required>
+                        <small class="hint">Maximum number of passengers the vehicle accommodates.</small>
+                        <div class="field-error" id="vf_passenger_capacity_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
+                    </div>
+                    <div class="field-row">
+                        <label for="vf_name">Listing Display Title <small class="hint">(Optional)</small></label>
+                        <input class="input" id="vf_name" name="name" placeholder="e.g. 2024 Honda Click 125i (Automatic · Dual Helmet)" maxlength="160">
+                        <div class="field-error" id="vf_name_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
+                    </div>
                 </div>
             </div>
 
@@ -488,6 +496,7 @@ $commonSpecs = [
     var modelIn = document.getElementById('vf_model');
     var yearIn = document.getElementById('vf_year');
     var typeIn = document.getElementById('vf_type');
+    var passengerCapacityIn = document.getElementById('vf_passenger_capacity');
     var nameIn = document.getElementById('vf_name');
     var priceIn = document.getElementById('vf_price');
     var locationIn = document.getElementById('vf_location');
@@ -611,6 +620,7 @@ $commonSpecs = [
         model: 'vf_model_error',
         year: 'vf_year_error',
         type: 'vf_type_error',
+        passenger_capacity: 'vf_passenger_capacity_error',
         name: 'vf_name_error',
         price_per_day: 'vf_price_per_day_error',
         location: 'vf_location_error',
@@ -625,6 +635,7 @@ $commonSpecs = [
         model: modelIn,
         year: yearIn,
         type: typeIn,
+        passenger_capacity: passengerCapacityIn,
         name: nameIn,
         price_per_day: priceIn,
         location: locationIn,
@@ -695,7 +706,7 @@ $commonSpecs = [
         });
     }
 
-    ['make', 'model', 'year', 'type', 'price_per_day', 'location', 'address', 'custom_spec'].forEach(function (f) {
+    ['make', 'model', 'year', 'type', 'passenger_capacity', 'price_per_day', 'location', 'address', 'custom_spec'].forEach(function (f) {
         var inputEl = fieldInputs[f];
         if (inputEl) {
             inputEl.addEventListener('input', function () {
@@ -755,6 +766,16 @@ $commonSpecs = [
         } else if (typeVal.length > 50) {
             errors.type = 'Vehicle type must not exceed 50 characters.';
             if (!firstInvalidInput) firstInvalidInput = typeIn;
+        }
+
+        var capVal = (passengerCapacityIn.value || '').trim();
+        var capNum = parseInt(capVal, 10);
+        if (capVal === '' || isNaN(capNum)) {
+            errors.passenger_capacity = 'Passenger capacity is required and must be a valid number.';
+            if (!firstInvalidInput) firstInvalidInput = passengerCapacityIn;
+        } else if (capNum <= 0) {
+            errors.passenger_capacity = 'Passenger capacity must be a positive number (at least 1 passenger).';
+            if (!firstInvalidInput) firstInvalidInput = passengerCapacityIn;
         }
 
         var priceVal = (priceIn.value || '').trim();
@@ -871,6 +892,7 @@ $commonSpecs = [
 
         var checkboxes = document.querySelectorAll('.vf_spec_checkbox');
         checkboxes.forEach(function (cb) { cb.checked = false; });
+        if (passengerCapacityIn) passengerCapacityIn.value = '';
         customSpecIn.value = '';
         updateDescCounter();
 
@@ -893,6 +915,9 @@ $commonSpecs = [
         modelIn.value = vehicle.model || '';
         yearIn.value = vehicle.year || new Date().getFullYear();
         typeIn.value = vehicle.type || '';
+        if (passengerCapacityIn) {
+            passengerCapacityIn.value = (vehicle.passenger_capacity !== undefined && vehicle.passenger_capacity !== null) ? vehicle.passenger_capacity : (vehicle.capacity !== undefined && vehicle.capacity !== null ? vehicle.capacity : 0);
+        }
         nameIn.value = vehicle.name || '';
         priceIn.value = vehicle.price_per_day || '';
         locationIn.value = vehicle.location || '';

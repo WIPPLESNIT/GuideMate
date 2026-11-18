@@ -135,6 +135,27 @@ export default function PackageDetailScreen() {
   const minPax = useMemo(() => packageData?.minPax ?? packageData?.minGroupSize ?? 2, [packageData]);
   const maxPax = useMemo(() => packageData?.maxPax ?? packageData?.maxGroupSize ?? 8, [packageData]);
 
+  // Booked / unavailable dates for calendar
+  const bookedDates = useMemo(
+    () => packageData?.booked_dates || packageData?.bookedDates || [],
+    [packageData]
+  );
+
+  useEffect(() => {
+    if (!travelDate) {
+      const today = new Date();
+      for (let offset = 2; offset < 60; offset++) {
+        const candidate = new Date();
+        candidate.setDate(today.getDate() + offset);
+        const ymd = candidate.toISOString().split('T')[0];
+        if (!bookedDates.includes(ymd)) {
+          setTravelDate(ymd);
+          break;
+        }
+      }
+    }
+  }, [travelDate, bookedDates]);
+
   // Section 5: Constant Total Package Price regardless of guest count
   const packageBasePrice = useMemo(() => {
     if (!packageData) return 8499;
@@ -258,6 +279,12 @@ export default function PackageDetailScreen() {
     }
     if (!travelDate) {
       return Alert.alert('Select Travel Date', 'Please select your preferred travel start date.');
+    }
+    if (bookedDates.includes(travelDate)) {
+      return Alert.alert(
+        'Date Unavailable',
+        'The selected date is already booked for this travel package. Please choose an available date on the calendar.'
+      );
     }
     if (!contactName.trim() || !contactPhone.trim()) {
       return Alert.alert('Contact Information', 'Please provide your name and phone number.');
@@ -1398,6 +1425,8 @@ export default function PackageDetailScreen() {
                       value={travelDate}
                       onChange={(d) => setTravelDate(d)}
                       theme={calendarTheme}
+                      disabledDates={bookedDates}
+                      minDate={new Date().toISOString().split('T')[0]}
                     />
                   </View>
 
@@ -1790,17 +1819,52 @@ export default function PackageDetailScreen() {
                 </View>
               ) : null}
 
-              {/* STEP 3: CONFIRMED */}
+              {/* STEP 3: SUBMITTED / CONFIRMED */}
               {bookingStep === 'confirmed' && bookingResult ? (
                 <View style={{ alignItems: 'center', paddingVertical: 10 }}>
                   <View style={[styles.successIconCircle, { backgroundColor: colors.primary }]}>
                     <Ionicons name="checkmark" size={36} color="#FFFFFF" />
                   </View>
 
-                  <Text style={[styles.successTitle, { color: colors.text }]}>Booking Confirmed!</Text>
+                  <Text style={[styles.successTitle, { color: colors.text }]}>
+                    {(bookingResult.status === 'pending' || bookingResult.overallStatus === 'pending')
+                      ? 'Booking Submitted!'
+                      : 'Booking Confirmed!'}
+                  </Text>
                   <Text style={[styles.successRef, { color: colors.primary }]}>
                     Ref #{bookingResult.bookingId}
                   </Text>
+
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: (bookingResult.status === 'pending' || bookingResult.overallStatus === 'pending') ? '#FEF3C7' : '#D1FAE5',
+                      paddingHorizontal: 12,
+                      paddingVertical: 5,
+                      borderRadius: 12,
+                      marginTop: 6,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <Ionicons
+                      name={(bookingResult.status === 'pending' || bookingResult.overallStatus === 'pending') ? 'time-outline' : 'checkmark-circle-outline'}
+                      size={15}
+                      color={(bookingResult.status === 'pending' || bookingResult.overallStatus === 'pending') ? '#D97706' : '#059669'}
+                    />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        marginLeft: 5,
+                        color: (bookingResult.status === 'pending' || bookingResult.overallStatus === 'pending') ? '#D97706' : '#059669',
+                      }}
+                    >
+                      {(bookingResult.status === 'pending' || bookingResult.overallStatus === 'pending')
+                        ? 'Pending Provider Confirmations'
+                        : 'Confirmed'}
+                    </Text>
+                  </View>
 
                   <Text style={[styles.successDesc, { color: colors.textSub }]}>
                     {bookingResult.message}

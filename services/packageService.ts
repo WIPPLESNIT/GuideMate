@@ -115,6 +115,8 @@ export type TravelPackage = {
     confirmation: string;
     requirements: string[];
   };
+  booked_dates?: string[];
+  bookedDates?: string[];
   has_active_booking?: boolean;
   active_booking?: {
     id: number;
@@ -145,12 +147,21 @@ export type PackageBookingRequest = {
 export type PackageBookingResponse = {
   success: boolean;
   bookingId: string;
+  rawBookingId?: number;
+  packageBookingRef?: string;
   packageTitle: string;
   totalPrice: number;
+  basePrice?: number;
+  taxes?: number;
+  environmentalFees?: number;
+  voucherDiscount?: number;
   status: 'confirmed' | 'pending';
+  overallStatus?: string;
   travelDate: string;
   guestsCount: number;
   guideName: string;
+  paymentReference?: string;
+  allocations?: Record<string, number>;
   message: string;
 };
 
@@ -229,37 +240,15 @@ export async function getPackageById(idOrSlug: string): Promise<TravelPackage | 
 export async function bookTravelPackage(
   request: PackageBookingRequest
 ): Promise<PackageBookingResponse> {
-  const pkg = await getPackageById(request.packageId);
-  const pkgTitle = pkg ? pkg.title : 'Travel Package';
-  // Fixed total package price remains unchanged regardless of guests count!
-  const price = request.finalTotal ?? (pkg ? pkg.price : 8499);
-
-  try {
-    await restoreSession().catch(() => null);
-    const path = `/api/packages/${encodeURIComponent(request.packageId)}/book`;
-    const res = await api<PackageBookingResponse>(path, {
-      method: 'POST',
-      body: request,
-    });
-    if (res && res.success) {
-      return res;
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message) {
-      throw err;
-    }
+  await restoreSession().catch(() => null);
+  const path = `/api/packages/${encodeURIComponent(request.packageId)}/book`;
+  const res = await api<PackageBookingResponse>(path, {
+    method: 'POST',
+    body: request,
+  });
+  if (res && res.success) {
+    return res;
   }
 
-  const bookingId = `PKG-${Date.now().toString().slice(-6)}`;
-  return {
-    success: true,
-    bookingId,
-    packageTitle: pkgTitle,
-    totalPrice: price,
-    status: 'confirmed',
-    travelDate: request.travelDate,
-    guestsCount: request.guestsCount,
-    guideName: pkg ? pkg.host.name : 'Marc Repuesto',
-    message: `Your booking for "${pkgTitle}" has been confirmed! Guide ${pkg ? pkg.host.name : 'Marc'} has received your booking details and will coordinate your itinerary.`,
-  };
+  throw new Error((res as any)?.error || 'Could not complete travel package booking. Please try again.');
 }

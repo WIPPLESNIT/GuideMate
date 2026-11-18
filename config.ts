@@ -61,7 +61,7 @@ export const SOCIAL_AUTH = {
     // Instant demo sign-in works out-of-the-box. To enable real Google Cloud OAuth,
     // paste your Web Client ID here and set GOOGLE_OAUTH_CLIENT_SECRET in the backend .env
     // (Previous: '594984195783-95p4qciig7ghg2jtok9a709ov8k0embh.apps.googleusercontent.com')
-    web: '594984195783-95p4qciig7ghg2jtok9a709ov8k0embh.apps.googleusercontent.com',
+    web: '295510804527-v0v9kqo61scsm32bkkcv4ka5ok3ltnpb.apps.googleusercontent.com',
   },
   // Paste your Facebook App ID here to switch Facebook from demo to the real
   // backend-mediated login (the actual OAuth uses the backend .env secret).
@@ -70,5 +70,5 @@ export const SOCIAL_AUTH = {
   // Expo Go-compatible Google/Facebook login is mediated by your PHP backend.
   // Google now uses a localhost callback inside the in-app WebView (no ngrok).
   // Facebook still needs this public https origin when configured.
-  backendPublicUrl: 'https://concinnous-unobliging-max.ngrok-free.dev/GuideMate/public',
+  backendPublicUrl: 'https://wireless-unsoiled-ride.ngrok-free.dev/GuideMate/public',
 };
