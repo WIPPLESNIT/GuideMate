@@ -1010,6 +1010,7 @@ export const toggleFavorite = (listingId: number) =>
 
 export const submitReview = (payload: {
   listing_id: number;
+  booking_id?: number;
   rating: number;
   comment: string;
   title?: string;

@@ -8,11 +8,11 @@
     <div class="container" style="max-width:800px;">
         <div class="card-soft policy-page">
             <h2>Pay on GuideMate = fully covered</h2>
-            <p>When a tourist pays for a booking on GuideMate, everything listed under <strong>What's included</strong> on the listing must be honored. Guides must <strong>not</strong> ask for extra payment after a confirmed booking unless the cost was clearly listed under <strong>Not included</strong> before checkout.</p>
+            <p>When a tourist pays for a booking on GuideMate, everything listed under <strong>What's included</strong> on the listing must be honored. Guides must <strong>not</strong> ask for extra payment after a confirmed booking unless the cost was clearly listed under <strong>Available Add-ons & Services</strong> before checkout.</p>
 
             <h2>For tourists</h2>
             <ul class="policy-list">
-                <li>Read what's included and not included before you book.</li>
+                <li>Read what's included and available add-ons &amp; services before you book.</li>
                 <li>Only pay through GuideMate for platform protection.</li>
                 <li>If a guide asks for undeclared extra money, <strong>do not pay</strong> — open your booking and use <strong>Report a problem</strong>.</li>
                 <li>Keep proof in GuideMate messages when possible.</li>

@@ -130,8 +130,8 @@ final class ApiController extends Controller
         $activeBooking = $userId !== null ? Booking::getActiveBookingForListing($listingId, $userId) : null;
         $alreadyBooked = $activeBooking !== null;
         $hasReviewed = $userId !== null && Review::userHasReviewed($listingId, $userId);
-        // Reviews open once the tourist has a completed (or confirmed) booking.
-        $canReview = $userId !== null && !$hasReviewed && Booking::hasCompletedBooking($listingId, $userId);
+        // Reviews open once the tourist has an eligible unreviewed completed booking.
+        $canReview = $userId !== null && Booking::hasUnreviewedCompletedBooking($listingId, $userId);
 
         $listingPayload = $this->listingPayload($listing, true);
         // Suggest the closest hotel to this experience (skip if the listing is
@@ -3837,9 +3837,14 @@ final class ApiController extends Controller
         }
 
         $canReport = ($paid || ($isHotel && ($totalPaid > 0.0 || $hotelDepositAmount > 0.0)) || $isPaymentPaid) && in_array($status, ['confirmed', 'completed', 'disputed'], true) && empty($booking['dispute_id']);
-        $reviewed = $viewerId !== null && Review::userHasReviewed($listingId, $viewerId);
+        $bookingId = (int) $booking['id'];
+        $reviewed = $viewerId !== null && Review::bookingHasReview($bookingId);
         $effectiveStatus = $isPackage ? $overallPackageStatus : $status;
-        $canReview = ($effectiveStatus === 'completed' || ($isCompleted && $effectiveStatus !== 'cancelled' && $effectiveStatus !== 'refunded')) && !$reviewed && $effectiveStatus !== 'cancelled' && $effectiveStatus !== 'refunded';
+        $isBookingCompleted = $effectiveStatus === 'completed'
+            || ($isCompleted && $effectiveStatus !== 'cancelled' && $effectiveStatus !== 'refunded')
+            || (!empty($booking['unit_completed_at']) && $effectiveStatus !== 'cancelled' && $effectiveStatus !== 'refunded');
+        $isBookingCancelled = $effectiveStatus === 'cancelled' || $effectiveStatus === 'refunded' || $status === 'cancelled' || $status === 'refunded';
+        $canReview = $isBookingCompleted && !$isBookingCancelled && !$reviewed;
 
         return [
             'id' => (int) $booking['id'],
@@ -3953,6 +3958,7 @@ final class ApiController extends Controller
 
         $body = $this->jsonBody();
         $listingId = (int) ($body['listing_id'] ?? 0);
+        $bookingId = (int) ($body['booking_id'] ?? 0);
         $rating = (int) ($body['rating'] ?? 0);
         $comment = trim((string) ($body['comment'] ?? ''));
         $title = trim((string) ($body['title'] ?? ''));
@@ -3970,16 +3976,63 @@ final class ApiController extends Controller
             $this->json(['error' => 'Please write a short review.'], 422);
             return;
         }
-        if (!Booking::hasCompletedBooking($listingId, $userId)) {
-            $this->json(['error' => 'You can only review experiences you have booked.'], 403);
-            return;
-        }
-        if (Review::userHasReviewed($listingId, $userId)) {
-            $this->json(['error' => 'You have already reviewed this experience.'], 409);
-            return;
+
+        // Validate booking eligibility
+        $targetBooking = null;
+        if ($bookingId > 0) {
+            $targetBooking = Booking::find($bookingId);
+            if ($targetBooking === null || (int) $targetBooking['user_id'] !== $userId) {
+                $this->json(['error' => 'Booking not found or access denied.'], 404);
+                return;
+            }
+            if ((int) $targetBooking['listing_id'] !== $listingId) {
+                $this->json(['error' => 'Booking does not match this experience.'], 422);
+                return;
+            }
+
+            $bStatus = (string) ($targetBooking['status'] ?? '');
+            $bPkgStatus = (string) ($targetBooking['package_overall_status'] ?? '');
+            $isCancelled = in_array($bStatus, ['cancelled', 'refunded'], true) || $bPkgStatus === 'cancelled';
+            $isCompleted = $bStatus === 'completed' || $bPkgStatus === 'completed' || !empty($targetBooking['unit_completed_at']);
+
+            if ($isCancelled) {
+                $this->json(['error' => 'Cancelled bookings cannot be reviewed.'], 403);
+                return;
+            }
+            if (!$isCompleted) {
+                $this->json(['error' => 'You can only review experiences after your booking is completed.'], 403);
+                return;
+            }
+            if (Review::bookingHasReview($bookingId)) {
+                $this->json(['error' => 'You have already reviewed this completed booking.'], 409);
+                return;
+            }
+        } else {
+            // No specific booking_id sent: check if user has an eligible unreviewed completed booking
+            if (!Booking::hasCompletedBooking($listingId, $userId)) {
+                $this->json(['error' => 'You can only review experiences you have booked.'], 403);
+                return;
+            }
+
+            $targetBooking = Booking::getEligibleUnreviewedBooking($listingId, $userId);
+            if ($targetBooking === null) {
+                $this->json(['error' => 'You have already reviewed this completed experience. Complete another booking to submit a new review.'], 409);
+                return;
+            }
+            $bookingId = (int) $targetBooking['id'];
         }
 
-        Review::create($listingId, $userId, $rating, $title, $comment, date('Y-m-d'));
+        $providerId = !empty($listing['user_id']) ? (int) $listing['user_id'] : null;
+
+        try {
+            Review::create($listingId, $userId, $rating, $title, $comment, date('Y-m-d'), $bookingId, $providerId);
+        } catch (\PDOException $e) {
+            if ($e->getCode() === '23000' || str_contains($e->getMessage(), 'unique_booking_review') || str_contains($e->getMessage(), 'Duplicate entry')) {
+                $this->json(['error' => 'You have already reviewed this completed booking.'], 409);
+                return;
+            }
+            throw $e;
+        }
 
         $this->json([
             'success' => true,

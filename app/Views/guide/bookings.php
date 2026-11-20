@@ -487,11 +487,11 @@ $heading = $isHotel ? 'Hotel Reservations' : e(__('g_bookings_received', 'Bookin
                                                         </button>
                                                     <?php endif; ?>
                                                  <?php endif; ?>
-                                                    <?php if ($isPkg && !$isActionRequired): ?>
+                                                    <!-- <?php if ($isPkg && !$isActionRequired): ?>
                                                         <button type="button" class="res-action-item" onclick="openPackageDetailsModal(<?= htmlspecialchars(json_encode($pkgSum ?? ($b['package_booking_ref'] ?? $b['id'])), ENT_QUOTES, 'UTF-8') ?>)" role="menuitem">
                                                             <?= admin_icon('eye', 14) ?> View Package Details
                                                         </button>
-                                                    <?php endif; ?>
+                                                    <?php endif; ?> -->
                                                     <?php if (!$isPkg && !$isCompleted && !$isCancelled): ?>
                                                         <?php if (!$isWarned && in_array($b['status'], ['pending', 'confirmed'], true)): ?>
                                                             <div style="border-top:1px solid var(--line, #e2e8f0);margin:2px 0;"></div>

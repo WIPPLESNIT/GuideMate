@@ -286,13 +286,13 @@ $commonSpecs = [
                     <div class="field-row">
                         <label for="vf_make">Make / Brand <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
                         <input class="input" id="vf_make" name="make" placeholder="e.g. Honda, Toyota, Yamaha, Vespa" required maxlength="80">
-                        <small class="hint">The manufacturer of the vehicle.</small>
+                        <!-- <small class="hint">The manufacturer of the vehicle.</small> -->
                         <div class="field-error" id="vf_make_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                     </div>
                     <div class="field-row">
                         <label for="vf_model">Model <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
                         <input class="input" id="vf_model" name="model" placeholder="e.g. Click 125i, Vios, Aerox 155, Fortuner" required maxlength="80">
-                        <small class="hint">Specific model name and trim.</small>
+                        <!-- <small class="hint">Specific model name and trim.</small> -->
                         <div class="field-error" id="vf_model_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                     </div>
                 </div>
@@ -301,13 +301,13 @@ $commonSpecs = [
                     <div class="field-row">
                         <label for="vf_year">Model Year <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
                         <input type="number" class="input" id="vf_year" name="year" min="1980" max="<?= (int) date('Y') + 1 ?>" value="<?= (int) date('Y') ?>" placeholder="e.g. 2024" required>
-                        <small class="hint">Manufacturing / registration year (1980 - <?= (int) date('Y') + 1 ?>).</small>
+                        <!-- <small class="hint">Manufacturing / registration year (1980 - <?= (int) date('Y') + 1 ?>).</small> -->
                         <div class="field-error" id="vf_year_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                     </div>
                     <div class="field-row">
                         <label for="vf_type">Vehicle Type <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
                         <input type="text" class="input" id="vf_type" name="type" placeholder="e.g. Scooter, Sedan, SUV, Van, Motorcycle" required maxlength="50">
-                        <small class="hint">Enter the vehicle type (e.g. Scooter, Sedan, SUV, Van, Motorcycle).</small>
+                        <!-- <small class="hint">Enter the vehicle type (e.g. Scooter, Sedan, SUV, Van, Motorcycle).</small> -->
                         <div class="field-error" id="vf_type_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                     </div>
                 </div>
@@ -316,7 +316,7 @@ $commonSpecs = [
                     <div class="field-row">
                         <label for="vf_passenger_capacity">Passenger Capacity <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
                         <input type="number" class="input" id="vf_passenger_capacity" name="passenger_capacity" min="1" max="100" placeholder="e.g. 2 for scooter, 4 for sedan" required>
-                        <small class="hint">Maximum number of passengers the vehicle accommodates.</small>
+                        <!-- <small class="hint">Maximum number of passengers the vehicle accommodates.</small> -->
                         <div class="field-error" id="vf_passenger_capacity_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                     </div>
                     <div class="field-row">
@@ -337,13 +337,13 @@ $commonSpecs = [
                             <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#64748b;font-weight:600;">₱</span>
                             <input type="number" step="10" min="50" max="500000" class="input" id="vf_price" name="price_per_day" style="padding-left:28px;" placeholder="500" required>
                         </div>
-                        <small class="hint">Daily rate paid by the tourist (minimum ₱50).</small>
+                        <!-- <small class="hint">Daily rate paid by the tourist (minimum ₱50).</small> -->
                         <div class="field-error" id="vf_price_per_day_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                     </div>
                     <div class="field-row">
                         <label for="vf_location">Pickup Area / Island Hub <span class="req" style="color:var(--red-600);font-weight:bold;">*</span></label>
                         <input class="input" id="vf_location" name="location" placeholder="e.g. Cebu City · IT Park, Mactan Island, Oslob" required maxlength="160">
-                        <small class="hint">General area or neighborhood where tourists pick up the unit.</small>
+                        <!-- <small class="hint">General area or neighborhood where tourists pick up the unit.</small> -->
                         <div class="field-error" id="vf_location_error" style="display:none;color:#dc2626;font-size:0.82rem;margin-top:0.25rem;font-weight:600;"></div>
                     </div>
                 </div>

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,8 +18,11 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import CalendarPicker from '../../components/CalendarPicker';
+import { restoreSession } from '../../lib/authStore';
 import { usePreferences } from '../../lib/preferences';
 import { useTheme } from '../../lib/theme';
+import { findVoucher, formatVoucherMinimum, getVoucherDiscount } from '../../lib/vouchers';
+import { api, resolveImage } from '../../services/api';
 import { getPackageCoverSource } from '../../services/packageImages';
 import {
   bookTravelPackage,
@@ -27,9 +30,6 @@ import {
   PackageBookingResponse,
   TravelPackage,
 } from '../../services/packageService';
-import { api, resolveImage } from '../../services/api';
-import { restoreSession } from '../../lib/authStore';
-import { findVoucher, formatVoucherMinimum, getVoucherDiscount } from '../../lib/vouchers';
 
 const QR_EWALLET = require('../../assets/images/payment/qr-ewallet.png');
 const QR_INSTAPAY = require('../../assets/images/payment/qr-instapay.png');
@@ -65,8 +65,8 @@ export default function PackageDetailScreen() {
   const [bookingStep, setBookingStep] = useState<BookingStep>('form');
   const [guestsCount, setGuestsCount] = useState(2);
   const [travelDate, setTravelDate] = useState('');
-  const [contactName, setContactName] = useState('Christian');
-  const [contactPhone, setContactPhone] = useState('0917 123 4567');
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [specialNotes, setSpecialNotes] = useState('');
   const [qrMethod, setQrMethod] = useState<'gcash' | 'instapay'>('gcash');
   const [paymentReference, setPaymentReference] = useState('');
@@ -118,6 +118,12 @@ export default function PackageDetailScreen() {
       active = false;
     };
   }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadData();
+    }, [loadData])
+  );
 
   // Calendar theme matching current app colors
   const calendarTheme = useMemo(
@@ -383,6 +389,19 @@ export default function PackageDetailScreen() {
       });
       setBookingResult(res);
       setBookingStep('confirmed');
+      if (travelDate) {
+        setPackageData((prev) => {
+          if (!prev) return prev;
+          const currentBooked = prev.booked_dates || prev.bookedDates || [];
+          const updated = Array.from(new Set([...currentBooked, travelDate]));
+          return {
+            ...prev,
+            booked_dates: updated,
+            bookedDates: updated,
+            has_active_booking: true,
+          };
+        });
+      }
     } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Could not complete booking. Please try again.';
       if (err?.status === 409 || err?.data?.has_active_booking) {
@@ -1450,7 +1469,7 @@ export default function PackageDetailScreen() {
                     keyboardType="phone-pad"
                   />
 
-                  <Text style={[styles.formLabel, { color: colors.text, marginTop: 14 }]}>
+                  {/* <Text style={[styles.formLabel, { color: colors.text, marginTop: 14 }]}>
                     Special Requests / Notes for Guide (Optional)
                   </Text>
                   <TextInput
@@ -1461,7 +1480,7 @@ export default function PackageDetailScreen() {
                     placeholderTextColor={colors.textMute}
                     multiline
                     numberOfLines={3}
-                  />
+                  /> */}
 
                   {/* Pricing Summary */}
                   <View style={[styles.calcSummaryBox, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>

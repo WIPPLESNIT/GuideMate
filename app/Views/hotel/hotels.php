@@ -289,7 +289,7 @@ $errors = $errors ?? [];
                 <label for="hf_duration" style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:0.35rem;">
                     Check-in &amp; Check-out Times
                 </label>
-                <input type="text" id="hf_duration" name="duration" class="input" placeholder="e.g. Check-in 2:00 PM / Check-out 12:00 PM" style="width:100%;">
+                <input type="text" id="hf_duration" name="duration" class="input" placeholder="e.g. 2:00 PM / 12:00 PM" style="width:100%;">
                 <span class="hint" style="display:block;margin-top:0.25rem;font-size:0.8rem;color:var(--text-muted,#64748B);">Starting nightly rate is automatically calculated from your lowest-priced room.</span>
             </div>
 

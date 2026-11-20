@@ -29,8 +29,9 @@ final class ReviewController extends Controller
             flash('error', 'You can only review experiences you have booked.');
             redirect($back);
         }
-        if (Review::userHasReviewed((int) $listing['id'], $userId)) {
-            flash('error', 'You have already reviewed this listing.');
+        $eligibleBooking = Booking::getEligibleUnreviewedBooking((int) $listing['id'], $userId);
+        if ($eligibleBooking === null) {
+            flash('error', 'You have already reviewed this listing. Complete another booking to submit a new review.');
             redirect($back);
         }
 
@@ -49,7 +50,14 @@ final class ReviewController extends Controller
             flash_keep_old($errors, [], $back);
         }
 
-        $reviewId = Review::create((int) $listing['id'], $userId, $rating, $title, $comment, date('Y-m-d'));
+        $bookingId = (int) $eligibleBooking['id'];
+        $providerId = !empty($listing['user_id']) ? (int) $listing['user_id'] : null;
+        try {
+            $reviewId = Review::create((int) $listing['id'], $userId, $rating, $title, $comment, date('Y-m-d'), $bookingId, $providerId);
+        } catch (\PDOException $e) {
+            flash('error', 'You have already reviewed this booking.');
+            redirect($back);
+        }
         if (!empty($_FILES['photo']['name'])) {
             $path = Upload::image($_FILES['photo'], 'reviews');
             if ($path !== null) {

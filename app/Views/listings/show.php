@@ -245,7 +245,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                     <?php endif; ?>
                     <?php if (!empty($listing['not_included'])): ?>
                         <div class="inclusion-col">
-                            <h3><?= $isHotel ? e(__('h_rules_title', 'House Rules & Optional Add-ons')) : ($isRental ? 'Rental Requirements & Policies' : 'Available Add-ons & Services') ?></h3>
+                            <h3><?= $isHotel ? e(__('h_rules_title', 'House Rules & Optional Add-ons')) : ($isRental ? 'Rental Requirements & Policies' : e(__('g_not_included_title', 'Available Add-ons & Services'))) ?></h3>
                             <ul class="inclusion-list inclusion-list-muted">
                                 <?php foreach (preg_split('/\r\n|\r|\n/', (string) $listing['not_included']) ?: [] as $line): ?>
                                     <?php if (trim($line) !== ''): ?><li><?= e(trim($line)) ?></li><?php endif; ?>
@@ -255,7 +255,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                     <?php endif; ?>
                 </div>
                 <?php if ($isBookable && !$isHotel): ?>
-                <p class="hint mt-2">All fees listed under “Included” are covered when you pay on GuideMate. Guides must not ask for extra payment unless it is listed under “Not included”. <a href="<?= e(url('/policy')) ?>">Read our policy</a></p>
+                <p class="hint mt-2">All fees listed under “Included” are covered when you pay on GuideMate. Guides must not ask for extra payment unless it is listed under “Available Add-ons & Services”. <a href="<?= e(url('/policy')) ?>">Read our policy</a></p>
                 <?php endif; ?>
             <?php endif; ?>
 
@@ -377,21 +377,27 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                 </div>
 
                 <?php if (!empty($listing['user_id']) && in_array($listing['owner_role'] ?? '', ['guide', 'provider'], true)): ?>
-                    <div class="guide-mini" style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
-                        <a href="<?= e(url('/guides/' . (int) $listing['user_id'])) ?>" style="display:flex;align-items:center;gap:0.75rem;text-decoration:none;color:inherit;flex:1;min-width:0;">
-                            <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" alt="<?= e($listing['owner_name']) ?>" class="guide-mini-avatar">
-                            <div class="guide-mini-meta" style="flex:1;min-width:0;">
+                    <div class="guide-mini">
+                        <a href="<?= e(url('/guides/' . (int) $listing['user_id'])) ?>" class="guide-mini-link" title="<?= e($listing['owner_name']) ?>">
+                            <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" 
+                                 alt="<?= e($listing['owner_name']) ?>" 
+                                 class="guide-mini-avatar"
+                                 onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=<?= urlencode($listing['owner_name']) ?>&amp;background=008489&amp;color=fff';">
+                            <div class="guide-mini-meta">
                                 <span class="guide-mini-label"><?= e($host['sidebar']) ?></span>
-                                <strong class="guide-mini-name" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= e($listing['owner_name']) ?></strong>
+                                <strong class="guide-mini-name"><?= e($listing['owner_name']) ?></strong>
                             </div>
                         </a>
-                        <a href="<?= e(url('/guides/' . (int) $listing['user_id'])) ?>" class="btn btn-ghost btn-sm" style="font-size:0.8rem;padding:0.35rem 0.65rem;flex-shrink:0;" title="View Guide Profile">
+                        <a href="<?= e(url('/guides/' . (int) $listing['user_id'])) ?>" class="btn btn-ghost btn-sm guide-mini-btn" title="View Guide Profile">
                             View Profile →
                         </a>
                     </div>
                 <?php else: ?>
                     <div class="guide-mini">
-                        <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" alt="<?= e($listing['owner_name']) ?>" class="guide-mini-avatar">
+                        <img src="<?= e(img_src($listing['owner_avatar'] ?? null, 'avatar' . $listing['user_id'])) ?>" 
+                             alt="<?= e($listing['owner_name']) ?>" 
+                             class="guide-mini-avatar"
+                             onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=<?= urlencode($listing['owner_name']) ?>&amp;background=008489&amp;color=fff';">
                         <div class="guide-mini-meta">
                             <span class="guide-mini-label"><?= e($host['sidebar']) ?></span>
                             <strong class="guide-mini-name"><?= e($listing['owner_name']) ?></strong>
@@ -526,7 +532,7 @@ $lowestRoomPrice = $isHotel ? \App\Models\HotelRoom::getLowestRoomPrice((int) $l
                     <!-- TOUR GUIDE BOOKING FORM -->
                     <div class="policy-note">
                         <strong>Protected booking</strong>
-                        <p class="mb-0">Pay on GuideMate — your <?= e($host['noun']) ?> must not ask for extra money unless it was listed as “Not included” before you booked.</p>
+                        <p class="mb-0">Pay on GuideMate — your <?= e($host['noun']) ?> must not ask for extra money unless it was listed as “Available Add-ons & Services” before you booked.</p>
                     </div>
                     <form method="post" action="<?= e(url('/listing/' . $listing['id'] . '/book')) ?>" id="bookingForm" data-price="<?= e((string) ($displayPrice ?? $listing['price'])) ?>" data-logged-in="<?= $user ? '1' : '0' ?>" data-login-url="<?= e(url('/login?redirect=' . rawurlencode('/listing/' . ($listing['slug'] ?? $listing['id'])))) ?>">
                         <?= csrf_field() ?>

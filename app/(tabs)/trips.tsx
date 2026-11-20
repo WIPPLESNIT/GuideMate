@@ -820,7 +820,7 @@ export default function TripsScreen() {
                 },
               ]}
               activeOpacity={0.85}
-              onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
+              onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title, booking_id: String(item.id) } })}
             >
               <Ionicons name="star-outline" size={14} color={isDark ? '#FACC15' : '#D97706'} />
               <Text style={[styles.actionText, { color: isDark ? '#FACC15' : '#D97706', fontWeight: '700' }]}>Rate stay</Text>
@@ -953,7 +953,7 @@ export default function TripsScreen() {
                 },
               ]}
               activeOpacity={0.85}
-              onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
+              onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title, booking_id: String(item.id) } })}
             >
               <Ionicons name="star-outline" size={15} color={isDark ? '#FACC15' : '#D97706'} />
               <Text style={[styles.attractionActionText, { color: isDark ? '#FACC15' : '#D97706', fontWeight: '700' }]}>Rate &amp; Review Experience</Text>
@@ -1094,7 +1094,7 @@ export default function TripsScreen() {
                 },
               ]}
               activeOpacity={0.85}
-              onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
+              onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title, booking_id: String(item.id) } })}
             >
               <Ionicons name="star-outline" size={15} color={isDark ? '#FACC15' : '#D97706'} />
               <Text style={[styles.attractionActionText, { color: isDark ? '#FACC15' : '#D97706', fontWeight: '700' }]}>Rate your guide</Text>
@@ -1363,7 +1363,7 @@ export default function TripsScreen() {
 
           {!isCancelled && isPkgCompleted ? (
             <View style={styles.pkgActionRow}>
-              {item.can_review || overallStatus === 'completed' ? (
+              {item.can_review ? (
                 <TouchableOpacity
                   style={[
                     styles.attractionActionBtn,
@@ -1375,7 +1375,7 @@ export default function TripsScreen() {
                     },
                   ]}
                   activeOpacity={0.85}
-                  onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } })}
+                  onPress={() => router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title, booking_id: String(item.id) } })}
                 >
                   <Ionicons name="star-outline" size={14} color={isDark ? '#FACC15' : '#D97706'} />
                   <Text style={[styles.attractionActionText, { color: isDark ? '#FACC15' : '#D97706', fontSize: 12, fontWeight: '700' }]}>Leave Review</Text>
@@ -2032,7 +2032,7 @@ export default function TripsScreen() {
                     onPress={() => {
                       const item = selectedBookingDetails;
                       setSelectedBookingDetails(null);
-                      router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } });
+                      router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title, booking_id: String(item.id) } });
                     }}
                   >
                     <Ionicons name="star-outline" size={15} color={isDark ? '#FACC15' : '#D97706'} />
@@ -3179,7 +3179,7 @@ export default function TripsScreen() {
 
                   {/* Action Buttons */}
                   <View style={{ marginTop: 18, gap: 10 }}>
-                    {!isCancelled && isPkgCompleted && (selectedPackageDetails.can_review || overallStatus === 'completed') ? (
+                    {!isCancelled && isPkgCompleted && selectedPackageDetails.can_review ? (
                       <TouchableOpacity
                         style={[
                           styles.attractionActionBtn,
@@ -3192,7 +3192,7 @@ export default function TripsScreen() {
                         onPress={() => {
                           const item = selectedPackageDetails;
                           setSelectedPackageDetails(null);
-                          router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title } });
+                          router.push({ pathname: '/review/[id]', params: { id: String(item.listing_id), title: item.listing_title, booking_id: String(item.id) } });
                         }}
                       >
                         <Ionicons name="star-outline" size={16} color={isDark ? '#FACC15' : '#D97706'} />

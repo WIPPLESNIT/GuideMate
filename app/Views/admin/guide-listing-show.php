@@ -734,11 +734,11 @@ $incRental = $packageData['rental'] ?? ($packageInclusions['rental'] ?? null);
                     <?php endif; ?>
 
                     <?php if ($notIncluded !== []): ?>
-                        <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;">Not Included / House Rules</h3>
+                        <h3 class="admin-vehicle-section-title" style="margin:1.5rem 0 0.75rem;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:0.5rem;"><?= e(__('g_not_included_title', 'Available Add-ons & Services')) ?></h3>
                         <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.5rem;">
                             <?php foreach ($notIncluded as $ni): ?>
-                                <span style="background:rgba(239,68,68,0.1);color:#fca5a5;padding:0.35rem 0.75rem;border-radius:20px;font-size:0.875rem;border:1px solid rgba(239,68,68,0.25);">
-                                    ✕ <?= e($ni) ?>
+                                <span style="background:rgba(255,255,255,0.06);color:#e2e8f0;padding:0.35rem 0.75rem;border-radius:20px;font-size:0.875rem;border:1px solid var(--border);">
+                                    + <?= e(ltrim($ni, '+• ')) ?>
                                 </span>
                             <?php endforeach; ?>
                         </div>

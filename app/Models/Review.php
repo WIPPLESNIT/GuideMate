@@ -49,12 +49,20 @@ final class Review
         ];
     }
 
-    public static function create(int $listingId, int $userId, int $rating, string $title, string $comment, ?string $visitedOn): int
-    {
+    public static function create(
+        int $listingId,
+        int $userId,
+        int $rating,
+        string $title,
+        string $comment,
+        ?string $visitedOn,
+        ?int $bookingId = null,
+        ?int $providerId = null
+    ): int {
         return Database::insert(
-            'INSERT INTO reviews (listing_id, user_id, rating, title, comment, visited_on)
-             VALUES (?, ?, ?, ?, ?, ?)',
-            [$listingId, $userId, $rating, $title, $comment, $visitedOn]
+            'INSERT INTO reviews (listing_id, user_id, rating, title, comment, visited_on, booking_id, provider_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [$listingId, $userId, $rating, $title, $comment, $visitedOn, $bookingId, $providerId]
         );
     }
 
@@ -64,6 +72,28 @@ final class Review
             'SELECT id FROM reviews WHERE listing_id = ? AND user_id = ?',
             [$listingId, $userId]
         ) !== null;
+    }
+
+    public static function bookingHasReview(int $bookingId): bool
+    {
+        if ($bookingId <= 0) {
+            return false;
+        }
+        return Database::first(
+            'SELECT id FROM reviews WHERE booking_id = ? LIMIT 1',
+            [$bookingId]
+        ) !== null;
+    }
+
+    public static function hasUserReviewedBooking(int $bookingId, int $listingId, int $userId): bool
+    {
+        if ($bookingId > 0 && self::bookingHasReview($bookingId)) {
+            return true;
+        }
+        if ($bookingId <= 0) {
+            return self::userHasReviewed($listingId, $userId);
+        }
+        return false;
     }
 
     public static function delete(int $id): void

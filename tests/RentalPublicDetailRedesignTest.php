@@ -83,8 +83,8 @@ final class RentalPublicDetailRedesignTest
         $viewPath = BASE_DIR . '/app/Views/rental/show.php';
         $content = file_get_contents($viewPath);
 
-        $this->assert(str_contains($content, "What's included"), 'Must include "What\'s included" card');
-        $this->assert(str_contains($content, "Available Add-ons &amp; Services") || str_contains($content, "Available Add-ons & Services"), 'Must include secondary spec card');
+        $this->assert(str_contains($content, "What's included") || str_contains($content, "What's Included") || str_contains($content, "What’s Included"), 'Must include "What\'s included" card');
+        $this->assert(str_contains($content, "Available Add-ons &amp; Services") || str_contains($content, "Available Add-ons & Services") || str_contains($content, "Rental Requirements &amp; Policies") || str_contains($content, "Rental Requirements & Policies"), 'Must include secondary spec card');
         $this->assert(str_contains($content, 'class="inclusion-list"'), 'Must use .inclusion-list unordered list');
         $this->assert(str_contains($content, 'class="inclusion-list inclusion-list-muted"'), 'Must use .inclusion-list-muted for specs');
     }

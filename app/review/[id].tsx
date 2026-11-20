@@ -22,8 +22,9 @@ export default function ReviewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const params = useLocalSearchParams<{ id: string; title?: string }>();
+  const params = useLocalSearchParams<{ id: string; title?: string; booking_id?: string }>();
   const listingId = Number(params.id);
+  const bookingId = params.booking_id ? Number(params.booking_id) : undefined;
   const listingTitle = typeof params.title === 'string' ? params.title : 'this experience';
 
   const [rating, setRating] = useState(0);
@@ -41,7 +42,12 @@ export default function ReviewScreen() {
     }
     setSubmitting(true);
     try {
-      await submitReview({ listing_id: listingId, rating, comment: comment.trim() });
+      await submitReview({
+        listing_id: listingId,
+        booking_id: bookingId,
+        rating,
+        comment: comment.trim(),
+      });
       Alert.alert('Thank you!', 'Your review has been posted.', [
         { text: 'OK', onPress: () => router.back() },
       ]);

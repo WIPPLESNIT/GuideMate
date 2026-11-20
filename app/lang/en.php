@@ -175,6 +175,7 @@ return [
     'g_included_hint' => 'List everything covered by your booking price. Guides must not ask for extra payment after a tourist has paid unless it was clearly listed below.',
     'g_included_label' => 'Included (one item per line)',
     'g_included_ph' => "e.g. Guide fee\nPickup from hotel\nSnorkeling gear\nLife vest",
+    'g_not_included_title' => 'Available Add-ons & Services',
     'g_not_included_label' => 'Available Add-ons & Services (one item per line)',
     'g_not_included_ph' => "e.g. Lunch\nPark entrance fee (₱100)",
     'g_not_included_hint' => 'Only costs listed here may be requested separately. Everything else must be covered by the booking price.',

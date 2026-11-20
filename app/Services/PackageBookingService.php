@@ -269,6 +269,12 @@ final class PackageBookingService
             throw new RuntimeException("This package allows a maximum of {$maxPax} participants.");
         }
 
+        // Prevent duplicate active booking schedules for the same traveler on this package
+        $existingActive = Booking::getActiveBookingForPackage($packageId, $touristId);
+        if ($existingActive) {
+            throw new RuntimeException("You already have an active booking for this travel package. You can book this package again once your current trip is completed.");
+        }
+
         $travelDate = (string) ($payload['travelDate'] ?? date('Y-m-d', strtotime('+3 days')));
         $contactName = (string) ($payload['contactName'] ?? 'Tourist');
         $contactPhone = (string) ($payload['contactPhone'] ?? '0917 123 4567');

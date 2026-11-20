@@ -343,6 +343,41 @@ final class Booking
         return self::getActiveBookingForListing($listingId, $userId) !== null;
     }
 
+    /**
+     * Active incomplete package booking for a user.
+     * Prevents duplicate package bookings while one is in progress.
+     */
+    public static function getActiveBookingForPackage(int $packageId, int $userId): ?array
+    {
+        return Database::first("
+            SELECT id, status, package_overall_status, package_booking_ref, booking_date
+            FROM bookings
+            WHERE user_id = ?
+              AND listing_id = ?
+              AND (
+                  status IN ('pending', 'confirmed')
+                  OR package_overall_status IN ('pending', 'partially_confirmed', 'confirmed')
+              )
+              AND status NOT IN ('completed', 'cancelled', 'refunded')
+            ORDER BY id DESC
+            LIMIT 1
+        ", [$userId, $packageId]);
+    }
+
+    public static function hasActiveBookingForPackage(int $packageId, int $userId): bool
+    {
+        return self::getActiveBookingForPackage($packageId, $userId) !== null;
+    }
+
+    /**
+     * Checks if a date has an existing booking schedule (active booking, listing schedule, or guide block)
+     * for a listing or package.
+     */
+    public static function hasBookingScheduleOnDate(int $listingId, string $date, ?int $excludeBookingId = null): bool
+    {
+        return self::isDateBooked($listingId, $date, $excludeBookingId);
+    }
+
     public static function hasActivePaidBooking(int $listingId, int $userId, ?string $date = null): bool
     {
         $sql = 'SELECT b.id FROM bookings b
@@ -864,9 +899,9 @@ final class Booking
                             JOIN bookings b ON b.id = pbi.parent_booking_id
                             WHERE pbi.provider_id = ?
                               AND pbi.provider_role = "guide"
-                              AND pbi.status NOT IN ("cancelled", "removed")
-                              AND b.status NOT IN ("cancelled", "refunded")
-                              AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded"))
+                              AND pbi.status NOT IN ("cancelled", "removed", "completed")
+                              AND b.status IN ("pending", "confirmed")
+                              AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded", "completed"))
                               AND (b.booking_date >= CURDATE() OR pbi.rescheduled_date >= CURDATE() OR b.check_out_date >= CURDATE())';
                 $itemParams = [$guideId];
                 if ($excludeBookingId !== null) {
@@ -934,9 +969,26 @@ final class Booking
             $manualBlocks = array_merge($manualBlocks, GuideAvailability::blockedDatesForGuide($guideId));
         }
 
+        // Existing booking schedules plotted in listing_schedules: preserve as unavailable
+        $existingSchedules = [];
+        try {
+            $schedSql = 'SELECT DISTINCT ls.schedule_date
+                         FROM listing_schedules ls
+                         LEFT JOIN listings l ON l.id = ls.listing_id
+                         WHERE (ls.listing_id = ?' . ($guideId > 0 ? ' OR l.user_id = ?' : '') . ')
+                           AND ls.schedule_date >= CURDATE()';
+            $schedParams = $guideId > 0 ? [$listingId, $guideId] : [$listingId];
+            $schedRows = Database::all($schedSql, $schedParams);
+            foreach ($schedRows as $sr) {
+                if (!empty($sr['schedule_date'])) {
+                    $existingSchedules[] = (string) $sr['schedule_date'];
+                }
+            }
+        } catch (\Throwable) {}
+
         $today = date('Y-m-d');
         $filtered = array_filter(
-            array_unique(array_merge($booked, $manualBlocks)),
+            array_unique(array_merge($booked, $manualBlocks, $existingSchedules)),
             static fn($d) => $d >= $today
         );
         sort($filtered);
@@ -1236,9 +1288,9 @@ final class Booking
                         JOIN bookings b ON b.id = pbi.parent_booking_id
                         WHERE pbi.provider_id = ?
                           AND pbi.provider_role = "guide"
-                          AND pbi.status NOT IN ("cancelled", "removed")
-                          AND b.status NOT IN ("cancelled", "refunded")
-                          AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded"))';
+                          AND pbi.status NOT IN ("cancelled", "removed", "completed")
+                          AND b.status IN ("pending", "confirmed")
+                          AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded", "completed"))';
             $itemParams = [$guideId];
             if ($excludeBookingId !== null) {
                 $itemSql .= ' AND b.id <> ?';
@@ -1268,6 +1320,17 @@ final class Booking
                         }
                     }
                 }
+            }
+        } catch (\Throwable) {}
+
+        // Check if guide has an existing booking schedule in listing_schedules on this date
+        try {
+            $schedSql = 'SELECT ls.id FROM listing_schedules ls
+                         JOIN listings l ON l.id = ls.listing_id
+                         WHERE l.user_id = ? AND ls.schedule_date = ?' . ($excludeListingId !== null ? ' AND l.id <> ?' : '') . ' LIMIT 1';
+            $schedParams = $excludeListingId !== null ? [$guideId, $date, $excludeListingId] : [$guideId, $date];
+            if (Database::first($schedSql, $schedParams) !== null) {
+                return true;
             }
         } catch (\Throwable) {}
 
@@ -1325,11 +1388,34 @@ final class Booking
             'SELECT id FROM bookings
              WHERE listing_id = ?
                AND user_id = ?
-               AND status = "completed"
-               AND (package_overall_status IS NULL OR package_overall_status = "completed")
-               AND status NOT IN ("cancelled", "refunded")',
+               AND (status = "completed" OR package_overall_status = "completed" OR unit_completed_at IS NOT NULL)
+               AND status NOT IN ("cancelled", "refunded")
+               AND (package_overall_status IS NULL OR package_overall_status NOT IN ("cancelled", "refunded"))
+             LIMIT 1',
             [$listingId, $userId]
         ) !== null;
+    }
+
+    public static function getEligibleUnreviewedBooking(int $listingId, int $userId): ?array
+    {
+        return Database::first(
+            'SELECT b.* FROM bookings b
+             LEFT JOIN reviews r ON r.booking_id = b.id
+             WHERE b.listing_id = ?
+               AND b.user_id = ?
+               AND (b.status = "completed" OR b.package_overall_status = "completed" OR b.unit_completed_at IS NOT NULL)
+               AND b.status NOT IN ("cancelled", "refunded")
+               AND (b.package_overall_status IS NULL OR b.package_overall_status NOT IN ("cancelled", "refunded"))
+               AND r.id IS NULL
+             ORDER BY b.id DESC
+             LIMIT 1',
+            [$listingId, $userId]
+        );
+    }
+
+    public static function hasUnreviewedCompletedBooking(int $listingId, int $userId): bool
+    {
+        return self::getEligibleUnreviewedBooking($listingId, $userId) !== null;
     }
 
     public static function countForGuide(int $guideId): int
